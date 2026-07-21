@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { supabase } from "@/lib/supabase";
 import { ArrowRight, CheckCircle, AlertCircle, ArrowLeft } from "lucide-react";
 import Navbar from "@/components/Navbar";
+import { checkIdentifier, authenticateUser } from "@/actions/auth"; // Ajuste o caminho conforme sua pasta
 
 export default function LoginUnificado() {
   const router = useRouter();
@@ -43,59 +43,28 @@ export default function LoginUnificado() {
     e.preventDefault();
     setLoading(true);
 
-    const idClean = identificador.trim().toLowerCase();
+    const result = await checkIdentifier(identificador);
 
-    // 1. TENTA ACHAR UM ADMINISTRADOR (Sistema ou Empresa)
-    const { data: admin } = await supabase
-      .from("administradores")
-      .select("id, role")
-      .eq("usuario", idClean)
-      .maybeSingle();
-
-    if (admin) {
-      setRole(admin.role); // Vai ser "sistema" ou "empresa"
-      setStep(2);
+    if (!result.success) {
+      showMsg("error", result.error);
       setLoading(false);
       return;
     }
 
-    // 2. SE NÃO ACHOU ADMIN, ASSUME QUE É PACIENTE (Lógica de CPF)
-    const cleanCpf = idClean.replace(/\D/g, "");
-    if (cleanCpf.length !== 11) {
-      showMsg("error", "Usuário não encontrado. Digite um CPF válido ou seu usuário administrativo.");
-      setLoading(false); return;
+    if (result.type === "admin") {
+      setRole(result.role); 
+      setStep(2);
+    } else if (result.type === "paciente") {
+      setPacienteId(result.id);
+      setRole("paciente");
+      setIsDefiningPassword(result.isDefiningPassword);
+      
+      if (result.isDefiningPassword) {
+        showMsg("info", "Primeiro acesso detectado! Confirme sua data de nascimento para criar sua senha.");
+      }
+      setStep(2);
     }
 
-    const maskedCpf = cleanCpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
-
-    const { data: paciente, error } = await supabase
-      .from("pacientes")
-      .select("id")
-      .or(`cpf.eq.${cleanCpf},cpf.eq.${maskedCpf}`)
-      .maybeSingle();
-
-    if (error || !paciente) {
-      showMsg("error", "Cadastro não encontrado na clínica.");
-      setLoading(false); return;
-    }
-
-    const { data: cred } = await supabase
-      .from("pacientes_credenciais")
-      .select("senha_hash")
-      .eq("paciente_id", paciente.id)
-      .maybeSingle();
-
-    setPacienteId(paciente.id);
-    setRole("paciente");
-
-    if (!cred) {
-      setIsDefiningPassword(true);
-      showMsg("info", "Primeiro acesso detectado! Confirme sua data de nascimento para criar sua senha.");
-    } else {
-      setIsDefiningPassword(false);
-    }
-
-    setStep(2);
     setLoading(false);
   };
 
@@ -104,70 +73,31 @@ export default function LoginUnificado() {
     e.preventDefault();
     setLoading(true);
 
-    // FLUXO A: Criação de senha para paciente novo
-    if (isDefiningPassword && role === "paciente") {
-      const { data: paciente } = await supabase
-        .from("pacientes")
-        .select("data_nascimento")
-        .eq("id", pacienteId)
-        .single();
+    const result = await authenticateUser({
+      type: role === "paciente" ? "paciente" : "admin",
+      id: pacienteId,
+      role: role,
+      password: password,
+      birthDate: birthDate,
+      isDefiningPassword: isDefiningPassword,
+      identificador: identificador
+    });
 
-      if (paciente.data_nascimento !== birthDate) {
-        showMsg("error", "A data de nascimento informada não coincide com nosso banco de dados.");
-        setLoading(false); return;
-      }
-
-      const { error } = await supabase
-        .from("pacientes_credenciais")
-        .insert({ paciente_id: pacienteId, senha_hash: password });
-
-      if (!error) {
-        showMsg("success", "Senha cadastrada com sucesso! Redirecionando...");
-        setTimeout(() => router.push("/paciente/dashboard"), 1500);
-      } else {
-        showMsg("error", "Falha ao registrar senha. Tente novamente.");
-      }
-      setLoading(false); return;
+    if (!result.success) {
+      showMsg("error", result.error);
+      setLoading(false);
+      return;
     }
 
-    // FLUXO B: Login Padrão (Paciente)
+    showMsg("success", result.message);
+
+    // Redirecionamentos
     if (role === "paciente") {
-      const { data: cred } = await supabase
-        .from("pacientes_credenciais")
-        .select("senha_hash")
-        .eq("paciente_id", pacienteId)
-        .eq("senha_hash", password)
-        .maybeSingle();
-
-      if (cred) {
-        showMsg("success", "Acesso autorizado!");
-        router.push("/paciente/dashboard");
-      } else {
-        showMsg("error", "Senha incorreta.");
-      }
-    } 
-    
-    // FLUXO C: Login Administrativo (Sistema ou Empresa)
-    else if (role === "sistema" || role === "empresa") {
-      const idClean = identificador.trim().toLowerCase();
-      
-      const { data: adminAuth } = await supabase
-        .from("administradores")
-        .select("role")
-        .eq("usuario", idClean)
-        .eq("senha_hash", password) // Importante: em um sistema real de produção, use Bcrypt para não salvar senhas puras
-        .maybeSingle();
-
-      if (adminAuth) {
-        showMsg("success", "Acesso autorizado!");
-        if (adminAuth.role === "sistema") {
-          router.push("/admin/sistema");
-        } else {
-          router.push("/admin/empresa");
-        }
-      } else {
-        showMsg("error", "Senha administrativa inválida.");
-      }
+      setTimeout(() => router.push("/paciente/dashboard"), 1000);
+    } else if (role === "sistema") {
+      router.push("/admin/sistema");
+    } else {
+      router.push("/admin/empresa");
     }
 
     setLoading(false);
