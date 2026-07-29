@@ -1,15 +1,15 @@
 "use client";
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import { 
   PenLine, Plus, X, Stethoscope, Code, Info, 
-  DollarSign, CalendarDays, CheckCircle2, ChevronRight, Hash
+  DollarSign, CalendarDays, CheckCircle2, ChevronRight, Hash, Trash2, Layers
 } from "lucide-react";
 import { fadeUp, staggerContainer, staggerItem, TextInput, CustomSelect, ButtonPrimary, ToggleSwitch, spring } from "../components/SharedUI";
+import { supabase } from "@/lib/supabase";
 
 // IMPORTAÇÕES DE ACTIONS
-import { actionAtualizarServico, actionCriarServico } from "@/actions/adminData"; 
+import { actionAtualizarServico, actionCriarServico } from "@/actions/adminData";
 
 // ==========================================
 // COMPONENTE: CARD DO SERVIÇO / PROFISSIONAL
@@ -28,7 +28,7 @@ const ServicoCard = ({ srv, onEdit }) => {
       >
         <PenLine size={18} strokeWidth={2.5} />
       </button>
-
+      
       <div className="relative z-10">
         <div className="flex items-center gap-2 mb-5">
           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-100/80 text-zinc-600 text-[10px] font-black uppercase tracking-widest rounded-lg">
@@ -42,7 +42,18 @@ const ServicoCard = ({ srv, onEdit }) => {
           )}
         </div>
         
-        <h3 className="font-black text-2xl text-zinc-900 mb-2 leading-tight pr-10">{srv.nome}</h3>
+        <h3 className="font-black text-2xl text-zinc-900 mb-3 leading-tight pr-10">{srv.nome}</h3>
+        
+        {/* Renderiza as múltiplas especialidades como "Pills" */}
+        {srv.especialidade && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {srv.especialidade.split(',').map(e => e.trim()).map((esp, i) => (
+              <span key={i} className="text-[9px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-1 rounded-md uppercase tracking-widest">
+                {esp}
+              </span>
+            ))}
+          </div>
+        )}
         
         <div className="flex items-center gap-4 mt-8 pt-6 border-t border-zinc-100/80">
           <div className="flex-1">
@@ -69,24 +80,36 @@ const ServicoCard = ({ srv, onEdit }) => {
 // ==========================================
 // COMPONENTE: FORMULÁRIO (CADASTRO E EDIÇÃO)
 // ==========================================
-const ServicoForm = ({ initialData, onSave, onCancel, loading }) => {
+const ServicoForm = ({ initialData, onSave, onCancel, loading, especialidadesList }) => {
   const isEditing = !!initialData?.id;
   
+  // A especialidade agora é um ARRAY no estado para podermos ter múltipla escolha
   const [formData, setFormData] = useState({
     id: initialData?.id || "",
     nome: initialData?.nome || "",
-    tipo: initialData?.tipo || "Profissional",
+    especialidade: initialData?.especialidade ? initialData.especialidade.split(',').map(e => e.trim()) : [], 
+    tipo: initialData?.tipo || "Consulta",           
     preco: initialData?.preco || "",
     dias_bloqueio_padrao: initialData?.dias_bloqueio_padrao || "",
     tipo_contagem_dias: initialData?.tipo_contagem_dias || "corridos",
     ativo: initialData?.ativo !== false
   });
-
+  
   const [devModeEnabled, setDevModeEnabled] = useState(false);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     onSave(formData, isEditing);
+  };
+
+  const toggleEspecialidade = (esp) => {
+    setFormData(prev => {
+      if (prev.especialidade.includes(esp)) {
+        return { ...prev, especialidade: prev.especialidade.filter(e => e !== esp) };
+      } else {
+        return { ...prev, especialidade: [...prev.especialidade, esp] };
+      }
+    });
   };
 
   return (
@@ -126,19 +149,46 @@ const ServicoForm = ({ initialData, onSave, onCancel, loading }) => {
               <div className="md:col-span-2">
                 <TextInput 
                   label="Nome do Profissional / Serviço *" 
-                  placeholder="Ex: Dr. Carlos Eduardo (Cardiologia)" 
+                  placeholder="Ex: Dr. Carlos Eduardo"
                   value={formData.nome} 
                   onChange={(e) => setFormData({...formData, nome: e.target.value})} 
                   required
                   autoFocus
                 />
               </div>
+              
+              {/* O NOVO CAMPO DE MÚLTIPLA ESCOLHA DE ESPECIALIDADES */}
+              <div className="md:col-span-2">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1 mb-3 block">
+                  Especialidades Vinculadas (Múltipla Escolha)
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {especialidadesList.length === 0 ? (
+                    <p className="text-xs text-amber-500 font-medium py-2">Nenhuma especialidade cadastrada. Vá na aba "Especialidades" para criar.</p>
+                  ) : (
+                    especialidadesList.map(esp => {
+                      const isSelected = formData.especialidade.includes(esp);
+                      return (
+                        <button
+                          key={esp}
+                          type="button"
+                          onClick={() => toggleEspecialidade(esp)}
+                          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all border ${isSelected ? "bg-zinc-900 text-white border-zinc-900 shadow-md scale-105" : "bg-white text-zinc-500 border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50"}`}
+                        >
+                          {esp}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
               <CustomSelect 
                 label="Categoria" 
                 value={formData.tipo} 
                 onChange={(val) => setFormData({...formData, tipo: val})} 
                 options={[
-                  {value: 'Profissional', label: 'Profissional Clínico'}, 
+                  {value: 'Consulta', label: 'Profissional / Consulta'}, 
                   {value: 'Exame', label: 'Exame / Procedimento'}
                 ]} 
               />
@@ -220,7 +270,6 @@ const ServicoForm = ({ initialData, onSave, onCancel, loading }) => {
                           <strong>Atenção Dev:</strong> Preencha este campo apenas se precisar forçar uma associação de ID com o ERP legado ou realizar uma migração exata. Caso contrário, deixe em branco para o banco gerar o UUID.
                         </p>
                       </div>
-
                       <div className="relative">
                         <Hash size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400 z-10" />
                         <input 
@@ -270,6 +319,22 @@ export default function FinanceiroView({ servicos, showToast, fetchServicos }) {
   const [activeTab, setActiveTab] = useState("catalogo"); 
   const [editingServico, setEditingServico] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  
+  // Estados para as Especialidades
+  const [empresaId, setEmpresaId] = useState(null);
+  const [especialidadesList, setEspecialidadesList] = useState([]);
+  const [novaEspecialidade, setNovaEspecialidade] = useState("");
+
+  useEffect(() => {
+    const fetchEspecialidades = async () => {
+      const { data } = await supabase.from('empresas').select('id, especialidades').limit(1).single();
+      if (data) {
+        setEmpresaId(data.id);
+        if (data.especialidades) setEspecialidadesList(data.especialidades);
+      }
+    };
+    fetchEspecialidades();
+  }, []);
 
   const handleOpenForm = (servico = null) => {
     setEditingServico(servico);
@@ -284,17 +349,17 @@ export default function FinanceiroView({ servicos, showToast, fetchServicos }) {
   const handleSaveServico = async (formData, isEditing) => {
     setIsProcessing(true);
     try {
-      // Sanitização do payload para o Supabase
+      // O payload junta as especialidades numa string com vírgulas
       const payload = {
         nome: formData.nome.trim(),
+        especialidade: formData.especialidade.length > 0 ? formData.especialidade.join(', ') : null, 
         tipo: formData.tipo,
         ativo: formData.ativo,
         tipo_contagem_dias: formData.tipo_contagem_dias,
-        preco: formData.preco ? parseFloat(formData.preco) : 0.00, // Preço não nulo no schema
+        preco: formData.preco ? parseFloat(formData.preco) : 0.00,
         dias_bloqueio_padrao: formData.dias_bloqueio_padrao ? parseInt(formData.dias_bloqueio_padrao, 10) : 0,
       };
 
-      // Se o dev inseriu um ID e não está editando, manda no payload
       if (!isEditing && formData.id && formData.id.trim() !== "") {
         payload.id = formData.id.trim();
       }
@@ -307,7 +372,6 @@ export default function FinanceiroView({ servicos, showToast, fetchServicos }) {
         showToast("Profissional cadastrado com sucesso!");
       }
       
-      // Atualiza o estado global no orquestrador! (Isso tira o Empty State da tela)
       if (fetchServicos) {
         await fetchServicos();
       }
@@ -321,6 +385,37 @@ export default function FinanceiroView({ servicos, showToast, fetchServicos }) {
     }
   };
 
+  const handleAddEspecialidade = async () => {
+    if (!novaEspecialidade.trim()) return;
+    setIsProcessing(true);
+    try {
+      const newList = [...especialidadesList, novaEspecialidade.trim()];
+      await supabase.from('empresas').update({ especialidades: newList }).eq('id', empresaId);
+      setEspecialidadesList(newList);
+      setNovaEspecialidade("");
+      showToast("Especialidade registrada com sucesso!");
+    } catch (e) {
+      showToast("Erro ao adicionar especialidade.", "error");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleRemoveEspecialidade = async (esp) => {
+    if(!window.confirm(`Apagar a especialidade "${esp}"?`)) return;
+    setIsProcessing(true);
+    try {
+      const newList = especialidadesList.filter(e => e !== esp);
+      await supabase.from('empresas').update({ especialidades: newList }).eq('id', empresaId);
+      setEspecialidadesList(newList);
+      showToast("Especialidade removida!");
+    } catch (e) {
+      showToast("Erro ao remover.", "error");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   return (
     <motion.div key="financeiro" {...fadeUp} className="p-6 md:p-10 mx-auto w-full max-w-7xl overflow-y-auto h-full custom-scrollbar relative">
       
@@ -328,22 +423,29 @@ export default function FinanceiroView({ servicos, showToast, fetchServicos }) {
         <div>
           <h2 className="text-3xl font-black text-zinc-900 tracking-tight">Catálogo e Profissionais</h2>
           <p className="text-sm text-zinc-500 mt-2 font-medium">
-            Gerencie o corpo clínico, tabela de preços e os prazos de bloqueio de agenda.
+            Gerencie as especialidades, corpo clínico e regras de bloqueio.
           </p>
         </div>
         
         <LayoutGroup>
-          <div className="flex p-1.5 bg-white border border-zinc-200/80 rounded-2xl shadow-sm">
+          <div className="flex p-1.5 bg-white border border-zinc-200/80 rounded-2xl shadow-sm overflow-x-auto">
             <button 
               onClick={handleCloseForm}
-              className={`relative px-6 py-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-colors z-10 ${activeTab === "catalogo" ? "text-white" : "text-zinc-500 hover:text-zinc-900"}`}
+              className={`relative px-5 py-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-colors z-10 whitespace-nowrap ${activeTab === "catalogo" ? "text-white" : "text-zinc-500 hover:text-zinc-900"}`}
             >
               {activeTab === "catalogo" && <motion.div layoutId="tab-pill" className="absolute inset-0 bg-zinc-900 rounded-xl -z-10 shadow-md" transition={spring} />}
               Ver Catálogo
             </button>
             <button 
+              onClick={() => setActiveTab("especialidades")}
+              className={`relative px-5 py-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-colors z-10 whitespace-nowrap ${activeTab === "especialidades" ? "text-white" : "text-zinc-500 hover:text-zinc-900"}`}
+            >
+              {activeTab === "especialidades" && <motion.div layoutId="tab-pill" className="absolute inset-0 bg-zinc-900 rounded-xl -z-10 shadow-md" transition={spring} />}
+              Especialidades
+            </button>
+            <button 
               onClick={() => handleOpenForm(null)}
-              className={`relative flex items-center gap-2 px-6 py-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-colors z-10 ${activeTab === "formulario" && !editingServico ? "text-white" : "text-zinc-500 hover:text-zinc-900"}`}
+              className={`relative flex items-center gap-2 px-5 py-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-colors z-10 whitespace-nowrap ${activeTab === "formulario" && !editingServico ? "text-white" : "text-zinc-500 hover:text-zinc-900"}`}
             >
               {activeTab === "formulario" && !editingServico && <motion.div layoutId="tab-pill" className="absolute inset-0 bg-zinc-900 rounded-xl -z-10 shadow-md" transition={spring} />}
               <Plus size={14} /> Novo Cadastro
@@ -381,6 +483,63 @@ export default function FinanceiroView({ servicos, showToast, fetchServicos }) {
           </motion.div>
         )}
 
+        {activeTab === "especialidades" && (
+          <motion.div 
+            key="especialidades"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={spring}
+            className="max-w-2xl mx-auto"
+          >
+            <div className="bg-white p-8 border border-zinc-200/80 rounded-[2rem] shadow-sm">
+              <div className="flex items-center gap-3 mb-8">
+                <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center">
+                  <Layers size={20} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-zinc-900">Gerenciar Especialidades</h3>
+                  <p className="text-sm font-medium text-zinc-500">Crie as categorias para organizar seu corpo clínico.</p>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-4 mb-10">
+                <div className="flex-1">
+                  <TextInput 
+                    value={novaEspecialidade} 
+                    onChange={(e) => setNovaEspecialidade(e.target.value)} 
+                    placeholder="Ex: Gastroenterologia" 
+                  />
+                </div>
+                <ButtonPrimary onClick={handleAddEspecialidade} disabled={isProcessing || !novaEspecialidade.trim()} icon={Plus} className="sm:mt-0">
+                  Adicionar
+                </ButtonPrimary>
+              </div>
+
+              <div className="space-y-3">
+                {especialidadesList.length === 0 ? (
+                  <div className="text-center p-6 bg-zinc-50 border border-dashed border-zinc-200 rounded-2xl">
+                    <p className="text-zinc-400 font-medium text-sm">Nenhuma especialidade criada.</p>
+                  </div>
+                ) : (
+                  especialidadesList.map(esp => (
+                    <div key={esp} className="flex justify-between items-center p-4 bg-zinc-50 border border-zinc-100 rounded-2xl hover:border-zinc-200 transition-colors">
+                      <span className="font-bold text-zinc-700">{esp}</span>
+                      <button 
+                        onClick={() => handleRemoveEspecialidade(esp)} 
+                        disabled={isProcessing}
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-zinc-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
+
         {activeTab === "formulario" && (
           <motion.div 
             key="form"
@@ -395,10 +554,10 @@ export default function FinanceiroView({ servicos, showToast, fetchServicos }) {
               onSave={handleSaveServico} 
               onCancel={handleCloseForm} 
               loading={isProcessing} 
+              especialidadesList={especialidadesList} 
             />
           </motion.div>
         )}
-
       </AnimatePresence>
     </motion.div>
   );

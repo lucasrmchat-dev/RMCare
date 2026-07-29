@@ -1,5 +1,4 @@
 "use client";
-
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, Check, Calendar as CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
@@ -16,9 +15,21 @@ export const getHojeLocal = () => {
 };
 
 export const spring = { type: "spring", stiffness: 400, damping: 30 };
-export const fadeUp = { initial: { opacity: 0, y: 15 }, animate: { opacity: 1, y: 0, transition: spring }, exit: { opacity: 0, y: -10, transition: { duration: 0.15 } } };
-export const staggerContainer = { animate: { transition: { staggerChildren: 0.05 } } };
-export const staggerItem = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0, transition: spring } };
+
+export const fadeUp = {
+  initial: { opacity: 0, y: 15 },
+  animate: { opacity: 1, y: 0, transition: spring },
+  exit: { opacity: 0, y: -10, transition: { duration: 0.15 } }
+};
+
+export const staggerContainer = {
+  animate: { transition: { staggerChildren: 0.05 } }
+};
+
+export const staggerItem = {
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0, transition: spring }
+};
 
 export function useOutsideClick(ref, callback) {
   useEffect(() => {
@@ -44,9 +55,7 @@ export const CustomSelect = ({ value, onChange, options, label, icon: Icon }) =>
   const [isOpen, setIsOpen] = useState(false);
   const ref = useRef(null);
   useOutsideClick(ref, () => setIsOpen(false));
-
   const selectedOption = options.find(o => o.value === value) || options[0];
-
   return (
     <div className="relative flex flex-col gap-1.5 w-full" ref={ref}>
       {label && <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">{label}</label>}
@@ -57,7 +66,6 @@ export const CustomSelect = ({ value, onChange, options, label, icon: Icon }) =>
         </div>
         <ChevronDown size={16} className={`text-zinc-400 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
-
       <AnimatePresence>
         {isOpen && (
           <motion.div initial={{ opacity: 0, y: 5, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 5, scale: 0.98 }} transition={{ duration: 0.15 }} className="absolute z-50 top-full left-0 right-0 mt-2 bg-white border border-zinc-200 rounded-2xl shadow-[0_20px_40px_rgba(0,0,0,0.08)] overflow-hidden flex flex-col max-h-60 overflow-y-auto custom-scrollbar">
@@ -79,20 +87,16 @@ export const CustomDatePicker = ({ value, onChange, label }) => {
   const [calDate, setCalDate] = useState(value ? new Date(value + "T12:00:00") : new Date());
   const ref = useRef(null);
   useOutsideClick(ref, () => setIsOpen(false));
-
   const year = calDate.getFullYear();
   const month = calDate.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDay = new Date(year, month, 1).getDay();
-
   const handleSelect = (d) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     onChange(dateStr);
     setIsOpen(false);
   };
-
   const displayDate = value ? new Date(value + "T12:00:00").toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }) : "Selecionar Data";
-
   return (
     <div className="relative flex flex-col gap-1.5 w-full" ref={ref}>
       {label && <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">{label}</label>}
@@ -102,7 +106,6 @@ export const CustomDatePicker = ({ value, onChange, label }) => {
           {displayDate}
         </div>
       </button>
-
       <AnimatePresence>
         {isOpen && (
           <motion.div initial={{ opacity: 0, y: 5, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 5, scale: 0.98 }} className="absolute z-50 top-full left-0 mt-2 w-72 bg-white border border-zinc-200 rounded-[2rem] shadow-[0_20px_40px_rgba(0,0,0,0.12)] p-5">
@@ -144,7 +147,8 @@ export const TextInput = ({ label, type = "text", ...props }) => (
 export const ToggleSwitch = ({ checked, onChange, label }) => (
   <label className="flex items-center cursor-pointer select-none gap-3">
     <div className="relative">
-      <input type="checkbox" className="sr-only" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      {/* CORREÇÃO: Transformação forçada em Booleano (!!checked) para evitar erro de Uncontrolled Component no React */}
+      <input type="checkbox" className="sr-only" checked={!!checked} onChange={(e) => onChange(e.target.checked)} />
       <div className={`block w-10 h-6 rounded-full transition-colors ${checked ? 'bg-zinc-900' : 'bg-zinc-200'}`}></div>
       <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${checked ? 'transform translate-x-4' : ''}`}></div>
     </div>

@@ -14,7 +14,7 @@ const supabaseAdmin = createClient(
 );
 
 /* ==========================================
-   FUNÇÕES DE AUTENTICAÇÃO (MANTIDAS INTACTAS)
+   FUNÇÕES DE AUTENTICAÇÃO
    ========================================== */
 export async function checkIdentifier(identificador) {
   const idClean = identificador.trim().toLowerCase();
@@ -108,7 +108,7 @@ export async function authenticateUser(payload) {
 }
 
 /* ==========================================
-   FUNÇÕES GERAIS DE ADMIN (MANTIDAS INTACTAS)
+   FUNÇÕES GERAIS DE ADMIN
    ========================================== */
 export async function fetchAdminBloqueios() {
   const { data, error } = await supabaseAdmin.from("bloqueios_horarios").select("*").order("horario", { ascending: true });
@@ -158,8 +158,10 @@ export async function actionAtualizarServico(id, srvData) {
     ativo: srvData.ativo,
     preco: Number(srvData.preco),
     dias_bloqueio_padrao: Number(srvData.dias_bloqueio_padrao),
-    tipo_contagem_dias: srvData.tipo_contagem_dias
+    tipo_contagem_dias: srvData.tipo_contagem_dias,
+    especialidade: srvData.especialidade // <-- CAMPO CORRIGIDO E MAPEADO AQUI
   }).eq("id", id);
+  
   if (error) throw error;
   return true;
 }
@@ -176,7 +178,14 @@ export async function actionCriarServico(payload) {
     }
   }
 
-  const { data, error } = await supabaseAdmin.from("servicos").insert([{ ...payload, empresa_id: empresaId }]).select().single();
+  // O ...payload agora passa o campo especialidade automaticamente graças ao spread operator, 
+  // mas incluímos explicitamente abaixo caso a estrutura varie
+  const { data, error } = await supabaseAdmin.from("servicos").insert([{ 
+    ...payload, 
+    empresa_id: empresaId,
+    especialidade: payload.especialidade || null
+  }]).select().single();
+  
   if (error) throw error;
   return data;
 }
@@ -219,7 +228,7 @@ export async function actionMigrarNomeBloqueios(nomeAntigoERP, nomeOficialSistem
 }
 
 /* ==========================================
-   FUNÇÕES DE REGRAS (CORRIGIDAS)
+   FUNÇÕES DE REGRAS
    ========================================== */
 export async function fetchAdminRegras() {
   const { data, error } = await supabaseAdmin.from('regras_agenda').select('*');
