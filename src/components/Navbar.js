@@ -1,7 +1,6 @@
 'use client';
-
 import { useEffect, useState } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useParams } from 'next/navigation';
 import { House, CalendarDays, CalendarSearch, Moon, Sun } from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
@@ -9,9 +8,9 @@ import { motion } from 'framer-motion';
 // FÍSICA MOTION DESIGN (Apple Spring)
 const liquidSpring = { type: "spring", stiffness: 400, damping: 30, mass: 0.8 };
 
-const DockItem = ({ href, icon: Icon }) => {
+const DockItem = ({ href, icon: Icon, activeMatch }) => {
   const pathname = usePathname();
-  const isAtivo = pathname === href;
+  const isAtivo = activeMatch ? pathname === activeMatch : pathname === href;
 
   return (
     <Link href={href} className="relative flex items-center justify-center w-[54px] h-[54px] outline-none group z-10 shrink-0">
@@ -45,6 +44,10 @@ const DockItem = ({ href, icon: Icon }) => {
 export default function Navbar() {
   const [isDark, setIsDark] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [lastSlug, setLastSlug] = useState("");
+  
+  const params = useParams();
+  const currentSlug = params?.slug;
 
   useEffect(() => {
     setMounted(true);
@@ -58,7 +61,14 @@ export default function Navbar() {
       setIsDark(false);
       document.documentElement.classList.remove('dark');
     }
-  }, []);
+
+    if (currentSlug) {
+      setLastSlug(currentSlug);
+    } else {
+      const savedSlug = localStorage.getItem('rmcare_last_slug');
+      if (savedSlug) setLastSlug(savedSlug);
+    }
+  }, [currentSlug]);
 
   const toggleTheme = () => {
     const nextState = !isDark;
@@ -74,6 +84,8 @@ export default function Navbar() {
 
   if (!mounted) return null;
 
+  const agendamentoHref = lastSlug ? `/${lastSlug}/agendamentos` : "/agendamento";
+
   return (
     <div className="md:hidden fixed bottom-6 left-0 right-0 z-[99999] flex justify-center pointer-events-none px-4">
       <motion.div 
@@ -83,7 +95,7 @@ export default function Navbar() {
       >
         
         <DockItem href="/" icon={House} />
-        <DockItem href="/agendamento" icon={CalendarDays} />
+        <DockItem href={agendamentoHref} icon={CalendarDays} activeMatch={lastSlug ? `/${lastSlug}/agendamentos` : null} />
         <DockItem href="/consultar" icon={CalendarSearch} />
         
         <motion.div layout className="w-[1px] h-6 bg-zinc-300/50 dark:bg-zinc-700/50 mx-2 shrink-0 rounded-full" />

@@ -1,10 +1,10 @@
 'use client';
-
 import { useEffect, useState } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useParams } from 'next/navigation';
 import { House, CalendarDays, CalendarSearch, Sun, Moon, ChevronLeft, Activity } from 'lucide-react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
+import { supabase } from "@/lib/supabase";
 
 const sidebarSpring = { type: "spring", stiffness: 300, damping: 30, mass: 1 };
 const itemSpring = { type: "spring", stiffness: 400, damping: 30 };
@@ -24,14 +24,13 @@ const Tooltip = ({ children, text, isVisible }) => (
 const SidebarItem = ({ href, icon: Icon, label, isExpanded }) => {
   const pathname = usePathname();
   const isAtivo = pathname === href;
-
   return (
     <Tooltip text={label} isVisible={!isExpanded}>
       <Link 
         href={href} 
-        className={`relative flex items-center gap-4 py-4 px-6 w-full transition-all duration-300 outline-none group ${
+        className={`relative flex items-center w-full transition-all duration-300 outline-none group ${
           isAtivo ? "bg-black/[0.02] dark:bg-white/[0.04]" : "hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
-        } ${isExpanded ? "" : "justify-center px-0"}`}
+        }`}
       >
         {isAtivo && (
           <motion.div 
@@ -45,29 +44,34 @@ const SidebarItem = ({ href, icon: Icon, label, isExpanded }) => {
           <div className="absolute left-0 top-0 bottom-0 w-1 bg-zinc-900 dark:bg-white rounded-r-sm" />
         )}
         
-        <Icon 
-          size={20} 
-          strokeWidth={isAtivo ? 2 : 1.5} 
-          className={`transition-colors duration-300 ${
-            isAtivo 
-              ? "text-zinc-900 dark:text-white" 
-              : "text-zinc-400 group-hover:text-zinc-800 dark:group-hover:text-zinc-200"
-          }`} 
-        />
+        {/* A SOLUÇÃO: Esta div trava o ícone exatamente nos 88px iniciais, impedindo sobreposição */}
+        <div className="flex items-center justify-center w-[88px] h-[56px] shrink-0">
+          <Icon 
+            size={20} 
+            strokeWidth={isAtivo ? 2 : 1.5} 
+            className={`transition-colors duration-300 ${
+              isAtivo 
+                ? "text-zinc-900 dark:text-white" 
+                : "text-zinc-400 group-hover:text-zinc-800 dark:group-hover:text-zinc-200"
+            }`} 
+          />
+        </div>
         
         <AnimatePresence mode="wait">
           {isExpanded && (
-            <motion.span 
-              initial={{ opacity: 0, filter: "blur(4px)", x: -5 }}
+            <motion.div 
+              initial={{ opacity: 0, filter: "blur(4px)", x: -10 }}
               animate={{ opacity: 1, filter: "blur(0px)", x: 0 }}
-              exit={{ opacity: 0, filter: "blur(4px)", x: -5 }}
+              exit={{ opacity: 0, filter: "blur(4px)", x: -10 }}
               transition={{ duration: 0.2 }}
-              className={`text-[13px] tracking-wide whitespace-nowrap transition-colors ${
-                isAtivo ? "font-semibold text-zinc-900 dark:text-white" : "font-medium text-zinc-500 dark:text-zinc-400 group-hover:text-zinc-800 dark:group-hover:text-zinc-200"
-              }`}
+              className="flex-1 overflow-hidden pr-6"
             >
-              {label}
-            </motion.span>
+              <span className={`text-[13px] tracking-wide whitespace-nowrap transition-colors ${
+                isAtivo ? "font-semibold text-zinc-900 dark:text-white" : "font-medium text-zinc-500 dark:text-zinc-400 group-hover:text-zinc-800 dark:group-hover:text-zinc-200"
+              }`}>
+                {label}
+              </span>
+            </motion.div>
           )}
         </AnimatePresence>
       </Link>
@@ -78,6 +82,11 @@ const SidebarItem = ({ href, icon: Icon, label, isExpanded }) => {
 export default function SidebarPremium({ isExpanded, setIsExpanded }) {
   const [isDark, setIsDark] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [empresaNome, setEmpresaNome] = useState("RM CARE");
+  const [lastSlug, setLastSlug] = useState("");
+  
+  const params = useParams();
+  const currentSlug = params?.slug;
 
   useEffect(() => {
     setMounted(true);
@@ -85,25 +94,35 @@ export default function SidebarPremium({ isExpanded, setIsExpanded }) {
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     
     if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
-      setIsDark(true);
-      document.documentElement.classList.add('dark');
+      setIsDark(true); document.documentElement.classList.add('dark');
     } else {
-      setIsDark(false);
-      document.documentElement.classList.remove('dark');
+      setIsDark(false); document.documentElement.classList.remove('dark');
     }
-  }, []);
+
+    if (currentSlug) {
+      setLastSlug(currentSlug);
+      supabase.from('empresas').select('nome').eq('slug', currentSlug).single().then(({data}) => {
+        if (data) setEmpresaNome(data.nome);
+      });
+    } else {
+      const savedSlug = localStorage.getItem('rmcare_last_slug');
+      if (savedSlug) {
+        setLastSlug(savedSlug);
+        supabase.from('empresas').select('nome').eq('slug', savedSlug).single().then(({data}) => {
+          if (data) setEmpresaNome(data.nome);
+        });
+      }
+    }
+  }, [currentSlug]);
 
   const toggleTheme = () => {
     const nextState = !isDark;
     setIsDark(nextState);
-    if (nextState) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    }
+    if (nextState) { document.documentElement.classList.add('dark'); localStorage.setItem('theme', 'dark'); }
+    else { document.documentElement.classList.remove('dark'); localStorage.setItem('theme', 'light'); }
   };
+
+  const agendamentoHref = lastSlug ? `/${lastSlug}/agendamentos` : "/";
 
   if (!mounted) return null;
 
@@ -114,7 +133,6 @@ export default function SidebarPremium({ isExpanded, setIsExpanded }) {
       transition={sidebarSpring}
       className="hidden md:flex flex-col fixed inset-y-0 left-0 z-[99999] bg-[#FAFAFA]/80 dark:bg-[#050505]/80 backdrop-blur-3xl saturate-150 border-r border-zinc-200/80 dark:border-white/[0.06] shadow-[10px_0_50px_rgba(0,0,0,0.02)] dark:shadow-[10px_0_50px_rgba(0,0,0,0.3)] overflow-visible"
     >
-      
       <div className="absolute top-10 -right-3.5 z-[999999]">
          <motion.button 
            whileHover={{ scale: 1.1 }}
@@ -128,11 +146,13 @@ export default function SidebarPremium({ isExpanded, setIsExpanded }) {
          </motion.button>
       </div>
 
-      <div className="mt-10 mb-10 px-6 flex items-center h-12">
-        <Link href="/" className="flex items-center gap-4 group w-full outline-none">
-          <div className="relative w-10 h-10 bg-zinc-900 dark:bg-white rounded-2xl flex items-center justify-center shrink-0 shadow-[0_4px_16px_rgba(0,0,0,0.1)] dark:shadow-[0_4px_16px_rgba(255,255,255,0.1)] transition-transform duration-500 group-hover:scale-105 group-hover:rotate-3">
-            <Activity className="text-white dark:text-zinc-900" size={20} strokeWidth={2.5} />
-            <div className="absolute top-1 right-1 w-2 h-2 bg-[#9FC131] rounded-full shadow-[0_0_8px_rgba(159,193,49,0.8)]" />
+      <div className="mt-10 mb-10 flex items-center h-12 w-full">
+        <Link href="/" className="flex items-center group w-full outline-none">
+          <div className="w-[88px] flex justify-center shrink-0">
+            <div className="relative w-10 h-10 bg-zinc-900 dark:bg-white rounded-2xl flex items-center justify-center shadow-[0_4px_16px_rgba(0,0,0,0.1)] dark:shadow-[0_4px_16px_rgba(255,255,255,0.1)] transition-transform duration-500 group-hover:scale-105 group-hover:rotate-3">
+              <Activity className="text-white dark:text-zinc-900" size={20} strokeWidth={2.5} />
+              <div className="absolute top-1 right-1 w-2 h-2 bg-[#9FC131] rounded-full shadow-[0_0_8px_rgba(159,193,49,0.8)]" />
+            </div>
           </div>
           
           <AnimatePresence>
@@ -141,10 +161,10 @@ export default function SidebarPremium({ isExpanded, setIsExpanded }) {
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -10 }}
-                className="flex flex-col whitespace-nowrap overflow-hidden"
+                className="flex flex-col whitespace-nowrap overflow-hidden flex-1 pr-6"
               >
-                <span className="font-semibold text-[15px] tracking-tight text-zinc-900 dark:text-white leading-none mb-1">E-GASTRO</span>
-                <span className="text-[9px] font-bold tracking-[0.2em] text-zinc-400 uppercase">Clínica Autoral</span>
+                <span className="font-semibold text-[15px] tracking-tight text-zinc-900 dark:text-white leading-none mb-1">{empresaNome.toUpperCase()}</span>
+                <span className="text-[9px] font-bold tracking-[0.2em] text-zinc-400 uppercase">Plataforma RM Care</span>
               </motion.div>
             )}
           </AnimatePresence>
@@ -152,8 +172,8 @@ export default function SidebarPremium({ isExpanded, setIsExpanded }) {
       </div>
 
       <nav className="flex-1 flex flex-col w-full overflow-y-auto overflow-x-hidden custom-scrollbar">
-        <SidebarItem href="/" icon={House} label="Início" isExpanded={isExpanded} />
-        <SidebarItem href="/agendamento" icon={CalendarDays} label="Agendamentos" isExpanded={isExpanded} />
+        <SidebarItem href="/" icon={House} label="Início da Plataforma" isExpanded={isExpanded} />
+        <SidebarItem href={agendamentoHref} icon={CalendarDays} label="Agendamentos" isExpanded={isExpanded} />
         <SidebarItem href="/consultar" icon={CalendarSearch} label="Consultar Histórico" isExpanded={isExpanded} />
       </nav>
 
@@ -161,9 +181,9 @@ export default function SidebarPremium({ isExpanded, setIsExpanded }) {
         <Tooltip text={isDark ? "Mudar para Claro" : "Mudar para Noturno"} isVisible={!isExpanded}>
           <button 
             onClick={toggleTheme}
-            className={`flex items-center bg-zinc-100/50 dark:bg-[#111111]/50 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl transition-all duration-300 hover:bg-zinc-200/80 dark:hover:bg-zinc-800 outline-none group mx-4 w-[calc(100%-32px)] ${isExpanded ? "justify-between p-3.5" : "justify-center p-3.5"}`}
+            className="flex items-center bg-zinc-100/50 dark:bg-[#111111]/50 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl transition-all duration-300 hover:bg-zinc-200/80 dark:hover:bg-zinc-800 outline-none group mx-4 w-[calc(100%-32px)] h-[48px] overflow-hidden"
           >
-            <div className="flex items-center gap-3 shrink-0">
+            <div className="w-[56px] flex justify-center shrink-0">
               <AnimatePresence mode="wait">
                 {isDark ? (
                   <motion.div key="moon" initial={{ rotate: -90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: 90, opacity: 0 }}>
@@ -175,27 +195,33 @@ export default function SidebarPremium({ isExpanded, setIsExpanded }) {
                   </motion.div>
                 )}
               </AnimatePresence>
-              
-              {isExpanded && (
-                <span className="text-[12px] font-semibold text-zinc-600 dark:text-zinc-400 tracking-wide overflow-hidden whitespace-nowrap">
-                  {isDark ? "Tema Claro" : "Tema Noturno"}
-                </span>
-              )}
             </div>
             
-            {isExpanded && (
-              <div className="w-9 h-5 bg-zinc-200 dark:bg-zinc-800 rounded-full relative flex items-center shadow-inner shrink-0 overflow-hidden border border-black/5 dark:border-white/5">
+            <AnimatePresence>
+              {isExpanded && (
                 <motion.div 
-                  layout
-                  transition={itemSpring}
-                  className={`w-3.5 h-3.5 rounded-full absolute shadow-sm ${isDark ? 'right-1 bg-white' : 'left-1 bg-zinc-900'}`} 
-                />
-              </div>
-            )}
+                  initial={{ opacity: 0, width: 0 }} 
+                  animate={{ opacity: 1, width: "auto" }} 
+                  exit={{ opacity: 0, width: 0 }} 
+                  className="flex-1 flex items-center justify-between pr-4 overflow-hidden"
+                >
+                  <span className="text-[12px] font-semibold text-zinc-600 dark:text-zinc-400 tracking-wide whitespace-nowrap">
+                    {isDark ? "Tema Claro" : "Tema Noturno"}
+                  </span>
+                  
+                  <div className="w-9 h-5 bg-zinc-200 dark:bg-zinc-800 rounded-full relative flex items-center shadow-inner shrink-0 overflow-hidden border border-black/5 dark:border-white/5">
+                    <motion.div 
+                      layout
+                      transition={itemSpring}
+                      className={`w-3.5 h-3.5 rounded-full absolute shadow-sm ${isDark ? 'right-1 bg-white' : 'left-1 bg-zinc-900'}`} 
+                    />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </button>
         </Tooltip>
       </div>
-
     </motion.aside>
   );
 }

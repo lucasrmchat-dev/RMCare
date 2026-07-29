@@ -1,4 +1,3 @@
-// src/app/[slug]/agendamentos/page.js
 "use client";
 import { useState, useEffect, Suspense, useRef } from "react";
 import { useSearchParams, useParams } from "next/navigation";
@@ -15,7 +14,7 @@ import { MODULE_REGISTRY } from "./modules";
 
 import { 
   schema, helpers, masks, calcularDataLimite, mapaMedicos, 
-  dispararPushRmChat, processarMensagensDinamicas 
+  processarMensagensDinamicas 
 } from "./utils";
 
 export default function AgendamentoPremium() {
@@ -81,8 +80,16 @@ export default function AgendamentoPremium() {
         
         try {
           const { data: empresa } = await supabase.from("empresas").select("*").eq("slug", slug).maybeSingle();
-          if (!empresa) { showIsland("Link de agendamento inválido.", "error"); setLoadingConfig(false); return; }
+          if (!empresa) { 
+            // Se o slug não existir, libera o loading para renderizar o 404
+            setEmpresaDados(null); 
+            setLoadingConfig(false); 
+            return; 
+          }
+          
           setEmpresaDados(empresa);
+          // Grava na memória qual foi a última clínica visitada para a Sidebar/Navbar se guiarem!
+          localStorage.setItem('rmcare_last_slug', slug);
           
           let jornada = [...modulosBase];
           const conf = empresa.config_campos || {};
@@ -91,14 +98,16 @@ export default function AgendamentoPremium() {
           if (conf.ocultar_modalidade) jornada = jornada.filter(m => m !== "modalidade");
           if (conf.ocultar_checkout) jornada = jornada.filter(m => m !== "checkout");
 
-          const urlModalidade = searchParams.get("modalidade");
+          const urlModalidadeRaw = searchParams.get("modalidade");
+          const mapaMod = { "1": "Convênio", "2": "Particular" };
+          const urlModalidade = mapaMod[urlModalidadeRaw] || urlModalidadeRaw;
+          
           const hideFlag = searchParams.get("hide") === "true";
           
           if (urlModalidade) {
             setValue("modalidade", urlModalidade);
             if (hideFlag) jornada = jornada.filter(m => m !== "modalidade");
           } else if (conf.ocultar_modalidade) {
-            // Se a etapa foi removida pelo painel e a URL não forçou nada, assume o padrão!
             setValue("modalidade", conf.modalidade_padrao || "Particular");
           }
 
@@ -148,16 +157,26 @@ export default function AgendamentoPremium() {
     };
 
     useEffect(() => {
+      if (!empresaDados || loadingConfig) return;
+
       const nomeUrl = searchParams.get("nome");
       const cpfUrl = searchParams.get("cpf");
       const medicoUrl = searchParams.get("medico");
       const wppUrl = searchParams.get("whatsapp");
       const emailUrl = searchParams.get("email");
       const nascUrl = searchParams.get("nascimento");
-      const especialidadeUrl = searchParams.get("especialidade");
+      
+      const espRaw = searchParams.get("especialidade");
+      const mapaEsp = {
+        "1": "Gastroenterologista", "2": "Cirurgião do Aparelho Digestivo", 
+        "3": "Cirurgia Geral", "4": "Psicologia", "5": "Endoscopia", 
+        "6": "Colonoscopia", "7": "Endoscopia + Colonoscopia"
+      };
+      const especialidadeUrl = mapaEsp[espRaw] || espRaw;
+      
       const hideFlag = searchParams.get("hide") === "true";
       
-      if ((nomeUrl !== null || cpfUrl !== null || medicoUrl !== null || wppUrl !== null) && !context.isSmartLink && !loadingConfig) {
+      if ((nomeUrl !== null || cpfUrl !== null || medicoUrl !== null || wppUrl !== null) && !context.isSmartLink) {
         if (nomeUrl) { const parts = nomeUrl.trim().split(" "); setValue("nome", parts[0] || ""); setValue("sobrenome", parts.slice(1).join(" ") || ""); }
         if (cpfUrl) setValue("cpf", masks.cpf(cpfUrl));
         
@@ -185,14 +204,15 @@ export default function AgendamentoPremium() {
         
         if (hasMedico) {
           const mapped = mapaMedicos[medicoUrl];
-          if (mapped) { setValue("tipo_servico", mapped.tipo); setValue(mapped.tipo === "Consulta" ? "medico_profissional" : "subtipo_exame", mapped.nome); }
-          else if (servicosDB.length > 0) {
+          if (mapped) { 
+            setValue("tipo_servico", mapped.tipo); 
+            setValue(mapped.tipo === "Consulta" ? "medico_profissional" : "subtipo_exame", mapped.nome); 
+          } else if (servicosDB.length > 0) {
             const srv = servicosDB.find(s => s.nome.toLowerCase().includes(medicoUrl.toLowerCase()));
             if (srv) { 
               setValue("tipo_servico", srv.tipo); 
               setValue(srv.tipo === "Consulta" ? "medico_profissional" : "subtipo_exame", srv.nome);
-            }
-            else setValue("medico_profissional", medicoUrl);
+            } else setValue("medico_profissional", medicoUrl);
           }
         }
         
@@ -200,7 +220,13 @@ export default function AgendamentoPremium() {
         const telValid = limpaWpp.length >= 10;
         const nomeValid = nomeUrl && nomeUrl.trim().split(" ").length > 1;
         
-        if (cpfValid && telValid && nomeValid && hasEmail && hasNasc) {
+        const conf = empresaDados?.config_campos || {};
+        const reqEmail = conf.mostrar_email !== false;
+        const reqNasc = conf.mostrar_nascimento !== false;
+        
+        const canSkipIdentificacao = cpfValid && telValid && nomeValid && (!reqEmail || hasEmail) && (!reqNasc || hasNasc);
+        
+        if (canSkipIdentificacao) {
           let jumpIndex = modulosAtivos.indexOf("especialidade");
           if (hasMedico && hideFlag) {
             jumpIndex = modulosAtivos.indexOf("triagem") !== -1 ? modulosAtivos.indexOf("triagem") : modulosAtivos.indexOf("modalidade");
@@ -212,7 +238,7 @@ export default function AgendamentoPremium() {
           if(jumpIndex !== -1) setCurrentStepIndex(jumpIndex);
          }
       }
-    }, [searchParams, context.isSmartLink, servicosDB, setValue, loadingConfig, modulosAtivos]);
+    }, [searchParams, context.isSmartLink, servicosDB, setValue, loadingConfig, modulosAtivos, empresaDados]);
 
     const handleCpfLookup = async () => {
       if (formData.cpf?.length !== 14) return;
@@ -480,6 +506,21 @@ export default function AgendamentoPremium() {
     };
 
     if (loadingConfig) return <div className="text-zinc-500 mt-20 flex flex-col items-center"><Activity className="animate-spin mb-4"/> Carregando sistema da clínica...</div>;
+    
+    // A TELA 404 (SLUG INVÁLIDO)
+    if (!empresaDados) {
+      return (
+        <div className="w-full h-full flex flex-col items-center justify-center p-8 z-10 relative text-center mt-20">
+          <AlertTriangle size={64} className="text-zinc-300 dark:text-zinc-700 mb-6" />
+          <h2 className="text-3xl font-medium text-zinc-900 dark:text-white">Clínica não encontrada</h2>
+          <p className="text-zinc-500 mt-2 max-w-md">O link que você tentou acessar não é válido ou a clínica não está mais disponível em nossa plataforma.</p>
+          <button onClick={() => window.location.href = "/"} className="mt-8 bg-zinc-900 dark:bg-white text-white dark:text-black px-8 py-4 rounded-full font-bold text-sm transition-transform hover:scale-105 shadow-xl">
+            Buscar Clínicas na RM Care
+          </button>
+        </div>
+      );
+    }
+
     const CurrentComponent = MODULE_REGISTRY[modulosAtivos[currentStepIndex]];
 
     return (
