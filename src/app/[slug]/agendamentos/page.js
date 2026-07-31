@@ -1,17 +1,17 @@
 "use client";
+
 import { useState, useEffect, Suspense, useRef } from "react";
 import { useSearchParams, useParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { supabase } from "@/lib/supabase";
-
 import { ArrowRight, CheckCircle, AlertTriangle, Activity, Pencil, ChevronLeft } from "lucide-react";
+
 import Navbar from "@/components/Navbar";
 import SidebarPremium from "@/components/SidebarPremium";
 import { AgendamentoContext } from "./context";
 import { MODULE_REGISTRY } from "./modules";
-
 import { 
   schema, helpers, masks, calcularDataLimite, mapaMedicos, 
   processarMensagensDinamicas 
@@ -19,7 +19,7 @@ import {
 
 export default function AgendamentoPremium() {
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
-  
+
   return (
     <div className="flex min-h-[100dvh] w-full bg-[#FAFAFA] dark:bg-black text-zinc-900 dark:text-zinc-50 transition-colors duration-500 font-sans antialiased">
       <SidebarPremium isExpanded={isSidebarExpanded} setIsExpanded={setIsSidebarExpanded} />
@@ -31,7 +31,7 @@ export default function AgendamentoPremium() {
       </main>
     </div>
   );
-  
+
   function AgendamentoOrquestrador() {
     const params = useParams();
     const searchParams = useSearchParams();
@@ -59,11 +59,13 @@ export default function AgendamentoPremium() {
     const [timeLeft, setTimeLeft] = useState(0);
     const checkingRef = useRef(false);
     const timeLeftRef = useRef(timeLeft);
+
     useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
     
     const [context, setContext] = useState({ isSmartLink: false, personalizedName: "", dataUltimaConsulta: null, userFound: false, checkingUser: false });
     const [calendarMonth, setCalendarMonth] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
     const [agenda, setAgenda] = useState({ ocupados: [], regras: [], buscando: false });
+
     const [flags, setFlags] = useState({
       cpfUrl: false, nomeUrl: false, sobrenomeUrl: false, telUrl: false, emailUrl: false, nascUrl: false,
       unlockedAll: false, exibirConfUri: false, confirmouUri: false
@@ -81,14 +83,12 @@ export default function AgendamentoPremium() {
         try {
           const { data: empresa } = await supabase.from("empresas").select("*").eq("slug", slug).maybeSingle();
           if (!empresa) { 
-            // Se o slug não existir, libera o loading para renderizar o 404
             setEmpresaDados(null); 
             setLoadingConfig(false); 
             return; 
           }
           
           setEmpresaDados(empresa);
-          // Grava na memória qual foi a última clínica visitada para a Sidebar/Navbar se guiarem!
           localStorage.setItem('rmcare_last_slug', slug);
           
           let jornada = [...modulosBase];
@@ -126,8 +126,10 @@ export default function AgendamentoPremium() {
             }));
             setPerguntasDB(pergsFull);
           }
+
         } catch (err) { console.error("Erro ao carregar dados:", err); } finally { setLoadingConfig(false); }
       };
+
       fetchEmpresaConfigAndData();
     }, [slug, searchParams]);
 
@@ -135,6 +137,7 @@ export default function AgendamentoPremium() {
       if (!formData.tipo_servico) return null;
       const nomeBusca = formData.tipo_servico === "Exame" ? formData.subtipo_exame : formData.medico_profissional;
       if (!nomeBusca) return null;
+
       let srv = servicosDB.find(s => s.nome.trim().toLowerCase() === nomeBusca.trim().toLowerCase());
       if (!srv) {
         const nomeLimpo = nomeBusca.toLowerCase().replace(/dra\.|dr\./g, "").trim();
@@ -195,9 +198,9 @@ export default function AgendamentoPremium() {
         const hasNasc = !!(nascUrl && nascUrl.trim() !== "");
         const hasMedico = !!(medicoUrl && medicoUrl.trim() !== "");
         
-        setFlags(f => ({
-           ...f, cpfUrl: hasCpf, nomeUrl: hasNome, sobrenomeUrl: hasNome && nomeUrl.trim().split(" ").length > 1,
-           telUrl: hasTel, emailUrl: hasEmail, nascUrl: hasNasc, exibirConfUri: hasMedico && !hideFlag
+        setFlags(f => ({ 
+          ...f, cpfUrl: hasCpf, nomeUrl: hasNome, sobrenomeUrl: hasNome && nomeUrl.trim().split(" ").length > 1, 
+          telUrl: hasTel, emailUrl: hasEmail, nascUrl: hasNasc, exibirConfUri: hasMedico && !hideFlag
         }));
         
         setContext(c => ({ ...c, isSmartLink: true, personalizedName: nomeUrl ? nomeUrl.trim().split(" ")[0] : "" }));
@@ -232,11 +235,11 @@ export default function AgendamentoPremium() {
             jumpIndex = modulosAtivos.indexOf("triagem") !== -1 ? modulosAtivos.indexOf("triagem") : modulosAtivos.indexOf("modalidade");
             if (jumpIndex === -1) jumpIndex = modulosAtivos.indexOf("agenda");
           }
-          if(jumpIndex !== -1) setCurrentStepIndex(jumpIndex);
-         } else {
+          if(jumpIndex !== -1) setCurrentStepIndex(jumpIndex); 
+        } else {
           const jumpIndex = modulosAtivos.indexOf("identificacao");
-          if(jumpIndex !== -1) setCurrentStepIndex(jumpIndex);
-         }
+          if(jumpIndex !== -1) setCurrentStepIndex(jumpIndex); 
+        }
       }
     }, [searchParams, context.isSmartLink, servicosDB, setValue, loadingConfig, modulosAtivos, empresaDados]);
 
@@ -244,6 +247,7 @@ export default function AgendamentoPremium() {
       if (formData.cpf?.length !== 14) return;
       setContext(c => ({ ...c, checkingUser: true }));
       if (!context.isSmartLink || flags.unlockedAll) ["nome", "sobrenome", "telefone_whatsapp", "email", "data_nascimento"].forEach(f => setValue(f, ""));
+      
       try {
         const { data } = await supabase.from("pacientes").select("*").eq("cpf", formData.cpf).maybeSingle();
         if (data) {
@@ -259,14 +263,15 @@ export default function AgendamentoPremium() {
       } finally { setTimeout(() => setContext(c => ({ ...c, checkingUser: false })), 500); }
     };
 
-    useEffect(() => {
-       if (formData.cpf?.length === 14 && !context.userFound && modulosAtivos[currentStepIndex] === "identificacao" && !context.checkingUser) handleCpfLookup();
-     }, [formData.cpf, currentStepIndex]);
+    useEffect(() => { 
+      if (formData.cpf?.length === 14 && !context.userFound && modulosAtivos[currentStepIndex] === "identificacao" && !context.checkingUser) handleCpfLookup(); 
+    }, [formData.cpf, currentStepIndex]);
 
     useEffect(() => {
       if (!formData.data_agendamento) return;
       const prof = formData.tipo_servico === "Exame" ? formData.subtipo_exame : formData.medico_profissional;
       if (!prof) return;
+
       setAgenda(a => ({ ...a, buscando: true }));
       setValue("horario_agendamento", "");
       
@@ -275,24 +280,29 @@ export default function AgendamentoPremium() {
           const [{ data: ag }, { data: bl }, { data: rg }] = await Promise.all([
             supabase.from("agendamentos").select("horario_agendamento, medico_profissional, subtipo_exame").eq("data_agendamento", formData.data_agendamento),
             supabase.from("bloqueios_horarios").select("horario, medico_profissional").eq("data", formData.data_agendamento),
-            supabase.from("regras_agenda").select("*").eq("ativo", true)
+            // CORREÇÃO APLICADA: Filtra as regras pelo ID da empresa logada
+            supabase.from("regras_agenda").select("*").eq("ativo", true).eq("empresa_id", empresaDados.id)
           ]);
+
           const match = (nDB) => {
             if (!nDB) return false;
             if (nDB === "Todos") return true;
             const pNorm = prof.toLowerCase().replace(/dra\.|dr\./g, "").trim();
             return nDB.toLowerCase().includes(pNorm) || pNorm.includes(nDB.toLowerCase()) || nDB.toLowerCase().includes(pNorm.split(" ")[0]);
           };
+
           const slots = [...(ag?.filter(a => match(a.medico_profissional) || match(a.subtipo_exame)).map(a => a.horario_agendamento.substring(0,5)) || []), ...(bl?.filter(b => match(b.medico_profissional)).map(b => b.horario.substring(0,5)) || [])];
           setAgenda({ ocupados: [...new Set(slots)], regras: rg || [], buscando: false });
         } catch (e) { setAgenda(a => ({ ...a, buscando: false })); }
       };
+
       fetchAgenda();
-    }, [formData.data_agendamento, formData.medico_profissional, formData.subtipo_exame, formData.tipo_servico, setValue]);
+    }, [formData.data_agendamento, formData.medico_profissional, formData.subtipo_exame, formData.tipo_servico, setValue, empresaDados]);
 
     const salvarNoBanco = async (pago) => {
       try {
         let pacienteId = (await supabase.from("pacientes").select("id").eq("cpf", formData.cpf).maybeSingle()).data?.id;
+
         const pacienteData = { 
           nome_completo: `${formData.nome} ${formData.sobrenome}`.trim(), 
           telefone_whatsapp: formData.telefone_whatsapp, 
@@ -326,14 +336,13 @@ export default function AgendamentoPremium() {
         if (errAgendamento) throw errAgendamento;
         return true;
       } catch (error) {
-        console.error("🚨 ERRO DETALHADO AO SALVAR NO SUPABASE:", error);
+        console.error("ERRO DETALHADO AO SALVAR NO SUPABASE:", error);
         return false; 
       }
     };
 
     const isModuleValid = (moduleKey) => {
       const cFields = empresaDados?.config_campos || { mostrar_cpf: true, mostrar_email: true, mostrar_nascimento: true };
-
       switch (moduleKey) {
         case "boas_vindas": return true;
         case "identificacao": 
@@ -353,18 +362,20 @@ export default function AgendamentoPremium() {
         case "agenda": return !!(formData.data_agendamento && formData.horario_agendamento);
         case "checkout":
         case "concluido": return true;
-        default: return false;
-       }
+        default: return false; 
+      }
     };
 
     const nextStep = async () => {
       setLoading(true); showIsland("Processando...", "loading");
       const currentModule = modulosAtivos[currentStepIndex];
+
       try {
         if (currentModule === "identificacao") {
           const isStepValid = await trigger();
           if (!isStepValid) return showIsland("Verifique os dados informados.");
         }
+
         if (currentModule === "especialidade") {
           if (flags.exibirConfUri && flags.confirmouUri) {
             const idxTriagem = modulosAtivos.indexOf("triagem");
@@ -375,6 +386,7 @@ export default function AgendamentoPremium() {
           const proximo = modulosAtivos[currentStepIndex + 1];
           if (proximo === "triagem" && perguntasAtuais.length === 0) { setCurrentStepIndex(currentStepIndex + 2); setIslandState("default"); return; }
         }
+
         if (currentModule === "triagem") {
           if (!isModuleValid("triagem")) return showIsland("Responda todas as perguntas obrigatórias da triagem.");
           let maiorBloqueioTriagem = null;
@@ -386,21 +398,23 @@ export default function AgendamentoPremium() {
           });
           setBloqueioExtraCalculado(maiorBloqueioTriagem);
         }
+
         if (currentModule === "agenda") {
           if (!formData.data_agendamento || !formData.horario_agendamento) return showIsland("Escolha uma data e horário.");
           
           const temCheckout = modulosAtivos.includes("checkout") && modulosAtivos.indexOf("checkout") > currentStepIndex;
           if (formData.tipo_servico === "Retorno" || formData.modalidade === "Convênio" || !temCheckout) {
-            if (await salvarNoBanco(false)) {
-               await processarMensagensDinamicas(formData, empresaDados);
-               showIsland("Agendamento Finalizado", "success");
+            if (await salvarNoBanco(false)) { 
+              await processarMensagensDinamicas(formData, empresaDados);
+              showIsland("Agendamento Finalizado", "success");
               
-               const idxConcluido = modulosAtivos.indexOf("concluido");
-               return setCurrentStepIndex(idxConcluido !== -1 ? idxConcluido : modulosAtivos.length - 1);
-             }
+              const idxConcluido = modulosAtivos.indexOf("concluido");
+              return setCurrentStepIndex(idxConcluido !== -1 ? idxConcluido : modulosAtivos.length - 1); 
+            }
             return showIsland("Erro ao salvar.");
           }
         }
+
         if (currentStepIndex < modulosAtivos.length - 1) { setCurrentStepIndex(p => p + 1); setIslandState("default"); }
       } finally { setLoading(false); if (islandState === "loading") setIslandState("default"); }
     };
@@ -420,27 +434,27 @@ export default function AgendamentoPremium() {
             method: "POST", 
             headers: { 
               "Content-Type": "application/json",
-              "X-MP-Access-Token": mpKeys.mp_access_token || "" 
+              "X-MP-Access-Token": mpKeys.mp_access_token || ""
             }, 
             body: JSON.stringify(payload) 
           });
           const data = await res.json();
           
-          if (data.success && ["approved", "in_process", "pending"].includes(data.status)) {
-             const isPix = data.status === "pending";
-             if (!(await salvarNoBanco(!isPix))) { showIsland("Erro ao gerar agendamento."); return resolve(); }
-             
-             if (!isPix) {
-               await processarMensagensDinamicas(formData, empresaDados);
-               showIsland("Pagamento Aprovado", "success");
-             } else {
-               if (data.transaction_data) {
-                 setPixData({ ...data.transaction_data, payment_id: data.id }); setTimeLeft(300);
-               }
-               showIsland("Pix gerado com sucesso!", "success");
-             }
-             const idxConcluido = modulosAtivos.indexOf("concluido");
-             if (idxConcluido !== -1) setCurrentStepIndex(idxConcluido);
+          if (data.success && ["approved", "in_process", "pending"].includes(data.status)) { 
+            const isPix = data.status === "pending";
+            if (!(await salvarNoBanco(!isPix))) { showIsland("Erro ao gerar agendamento."); return resolve(); }
+            
+            if (!isPix) {
+              await processarMensagensDinamicas(formData, empresaDados);
+              showIsland("Pagamento Aprovado", "success");
+            } else {
+              if (data.transaction_data) {
+                setPixData({ ...data.transaction_data, payment_id: data.id }); setTimeLeft(300);
+              }
+              showIsland("Pix gerado com sucesso!", "success");
+            }
+            const idxConcluido = modulosAtivos.indexOf("concluido");
+            if (idxConcluido !== -1) setCurrentStepIndex(idxConcluido);
           } else { showIsland("Pagamento recusado."); }
         } catch (err) { showIsland("Erro de conexão.", "error"); }
         resolve();
@@ -477,6 +491,7 @@ export default function AgendamentoPremium() {
       const cnInputWrap = "relative rounded-2xl bg-zinc-50/50 dark:bg-[#111111]/50 border border-zinc-200/80 dark:border-zinc-800/80 transition-all duration-300 focus-within:border-zinc-900 dark:focus-within:border-white focus-within:bg-white dark:focus-within:bg-[#0A0A0A] focus-within:shadow-[0_4px_20px_rgba(0,0,0,0.03)] focus-within:ring-1 focus-within:ring-zinc-900 dark:focus-within:ring-white overflow-hidden";
       const cnInput = "w-full p-4 pt-7 bg-transparent outline-none text-zinc-900 dark:text-white font-medium text-[16px] peer placeholder-transparent";
       const cnLabel = "absolute left-4 top-2 text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest transition-all duration-300 peer-placeholder-shown:top-4.5 peer-placeholder-shown:text-[14px] peer-placeholder-shown:font-normal peer-placeholder-shown:normal-case peer-placeholder-shown:tracking-normal peer-focus:top-2 peer-focus:text-[10px] peer-focus:font-bold peer-focus:uppercase peer-focus:text-zinc-900 dark:peer-focus:text-white pointer-events-none";
+
       if (isLocked && value) {
          return (
             <div className="flex justify-between items-center border-b border-zinc-200 dark:border-zinc-800 py-3 last:border-0">
@@ -490,6 +505,7 @@ export default function AgendamentoPremium() {
             </div>
          );
       }
+
       return (
          <div className={`${cnInputWrap} my-3 last:mb-0`}>
             <input type={type} {...register(formKey)} onChange={e => { const val = maskFn ? maskFn(e.target.value) : e.target.value; setValue(formKey, val); }} maxLength={maxLength} placeholder={placeholder} className={cnInput} />
@@ -507,7 +523,6 @@ export default function AgendamentoPremium() {
 
     if (loadingConfig) return <div className="text-zinc-500 mt-20 flex flex-col items-center"><Activity className="animate-spin mb-4"/> Carregando sistema da clínica...</div>;
     
-    // A TELA 404 (SLUG INVÁLIDO)
     if (!empresaDados) {
       return (
         <div className="w-full h-full flex flex-col items-center justify-center p-8 z-10 relative text-center mt-20">
@@ -580,6 +595,7 @@ export default function AgendamentoPremium() {
                  {CurrentComponent ? <CurrentComponent key={modulosAtivos[currentStepIndex]} /> : <div>Modulo Indisponível</div>}
               </AnimatePresence>
             </div>
+
           </motion.div>
         </div>
       </AgendamentoContext.Provider>

@@ -1,240 +1,238 @@
-"use client";
+"use client"; 
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, CheckCircle, AlertCircle, ArrowLeft } from "lucide-react";
-import Navbar from "@/components/Navbar";
-import { checkIdentifier, authenticateUser } from "@/actions/auth"; // Ajuste o caminho conforme sua pasta
+import { useState } from "react"; 
+import { useRouter } from "next/navigation"; 
+import { motion, AnimatePresence } from "framer-motion"; 
+import { ArrowRight, CheckCircle, AlertCircle, ArrowLeft, ShieldCheck, LockKeyhole } from "lucide-react"; 
+import Navbar from "@/components/Navbar"; 
+import { checkIdentifier, authenticateUser } from "@/actions/auth";
 
-export default function LoginUnificado() {
-  const router = useRouter();
-  
-  // Controle de Fluxo
-  const [step, setStep] = useState(1); 
-  const [identificador, setIdentificador] = useState("");
-  const [role, setRole] = useState(null); 
-  
-  // Dados de Autenticação
-  const [password, setPassword] = useState("");
-  const [birthDate, setBirthDate] = useState("");
-  const [pacienteId, setPacienteId] = useState(null);
-  const [isDefiningPassword, setIsDefiningPassword] = useState(false);
+export default function LoginUnificado() {   
+  const router = useRouter();   
 
-  const [loading, setLoading] = useState(false);
-  const [statusMsg, setStatusMsg] = useState({ type: "", text: "" });
+  const [step, setStep] = useState(1);    
+  const [identificador, setIdentificador] = useState("");   
+  const [role, setRole] = useState(null);    
+  const [password, setPassword] = useState("");   
+  const [birthDate, setBirthDate] = useState("");   
+  const [pacienteId, setPacienteId] = useState(null);   
+  const [isDefiningPassword, setIsDefiningPassword] = useState(false);   
+  const [loading, setLoading] = useState(false);   
+  const [statusMsg, setStatusMsg] = useState({ type: "", text: "" });   
 
-  const showMsg = (type, text) => {
-    setStatusMsg({ type, text });
-    setTimeout(() => setStatusMsg({ type: "", text: "" }), 5000);
-  };
+  const showMsg = (type, text) => {     
+    setStatusMsg({ type, text });     
+    setTimeout(() => setStatusMsg({ type: "", text: "" }), 5000);   
+  };   
 
-  const handleVoltar = () => {
-    setStep(1);
-    setRole(null);
-    setPassword("");
-    setBirthDate("");
-    setIsDefiningPassword(false);
-    setPacienteId(null);
-  };
+  const handleVoltar = () => {     
+    setStep(1);     
+    setRole(null);     
+    setPassword("");     
+    setBirthDate("");     
+    setIsDefiningPassword(false);     
+    setPacienteId(null);   
+  };   
 
-  // PASSO 1: Identificar quem está tentando acessar
-  const handleIdentify = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-
-    const result = await checkIdentifier(identificador);
-
-    if (!result.success) {
-      showMsg("error", result.error);
-      setLoading(false);
-      return;
-    }
-
-    if (result.type === "admin") {
-      setRole(result.role); 
-      setStep(2);
-    } else if (result.type === "paciente") {
-      setPacienteId(result.id);
-      setRole("paciente");
-      setIsDefiningPassword(result.isDefiningPassword);
+  const handleIdentify = async (e) => {     
+    e.preventDefault();     
+    setLoading(true);     
+    const result = await checkIdentifier(identificador);     
+    
+    if (!result.success) {       
+      showMsg("error", result.error);       
+      setLoading(false);       
+      return;     
+    }     
+    
+    if (result.type === "admin") {       
+      setRole(result.role);        
+      setStep(2);     
+    } else if (result.type === "paciente") {       
+      setPacienteId(result.id);       
+      setRole("paciente");       
+      setIsDefiningPassword(result.isDefiningPassword);              
       
-      if (result.isDefiningPassword) {
-        showMsg("info", "Primeiro acesso detectado! Confirme sua data de nascimento para criar sua senha.");
-      }
-      setStep(2);
-    }
+      if (result.isDefiningPassword) {         
+        showMsg("info", "Primeiro acesso detectado! Confirme sua data de nascimento para criar sua senha.");       
+      }       
+      setStep(2);     
+    }     
+    setLoading(false);   
+  };   
 
-    setLoading(false);
-  };
+  const handleAuth = async (e) => {     
+    e.preventDefault();     
+    setLoading(true);     
+    const result = await authenticateUser({       
+      type: role === "paciente" ? "paciente" : "admin",       
+      id: pacienteId,       
+      role: role,       
+      password: password,       
+      birthDate: birthDate,       
+      isDefiningPassword: isDefiningPassword,       
+      identificador: identificador     
+    });     
+    
+    if (!result.success) {       
+      showMsg("error", result.error);       
+      setLoading(false);       
+      return;     
+    }     
+    
+    showMsg("success", result.message);     
+    
+    if (role === "paciente") {       
+      setTimeout(() => router.push("/paciente/dashboard"), 1000);     
+    } else if (role === "sistema") {       
+      setTimeout(() => router.push("/admin/sistema"), 1000);
+    } else {       
+      setTimeout(() => router.push("/admin/empresa"), 1000);
+    }     
+  };   
 
-  // PASSO 2: Autenticar ou Criar Senha
-  const handleAuth = async (e) => {
-    e.preventDefault();
-    setLoading(true);
+  return (     
+    <main className="min-h-screen bg-[#0A0A0A] flex flex-col items-center justify-center p-6 antialiased selection:bg-[#9FC131] selection:text-white relative overflow-hidden">       
+      <Navbar />       
+      
+      {/* Background Decorativo Premium */}
+      <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] rounded-full bg-[#9FC131]/20 blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] rounded-full bg-blue-500/10 blur-[120px] pointer-events-none" />
 
-    const result = await authenticateUser({
-      type: role === "paciente" ? "paciente" : "admin",
-      id: pacienteId,
-      role: role,
-      password: password,
-      birthDate: birthDate,
-      isDefiningPassword: isDefiningPassword,
-      identificador: identificador
-    });
-
-    if (!result.success) {
-      showMsg("error", result.error);
-      setLoading(false);
-      return;
-    }
-
-    showMsg("success", result.message);
-
-    // Redirecionamentos
-    if (role === "paciente") {
-      setTimeout(() => router.push("/paciente/dashboard"), 1000);
-    } else if (role === "sistema") {
-      router.push("/admin/sistema");
-    } else {
-      router.push("/admin/empresa");
-    }
-
-    setLoading(false);
-  };
-
-  return (
-    <main className="min-h-screen bg-[#F4F4F5] flex flex-col items-center justify-center p-6 antialiased selection:bg-[#9FC131] selection:text-white pt-24">
-      <Navbar />
-      <div className="absolute inset-0 bg-gradient-to-tr from-[#9FC131]/5 to-transparent pointer-events-none" />
-
-      <div className="w-full max-w-md bg-white/80 backdrop-blur-2xl border border-white rounded-[2.5rem] shadow-[0_30px_70px_rgba(0,0,0,0.05)] p-8 relative z-10 overflow-hidden">
+      <div className="w-full max-w-[420px] bg-white/5 backdrop-blur-3xl border border-white/10 rounded-[2rem] shadow-[0_40px_80px_rgba(0,0,0,0.4)] p-8 relative z-10">                  
         
-        {/* Mensagens de Feedback */}
-        <AnimatePresence mode="wait">
-          {statusMsg.text && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className={`p-4 rounded-xl text-xs font-semibold mb-6 flex items-center gap-2 ${
-                statusMsg.type === "error" ? "bg-red-50 text-red-600" 
-                : statusMsg.type === "success" ? "bg-green-50 text-green-600" 
-                : "bg-blue-50 text-blue-600"
-              }`}
-            >
-              {statusMsg.type === "error" ? <AlertCircle size={16} /> : <CheckCircle size={16} />}
-              <span>{statusMsg.text}</span>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <div className="flex justify-center mb-8">
+            <div className="w-14 h-14 bg-gradient-to-br from-[#9FC131] to-[#7a9622] rounded-2xl flex items-center justify-center shadow-lg shadow-[#9FC131]/20">
+                <ShieldCheck size={28} className="text-black" />
+            </div>
+        </div>
 
-        <AnimatePresence mode="wait">
-          {/* PASSO 1: IDENTIFICAÇÃO ÚNICA */}
-          {step === 1 && (
-            <motion.form
-              key="step1"
-              onSubmit={handleIdentify}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              className="space-y-5"
-            >
-              <div>
-                <h3 className="text-xl font-black text-gray-900 tracking-tight">Acesso ao Portal</h3>
-                <p className="text-xs text-gray-400 font-medium mt-1">Insira seus dados para continuar.</p>
+        <AnimatePresence mode="wait">           
+          {statusMsg.text && (             
+            <motion.div               
+              initial={{ opacity: 0, y: -10 }}               
+              animate={{ opacity: 1, y: 0 }}               
+              exit={{ opacity: 0, y: -10 }}               
+              className={`p-4 rounded-2xl text-[13px] font-medium mb-6 flex items-start gap-3 border ${                 
+                statusMsg.type === "error" ? "bg-red-500/10 border-red-500/20 text-red-400"                  
+                : statusMsg.type === "success" ? "bg-[#9FC131]/10 border-[#9FC131]/20 text-[#9FC131]"                  
+                : "bg-blue-500/10 border-blue-500/20 text-blue-400"               
+              }`}             
+            >               
+              <div className="mt-0.5">
+                {statusMsg.type === "error" ? <AlertCircle size={16} /> : <CheckCircle size={16} />}               
               </div>
-              <div>
-                <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest ml-1">
-                  CPF ou Usuário
-                </label>
-                <input
-                  required
-                  type="text"
-                  value={identificador}
-                  onChange={(e) => setIdentificador(e.target.value)}
-                  placeholder="000.000.000-00 ou usuário"
-                  className="w-full mt-1.5 p-4 bg-gray-50 border border-gray-100 rounded-2xl font-semibold outline-none focus:ring-2 focus:ring-[#9FC131] text-gray-900"
-                />
-              </div>
-              <button
-                disabled={loading}
-                type="submit"
-                className="w-full py-4 bg-gray-900 hover:bg-gray-800 text-white font-bold text-xs uppercase tracking-widest rounded-full transition-all flex items-center justify-center gap-2"
-              >
-                {loading ? "Verificando..." : "Continuar"} <ArrowRight size={14} />
-              </button>
-            </motion.form>
-          )}
+              <span className="leading-relaxed">{statusMsg.text}</span>             
+            </motion.div>           
+          )}         
+        </AnimatePresence>         
 
-          {/* PASSO 2: SENHA / CADASTRO DE SENHA */}
-          {step === 2 && (
-            <motion.form
-              key="step2"
-              onSubmit={handleAuth}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              className="space-y-5"
-            >
-              <div>
-                <button 
-                  type="button" 
-                  onClick={handleVoltar} 
-                  className="text-gray-400 hover:text-gray-900 mb-4 transition-colors inline-block"
-                >
-                  <ArrowLeft size={20} />
-                </button>
-                <h3 className="text-xl font-black text-gray-900 tracking-tight">
-                  {isDefiningPassword ? "Crie sua senha" : "Insira sua senha"}
-                </h3>
-                <p className="text-xs text-gray-400 font-medium mt-1">
-                  {role === "paciente" ? "Acesso seguro do paciente." : "Acesso administrativo restrito."}
-                </p>
-              </div>
+        <AnimatePresence mode="wait">           
+          {step === 1 && (             
+            <motion.form               
+              key="step1"               
+              onSubmit={handleIdentify}               
+              initial={{ opacity: 0, x: -20 }}               
+              animate={{ opacity: 1, x: 0 }}               
+              exit={{ opacity: 0, x: -20 }}               
+              className="space-y-6"             
+            >               
+              <div className="text-center">                 
+                <h3 className="text-2xl font-black text-white tracking-tight">Portal Seguro</h3>                 
+                <p className="text-sm text-zinc-400 font-medium mt-2">Identifique-se para acessar seu ambiente.</p>               
+              </div>               
+              
+              <div className="space-y-2">                 
+                <label className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest ml-1">                   
+                  CPF ou Usuário                 
+                </label>                 
+                <input                   
+                  required                   
+                  type="text"                   
+                  value={identificador}                   
+                  onChange={(e) => setIdentificador(e.target.value)}                   
+                  placeholder="Digite aqui..."                   
+                  className="w-full p-4 bg-black/40 border border-white/10 rounded-2xl font-medium outline-none focus:border-[#9FC131] focus:ring-1 focus:ring-[#9FC131] text-white transition-all placeholder:text-zinc-700"                 
+                />               
+              </div>               
+              
+              <button                 
+                disabled={loading}                 
+                type="submit"                 
+                className="w-full py-4 mt-2 bg-white hover:bg-zinc-200 text-black font-black text-[13px] uppercase tracking-widest rounded-2xl transition-all flex items-center justify-center gap-2 shadow-xl disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"               
+              >                 
+                {loading ? "Verificando..." : "Continuar"} {!loading && <ArrowRight size={16} />}               
+              </button>             
+            </motion.form>           
+          )}           
 
-              {isDefiningPassword && (
-                <div>
-                  <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest ml-1">
-                    Confirme sua Data de Nascimento
-                  </label>
-                  <input
-                    required
-                    type="date"
-                    value={birthDate}
-                    onChange={(e) => setBirthDate(e.target.value)}
-                    className="w-full mt-1.5 p-4 bg-gray-50 border border-gray-100 rounded-2xl font-semibold outline-none focus:ring-2 focus:ring-[#9FC131] text-gray-900"
-                  />
-                </div>
-              )}
-
-              <div>
-                <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest ml-1">
-                  {isDefiningPassword ? "Nova Senha" : "Senha de Acesso"}
-                </label>
-                <input
-                  required
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full mt-1.5 p-4 bg-gray-50 border border-gray-100 rounded-2xl font-semibold outline-none focus:ring-2 focus:ring-[#9FC131] text-gray-900"
-                />
-              </div>
-
-              <button
-                disabled={loading}
-                type="submit"
-                className={`w-full py-4 text-white font-bold text-xs uppercase tracking-widest rounded-full transition-all ${
-                  isDefiningPassword ? "bg-[#9FC131] hover:bg-[#8eb02c]" : "bg-gray-900 hover:bg-gray-800"
-                }`}
-              >
-                {loading ? "Processando..." : isDefiningPassword ? "Ativar minha Conta" : "Entrar no Sistema"}
-              </button>
-            </motion.form>
-          )}
-        </AnimatePresence>
+          {step === 2 && (             
+            <motion.form               
+              key="step2"               
+              onSubmit={handleAuth}               
+              initial={{ opacity: 0, x: 20 }}               
+              animate={{ opacity: 1, x: 0 }}               
+              exit={{ opacity: 0, x: 20 }}               
+              className="space-y-6"             
+            >               
+              <div className="text-center relative">                 
+                <button                    
+                  type="button"                    
+                  onClick={handleVoltar}                    
+                  className="absolute left-0 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/10 transition-all"                 
+                >                   
+                  <ArrowLeft size={18} />                 
+                </button>                 
+                <h3 className="text-2xl font-black text-white tracking-tight ml-10">                   
+                  {isDefiningPassword ? "Nova Senha" : "Autenticação"}                 </h3>                 
+              </div>               
+              
+              {isDefiningPassword && (                 
+                <div className="space-y-2">                   
+                  <label className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest ml-1">                     
+                    Confirme sua Data de Nascimento                   
+                  </label>                   
+                  <input                     
+                    required                     
+                    type="date"                     
+                    value={birthDate}                     
+                    onChange={(e) => setBirthDate(e.target.value)}                     
+                    className="w-full p-4 bg-black/40 border border-white/10 rounded-2xl font-medium outline-none focus:border-[#9FC131] focus:ring-1 focus:ring-[#9FC131] text-white transition-all [color-scheme:dark]"                   
+                  />                 
+                </div>               
+              )}               
+              
+              <div className="space-y-2">                 
+                <label className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest ml-1 flex items-center gap-2">                   
+                  <LockKeyhole size={14}/> {isDefiningPassword ? "Crie sua Senha" : "Senha de Acesso"}                 
+                </label>                 
+                <input                   
+                  required                   
+                  type="password"                   
+                  value={password}                   
+                  onChange={(e) => setPassword(e.target.value)}                   
+                  placeholder="••••••••"                   
+                  className="w-full p-4 bg-black/40 border border-white/10 rounded-2xl font-medium outline-none focus:border-[#9FC131] focus:ring-1 focus:ring-[#9FC131] text-white transition-all placeholder:text-zinc-700 tracking-widest"                 
+                />               
+              </div>               
+              
+              <button                 
+                disabled={loading}                 
+                type="submit"                 
+                className={`w-full py-4 mt-2 font-black text-[13px] uppercase tracking-widest rounded-2xl transition-all flex items-center justify-center shadow-xl disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] ${                   
+                  isDefiningPassword ? "bg-[#9FC131] hover:bg-[#8ab01c] text-black" : "bg-white hover:bg-zinc-200 text-black"                 
+                }`}               
+              >                 
+                {loading ? "Processando..." : isDefiningPassword ? "Ativar minha Conta" : "Entrar no Sistema"}               
+              </button>             
+            </motion.form>           
+          )}         
+        </AnimatePresence>       
+      </div>     
+      
+      <div className="absolute bottom-6 text-center w-full text-zinc-600 text-xs font-medium pointer-events-none">
+          Ambiente protegido e criptografado.
       </div>
-    </main>
-  );
+    </main>   
+  ); 
 }

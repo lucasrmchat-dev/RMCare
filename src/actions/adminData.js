@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@supabase/supabase-js";
+import { cookies } from "next/headers";
 
 // Trava de segurança: avisa imediatamente se as variáveis estiverem faltando
 if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -14,12 +15,43 @@ const supabaseAdmin = createClient(
 );
 
 /* ==========================================
+   HELPER DE AUTENTICAÇÃO E ISOLAMENTO (TENANT)
+   ========================================== */
+export async function getAdminLogado() {
+  const cookieStore = await cookies();
+  const authCookie = cookieStore.get("rmcare_auth");
+
+  // Se não achar o cookie, avisa o motivo exato.
+  if (!authCookie || !authCookie.value) {
+    throw new Error("Sessão expirada ou o navegador (Safari/IP) bloqueou o cookie de autenticação.");
+  }
+
+  const usuarioLogado = authCookie.value;
+
+  const { data: admin, error } = await supabaseAdmin
+    .from("administradores")
+    .select("id, role, empresa_id, usuario")
+    .eq("usuario", usuarioLogado)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Erro no banco de dados ao buscar administrador: ${error.message}`);
+  }
+
+  if (!admin) {
+    throw new Error(`O usuário logado '${usuarioLogado}' não existe mais no banco de dados.`);
+  }
+
+  return admin;
+}
+
+/* ==========================================
    FUNÇÕES DE AUTENTICAÇÃO
    ========================================== */
 export async function checkIdentifier(identificador) {
   const idClean = identificador.trim().toLowerCase();
 
-  const { data: admin, error: adminError } = await supabaseAdmin
+  const { data: admin } = await supabaseAdmin
     .from("administradores")
     .select("id, role")
     .eq("usuario", idClean)
@@ -59,6 +91,7 @@ export async function checkIdentifier(identificador) {
 
 export async function authenticateUser(payload) {
   const { type, id, role, password, birthDate, isDefiningPassword, identificador } = payload;
+  const cookieStore = await cookies();
 
   if (type === "paciente") {
     if (isDefiningPassword) {
@@ -77,6 +110,15 @@ export async function authenticateUser(payload) {
         .insert({ paciente_id: id, senha_hash: password });
 
       if (error) return { success: false, error: "Falha ao registrar senha. Tente novamente." };
+      
+      // Cookie do Paciente com permissão Lax para funcionar em IPs locais
+      cookieStore.set("rmcare_auth_paciente", id, { 
+        httpOnly: true, 
+        secure: process.env.NODE_ENV === "production", 
+        sameSite: "lax",
+        maxAge: 60 * 60 * 24 * 7, 
+        path: "/" 
+      });
       return { success: true, message: "Senha cadastrada com sucesso!" };
     } else {
       const { data: cred } = await supabaseAdmin
@@ -86,21 +128,55 @@ export async function authenticateUser(payload) {
         .eq("senha_hash", password)
         .maybeSingle();
 
-      if (cred) return { success: true, message: "Acesso autorizado!" };
+      if (cred) {
+        cookieStore.set("rmcare_auth_paciente", id, { 
+          httpOnly: true, 
+          secure: process.env.NODE_ENV === "production", 
+          sameSite: "lax",
+          maxAge: 60 * 60 * 24 * 7, 
+          path: "/" 
+        });
+        return { success: true, message: "Acesso autorizado!" };
+      }
       return { success: false, error: "Senha incorreta." };
     }
   }
 
   if (type === "admin") {
     const idClean = identificador.trim().toLowerCase();
-    const { data: adminAuth } = await supabaseAdmin
+    let isAuthorized = false;
+
+    // 1. Tenta a verificação em formato Antigo (Texto Puro) - Fallback
+    const { data: plainAdmin } = await supabaseAdmin
       .from("administradores")
       .select("id")
       .eq("usuario", idClean)
       .eq("senha_hash", password)
       .maybeSingle();
 
-    if (adminAuth) return { success: true, message: "Acesso autorizado!" };
+    if (plainAdmin) {
+      isAuthorized = true;
+    } else {
+      // 2. Tenta a verificação com Criptografia Forte via RPC
+      const { data: hashAdmin } = await supabaseAdmin.rpc("verificar_senha_admin", {
+        p_usuario: idClean,
+        p_senha: password
+      });
+      if (hashAdmin) isAuthorized = true;
+    }
+
+    if (isAuthorized) {
+      // Cria a sessão com sameSite 'lax' para não ser bloqueado no localhost/IP
+      cookieStore.set("rmcare_auth", idClean, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 60 * 60 * 24 * 7, // 7 dias de sessão
+        path: "/"
+      });
+      return { success: true, message: "Acesso autorizado!" };
+    }
+
     return { success: false, error: "Senha administrativa inválida." };
   }
 
@@ -108,28 +184,52 @@ export async function authenticateUser(payload) {
 }
 
 /* ==========================================
-   FUNÇÕES GERAIS DE ADMIN
+   FUNÇÕES GERAIS DE ADMIN (COM ISOLAMENTO)
    ========================================== */
 export async function fetchAdminBloqueios() {
-  const { data, error } = await supabaseAdmin.from("bloqueios_horarios").select("*").order("horario", { ascending: true });
+  const admin = await getAdminLogado();
+
+  let query = supabaseAdmin.from("bloqueios_horarios").select("*").order("horario", { ascending: true });
+  if (admin.role !== 'sistema') query = query.eq("empresa_id", admin.empresa_id);
+
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
 
 export async function fetchAdminAgendamentos() {
-  const { data, error } = await supabaseAdmin.from("agendamentos").select(`*, pacientes (id, cpf, nome_completo)`).order("horario_agendamento", { ascending: true });
+  const admin = await getAdminLogado();
+
+  let query = supabaseAdmin.from("agendamentos").select(`*, pacientes (id, cpf, nome_completo)`).order("horario_agendamento", { ascending: true });
+  if (admin.role !== 'sistema') query = query.eq("empresa_id", admin.empresa_id);
+
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
 
 export async function fetchAdminServicos() {
-  const { data, error } = await supabaseAdmin.from("servicos").select("*").order("tipo", { ascending: true });
+  const admin = await getAdminLogado();
+
+  let query = supabaseAdmin.from("servicos").select("*").order("tipo", { ascending: true });
+  
+  if (admin.role !== 'sistema') {
+    if (!admin.empresa_id) return []; // Se não tem empresa atrelada, retorna vazio para não vazar dados
+    query = query.eq("empresa_id", admin.empresa_id);
+  }
+
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
 
 export async function fetchAdminPerguntas() {
-  const { data: pergs, error: err1 } = await supabaseAdmin.from("perguntas_triagem").select("*, servicos(nome)");
+  const admin = await getAdminLogado();
+
+  let query = supabaseAdmin.from("perguntas_triagem").select("*, servicos(nome)");
+  if (admin.role !== 'sistema') query = query.eq("empresa_id", admin.empresa_id);
+
+  const { data: pergs, error: err1 } = await query;
   const { data: ops, error: err2 } = await supabaseAdmin.from("opcoes_triagem").select("*");
   if (err1 || err2) throw err1 || err2;
 
@@ -140,46 +240,54 @@ export async function fetchAdminPerguntas() {
 }
 
 export async function actionAplicarBloqueioLote(inserts) {
-  const { error } = await supabaseAdmin.from("bloqueios_horarios").insert(inserts);
+  const admin = await getAdminLogado();
+
+  const payload = inserts.map(i => ({ ...i, empresa_id: admin.empresa_id }));
+  const { error } = await supabaseAdmin.from("bloqueios_horarios").insert(payload);
   if (error) throw error;
   return true;
 }
 
 export async function actionDeletarBloqueio(id) {
-  const { error } = await supabaseAdmin.from("bloqueios_horarios").delete().eq("id", id);
+  const admin = await getAdminLogado();
+
+  let query = supabaseAdmin.from("bloqueios_horarios").delete().eq("id", id);
+  if (admin.role !== 'sistema') query = query.eq("empresa_id", admin.empresa_id);
+
+  const { error } = await query;
   if (error) throw error;
   return true;
 }
 
 export async function actionAtualizarServico(id, srvData) {
-  const { error } = await supabaseAdmin.from("servicos").update({
+  const admin = await getAdminLogado();
+
+  let query = supabaseAdmin.from("servicos").update({
     nome: srvData.nome,
     tipo: srvData.tipo,
     ativo: srvData.ativo,
     preco: Number(srvData.preco),
     dias_bloqueio_padrao: Number(srvData.dias_bloqueio_padrao),
     tipo_contagem_dias: srvData.tipo_contagem_dias,
-    especialidade: srvData.especialidade // <-- CAMPO CORRIGIDO E MAPEADO AQUI
+    especialidade: srvData.especialidade
   }).eq("id", id);
+
+  if (admin.role !== 'sistema') query = query.eq("empresa_id", admin.empresa_id);
   
+  const { error } = await query;
   if (error) throw error;
   return true;
 }
 
 export async function actionCriarServico(payload) {
-  let empresaId = payload.empresa_id;
-  
+  const admin = await getAdminLogado();
+
+  let empresaId = admin.role === 'sistema' ? payload.empresa_id : admin.empresa_id;
+
   if (!empresaId) {
-    const { data: empresaData } = await supabaseAdmin.from("empresas").select("id").limit(1).single();
-    if (empresaData) {
-      empresaId = empresaData.id;
-    } else {
-      throw new Error("Nenhuma empresa encontrada na tabela 'empresas' para associar o serviço.");
-    }
+    throw new Error("É necessário fornecer o ID da clínica para associar o profissional.");
   }
 
-  // O ...payload agora passa o campo especialidade automaticamente graças ao spread operator, 
-  // mas incluímos explicitamente abaixo caso a estrutura varie
   const { data, error } = await supabaseAdmin.from("servicos").insert([{ 
     ...payload, 
     empresa_id: empresaId,
@@ -191,9 +299,15 @@ export async function actionCriarServico(payload) {
 }
 
 export async function actionSalvarTriagem(novaTriagem) {
+  const admin = await getAdminLogado();
+
   const { data: perguntaSalva, error: err1 } = await supabaseAdmin
     .from("perguntas_triagem")
-    .insert({ servico_id: novaTriagem.servico_id || null, pergunta: novaTriagem.pergunta })
+    .insert({ 
+        servico_id: novaTriagem.servico_id || null, 
+        pergunta: novaTriagem.pergunta,
+        empresa_id: admin.empresa_id
+    })
     .select()
     .single();
 
@@ -212,44 +326,70 @@ export async function actionSalvarTriagem(novaTriagem) {
 }
 
 export async function actionDeletarTriagem(id) {
-  const { error } = await supabaseAdmin.from("perguntas_triagem").delete().eq("id", id);
+  const admin = await getAdminLogado();
+
+  let query = supabaseAdmin.from("perguntas_triagem").delete().eq("id", id);
+  if (admin.role !== 'sistema') query = query.eq("empresa_id", admin.empresa_id);
+
+  const { error } = await query;
   if (error) throw error;
   return true;
 }
 
 export async function actionMigrarNomeBloqueios(nomeAntigoERP, nomeOficialSistema) {
+  const admin = await getAdminLogado();
+
   const { error } = await supabaseAdmin
     .from("bloqueios_horarios")
     .update({ medico_profissional: nomeOficialSistema })
-    .eq("medico_profissional", nomeAntigoERP);
+    .eq("medico_profissional", nomeAntigoERP)
+    .eq("empresa_id", admin.empresa_id);
     
   if (error) throw error;
   return true;
 }
 
 /* ==========================================
-   FUNÇÕES DE REGRAS
+   FUNÇÕES DE REGRAS (COM ISOLAMENTO)
    ========================================== */
 export async function fetchAdminRegras() {
-  const { data, error } = await supabaseAdmin.from('regras_agenda').select('*');
+  const admin = await getAdminLogado();
+
+  let query = supabaseAdmin.from('regras_agenda').select('*');
+  if (admin.role !== 'sistema') query = query.eq("empresa_id", admin.empresa_id);
+
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
   return data || [];
 }
 
 export async function actionCriarRegraAgenda(regra) {
-  const { data, error } = await supabaseAdmin.from('regras_agenda').insert([regra]).select();
+  const admin = await getAdminLogado();
+
+  const payload = { ...regra, empresa_id: admin.empresa_id };
+
+  const { data, error } = await supabaseAdmin.from('regras_agenda').insert([payload]).select();
   if (error) throw new Error(error.message);
   return data;
 }
 
 export async function actionCriarRegraMassa(regrasArray) {
-  const { data, error } = await supabaseAdmin.from('regras_agenda').insert(regrasArray).select();
+  const admin = await getAdminLogado();
+
+  const payload = regrasArray.map(r => ({ ...r, empresa_id: admin.empresa_id }));
+
+  const { data, error } = await supabaseAdmin.from('regras_agenda').insert(payload).select();
   if (error) throw new Error(error.message);
   return data;
 }
 
 export async function actionDeletarRegra(id) {
-  const { error } = await supabaseAdmin.from('regras_agenda').delete().eq('id', id);
+  const admin = await getAdminLogado();
+
+  let query = supabaseAdmin.from('regras_agenda').delete().eq('id', id);
+  if (admin.role !== 'sistema') query = query.eq("empresa_id", admin.empresa_id);
+
+  const { error } = await query;
   if (error) throw new Error(error.message);
   return true;
 }
