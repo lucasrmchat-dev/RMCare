@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@supabase/supabase-js";
+import { cookies } from "next/headers";
 
 // Trava de segurança: avisa imediatamente se as variáveis estiverem faltando
 if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -16,19 +17,14 @@ const supabaseAdmin = createClient(
 export async function checkIdentifier(identificador) {
   const idClean = identificador.trim().toLowerCase();
 
-  // 1. Tenta achar administrador
-  const { data: admin, error: adminError } = await supabaseAdmin
+  const { data: admin } = await supabaseAdmin
     .from("administradores")
     .select("id, role")
     .eq("usuario", idClean)
     .maybeSingle();
 
-  // 👇 Log para te ajudar a depurar no terminal do VS Code
-  console.log("🔍 RESULTADO DA BUSCA ADMIN:", { admin, adminError });
-
   if (admin) return { success: true, type: "admin", role: admin.role };
 
-  // 2. Tenta achar paciente
   const cleanCpf = idClean.replace(/\D/g, "");
   
   if (cleanCpf.length !== 11) {
@@ -61,10 +57,12 @@ export async function checkIdentifier(identificador) {
 
 export async function authenticateUser(payload) {
   const { type, id, role, password, birthDate, isDefiningPassword, identificador } = payload;
+  
+  // Await é obrigatório no Next.js 15+ para lidar com cookies
+  const cookieStore = await cookies();
 
   if (type === "paciente") {
     if (isDefiningPassword) {
-      // Valida Data de Nascimento
       const { data: paciente } = await supabaseAdmin
         .from("pacientes")
         .select("data_nascimento")
@@ -75,37 +73,77 @@ export async function authenticateUser(payload) {
         return { success: false, error: "A data de nascimento informada não coincide com nosso banco de dados." };
       }
 
-      // Cria a senha
       const { error } = await supabaseAdmin
         .from("pacientes_credenciais")
         .insert({ paciente_id: id, senha_hash: password });
 
       if (error) return { success: false, error: "Falha ao registrar senha. Tente novamente." };
+      
+      cookieStore.set("rmcare_auth_paciente", id, { 
+        httpOnly: true, 
+        secure: process.env.NODE_ENV === "production", 
+        sameSite: "lax",
+        maxAge: 60 * 60 * 24 * 7, 
+        path: "/" 
+      });
       return { success: true, message: "Senha cadastrada com sucesso!" };
     } else {
-      // Login do Paciente
       const { data: cred } = await supabaseAdmin
         .from("pacientes_credenciais")
         .select("id")
         .eq("paciente_id", id)
-        .eq("senha_hash", password) // Importante: em produção, use bcrypt para validar hash real
+        .eq("senha_hash", password)
         .maybeSingle();
 
-      if (cred) return { success: true, message: "Acesso autorizado!" };
+      if (cred) {
+        cookieStore.set("rmcare_auth_paciente", id, { 
+          httpOnly: true, 
+          secure: process.env.NODE_ENV === "production", 
+          sameSite: "lax",
+          maxAge: 60 * 60 * 24 * 7, 
+          path: "/" 
+        });
+        return { success: true, message: "Acesso autorizado!" };
+      }
       return { success: false, error: "Senha incorreta." };
     }
   }
 
   if (type === "admin") {
     const idClean = identificador.trim().toLowerCase();
-    const { data: adminAuth } = await supabaseAdmin
+    let isAuthorized = false;
+
+    // 1. Tenta a verificação em formato Antigo (Texto Puro) - Fallback para senhas antigas
+    const { data: plainAdmin } = await supabaseAdmin
       .from("administradores")
       .select("id")
       .eq("usuario", idClean)
       .eq("senha_hash", password)
       .maybeSingle();
 
-    if (adminAuth) return { success: true, message: "Acesso autorizado!" };
+    if (plainAdmin) {
+      isAuthorized = true;
+    } else {
+      // 2. Tenta a verificação com Criptografia Forte via RPC
+      const { data: hashAdmin } = await supabaseAdmin.rpc("verificar_senha_admin", {
+        p_usuario: idClean,
+        p_senha: password
+      });
+      if (hashAdmin) isAuthorized = true;
+    }
+
+    if (isAuthorized) {
+      // Cria a sessão em Cookie para isolar o Tenant
+      cookieStore.set("rmcare_auth", idClean, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 60 * 60 * 24 * 7, // 7 dias de sessão
+        path: "/"
+      });
+      return { success: true, message: "Acesso autorizado!" };
+    }
+
     return { success: false, error: "Senha administrativa inválida." };
   }
 

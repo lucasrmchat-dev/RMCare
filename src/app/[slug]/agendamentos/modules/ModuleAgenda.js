@@ -1,12 +1,13 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Activity } from "lucide-react";
 import { useAgendamento } from "../context";
 import { helpers, calcularDataLimite } from "../utils";
 
 export default function ModuleAgenda() {
-    const { formData, setValue, calendarMonth, setCalendarMonth, selectedSrv, bloqueioExtraCalculado, agenda, timeSlotsRef } = useAgendamento();
+    const { formData, setValue, calendarMonth, setCalendarMonth, selectedSrv, bloqueioExtraCalculado, agenda, timeSlotsRef, regrasGlobais } = useAgendamento();
 
     const getDiaSemana = (dataStr) => {
       if (!dataStr) return null;
@@ -16,32 +17,104 @@ export default function ModuleAgenda() {
 
     const diaSelecionado = getDiaSemana(formData.data_agendamento);
 
-    // CORREÇÃO: Permite que regras sem servico_id (Regras Gerais da Clínica) também se apliquem
-    const regrasDoDia = agenda.regras?.filter(r => 
-       (r.servico_id === selectedSrv?.id || !r.servico_id) && 
-       r.dias_semana.includes(diaSelecionado) &&
-       r.ativo !== false
-    );
+    // 1. Hierarquia de Regras: Médico Override Clínica
+    const rMedico = regrasGlobais?.filter(r => r.servico_id === selectedSrv?.id && r.ativo !== false) || [];
+    const rGeral = regrasGlobais?.filter(r => !r.servico_id && r.ativo !== false) || [];
+    const regrasAplicaveis = rMedico.length > 0 ? rMedico : rGeral;
+    
+    // 2. Filtra as regras estritas aplicáveis para o dia clicado
+    const regrasDoDia = regrasAplicaveis.filter(r => r.dias_semana.includes(diaSelecionado));
+
+    const isDiaPermitidoPelasRegras = (dataStr) => {
+      const diaWeek = getDiaSemana(dataStr);
+      
+      // HIERARQUIA: O Calendário renderiza apenas os dias baseados na regra real daquele médico
+      if (regrasAplicaveis.length > 0) {
+        return regrasAplicaveis.some(r => r.dias_semana.includes(diaWeek));
+      }
+      
+      // Fallback: Se a clínica estiver zerada sem nenhuma regra, libera apenas dias úteis
+      return [1, 2, 3, 4, 5].includes(diaWeek); 
+    };
+
+    // AUTO AVANÇO INTELIGENTE (Corrigido para aguardar o médico)
+    const lastEvaluatedSrvId = useRef('uninitialized');
+
+    useEffect(() => {
+        if (!regrasGlobais) return;
+        
+        // Aguarda a resolução da URL (se houver médico na URL, selectedSrv será setado em breve)
+        if (formData.medico_profissional && !selectedSrv) return;
+
+        const currentSrvId = selectedSrv?.id || null;
+
+        // Só processa o auto-avanço se for a primeira vez ou se o paciente trocar de médico
+        if (lastEvaluatedSrvId.current === currentSrvId) return;
+
+        const hoje = new Date();
+        const minDiasBloqueio = formData.tipo_servico === "Exame" ? 1 : 0;
+        const diasBloqueioPadrao = Math.max(selectedSrv?.dias_bloqueio_padrao || 0, minDiasBloqueio);
+        const dataSrv = calcularDataLimite(hoje, diasBloqueioPadrao, selectedSrv?.tipo_contagem_dias || "corridos");
+        const limiteFinalData = (!bloqueioExtraCalculado || dataSrv > bloqueioExtraCalculado) ? dataSrv : bloqueioExtraCalculado;
+        
+        // Normaliza para a meia-noite (evita bloquear o dia de hoje só porque passou das 00:00)
+        const limiteMidnight = new Date(limiteFinalData.getFullYear(), limiteFinalData.getMonth(), limiteFinalData.getDate());
+
+        let hasAvailableDayInCurrentMonth = false;
+        const daysInCurrentMonth = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).getDate();
+
+        for (let d = hoje.getDate(); d <= daysInCurrentMonth; d++) {
+            const dateStr = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            const cellDate = new Date(hoje.getFullYear(), hoje.getMonth(), d);
+            
+            const isPastOrBlocked = cellDate < limiteMidnight || !isDiaPermitidoPelasRegras(dateStr);
+            if (!isPastOrBlocked) {
+                hasAvailableDayInCurrentMonth = true;
+                break;
+            }
+        }
+
+        // Se o mês atual não tem dias válidos, pula para o próximo automaticamente
+        if (!hasAvailableDayInCurrentMonth) {
+            setCalendarMonth(new Date(hoje.getFullYear(), hoje.getMonth() + 1, 1));
+        } else {
+            setCalendarMonth(new Date(hoje.getFullYear(), hoje.getMonth(), 1));
+        }
+
+        lastEvaluatedSrvId.current = currentSrvId;
+
+    }, [selectedSrv, formData.medico_profissional, regrasGlobais, bloqueioExtraCalculado, formData.tipo_servico]);
 
     const gerarSlotsParaTurno = (startStr, endStr, duracaoMinutos, customLastAllowed) => {
       let slots = [];
+      if (!startStr || !endStr) return slots;
+
       const [sh, sm] = startStr.split(':').map(Number);
       const [eh, em] = endStr.split(':').map(Number);
+      
+      // TRAVA DE SEGURANÇA 1: Protege a memória RAM ignorando lixo do banco
+      if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) return slots;
+      const duracaoSegura = Math.max(parseInt(duracaoMinutos, 10) || 30, 10);
       
       let current = new Date(2000, 0, 1, sh, sm);
       const end = new Date(2000, 0, 1, eh, em);
       
-      let limit = new Date(end.getTime() - (duracaoMinutos * 60000));
+      let limit = new Date(end.getTime() - (duracaoSegura * 60000));
       
       if (customLastAllowed) {
         const [lh, lm] = customLastAllowed.split(':').map(Number);
-        const customLimitDate = new Date(2000, 0, 1, lh, lm);
-        if (customLimitDate < limit) limit = customLimitDate;
+        if (!isNaN(lh) && !isNaN(lm)) {
+           const customLimitDate = new Date(2000, 0, 1, lh, lm);
+           if (customLimitDate < limit) limit = customLimitDate;
+        }
       }
 
-      while (current <= limit) {
+      // TRAVA DE SEGURANÇA 2: Impede loop infinito com limite de 100 slots (16 horas ininterruptas)
+      let safeLoop = 0; 
+      while (current <= limit && safeLoop < 100) {
         slots.push(current.toTimeString().substring(0, 5));
-        current = new Date(current.getTime() + (duracaoMinutos * 60000));
+        current = new Date(current.getTime() + (duracaoSegura * 60000));
+        safeLoop++;
       }
       return slots;
     };
@@ -52,7 +125,7 @@ export default function ModuleAgenda() {
     if (formData.data_agendamento) {
       let slotsGerados = [];
       
-      if (regrasDoDia && regrasDoDia.length > 0) {
+      if (regrasDoDia.length > 0) {
         const regrasValidas = regrasDoDia.filter(r => {
           if (!r.tipos_permitidos || r.tipos_permitidos.length === 0) return true;
           const currentString = formData.tipo_servico === "Exame" 
@@ -72,7 +145,8 @@ export default function ModuleAgenda() {
           if (r.ocupacao_sequencial) ocupacaoSeqAtiva = true;
         });
 
-      } else {
+      } else if (regrasAplicaveis.length === 0) {
+        // FALLBACK: Só ativa se não existir NENHUMA regra cadastrada no Admin para ninguém
         let duracaoFallback = 40;
         if (formData.tipo_servico === "Retorno" || formData.modalidade === "Convênio") duracaoFallback = 20;
         
@@ -103,17 +177,6 @@ export default function ModuleAgenda() {
       });
     }
 
-    const isDiaPermitidoPelasRegras = (dataStr) => {
-      const diaWeek = getDiaSemana(dataStr);
-      // CORREÇÃO: Respeita também regras gerais (!r.servico_id)
-      const regrasParaODia = agenda.regras?.filter(r => (r.servico_id === selectedSrv?.id || !r.servico_id) && r.dias_semana.includes(diaWeek) && r.ativo !== false);
-      const temQualquerRegra = agenda.regras?.some(r => (r.servico_id === selectedSrv?.id || !r.servico_id) && r.ativo !== false);
-      
-      if (temQualquerRegra && (!regrasParaODia || regrasParaODia.length === 0)) return false;
-      
-      return true;
-    };
-
     return (
         <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="max-w-4xl mx-auto">
             <div className="mb-8"><h2 className="text-3xl font-medium">Agendamento</h2><p className="text-zinc-500 text-sm mt-2">Sincronize uma data e horário.</p></div>
@@ -133,8 +196,11 @@ export default function ModuleAgenda() {
                             const dataSrv = calcularDataLimite(new Date(), diasBloqueioPadrao, selectedSrv?.tipo_contagem_dias || "corridos");
                             const limiteFinalData = (!bloqueioExtraCalculado || dataSrv > bloqueioExtraCalculado) ? dataSrv : bloqueioExtraCalculado;
                             
+                            const limiteMidnight = new Date(limiteFinalData.getFullYear(), limiteFinalData.getMonth(), limiteFinalData.getDate());
                             const cellDate = new Date(y, m, d);
-                            const isPastOrBlocked = cellDate <= limiteFinalData || [0, 6].includes(cellDate.getDay()) || !isDiaPermitidoPelasRegras(dateStr);
+                            
+                            // CORREÇÃO: Remoção da trava cega de Sábados e Domingos
+                            const isPastOrBlocked = cellDate < limiteMidnight || !isDiaPermitidoPelasRegras(dateStr);
                             const isSel = formData.data_agendamento === dateStr;
                             
                             return (

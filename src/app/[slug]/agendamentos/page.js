@@ -41,6 +41,8 @@ export default function AgendamentoPremium() {
     const [modulosAtivos, setModulosAtivos] = useState(modulosBase);
     
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
+    const [minStepIndex, setMinStepIndex] = useState(0); 
+
     const [empresaDados, setEmpresaDados] = useState(null);
     const [loadingConfig, setLoadingConfig] = useState(true);
     const [loading, setLoading] = useState(false);
@@ -55,6 +57,8 @@ export default function AgendamentoPremium() {
     const [respostasTriagem, setRespostasTriagem] = useState({});
     const [bloqueioExtraCalculado, setBloqueioExtraCalculado] = useState(null);
     
+    const [regrasGlobais, setRegrasGlobais] = useState([]);
+    
     const [pixData, setPixData] = useState(null);
     const [timeLeft, setTimeLeft] = useState(0);
     const checkingRef = useRef(false);
@@ -64,7 +68,7 @@ export default function AgendamentoPremium() {
     
     const [context, setContext] = useState({ isSmartLink: false, personalizedName: "", dataUltimaConsulta: null, userFound: false, checkingUser: false });
     const [calendarMonth, setCalendarMonth] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
-    const [agenda, setAgenda] = useState({ ocupados: [], regras: [], buscando: false });
+    const [agenda, setAgenda] = useState({ ocupados: [], buscando: false });
 
     const [flags, setFlags] = useState({
       cpfUrl: false, nomeUrl: false, sobrenomeUrl: false, telUrl: false, emailUrl: false, nascUrl: false,
@@ -101,7 +105,6 @@ export default function AgendamentoPremium() {
           const urlModalidadeRaw = searchParams.get("modalidade");
           const mapaMod = { "1": "Convênio", "2": "Particular" };
           const urlModalidade = mapaMod[urlModalidadeRaw] || urlModalidadeRaw;
-          
           const hideFlag = searchParams.get("hide") === "true";
           
           if (urlModalidade) {
@@ -113,13 +116,15 @@ export default function AgendamentoPremium() {
 
           setModulosAtivos(jornada);
           
-          const [{ data: srvs }, { data: pergs }, { data: ops }] = await Promise.all([
+          const [{ data: srvs }, { data: pergs }, { data: ops }, { data: regrasDB }] = await Promise.all([
             supabase.from("servicos").select("*").eq("ativo", true).eq("empresa_id", empresa.id),
             supabase.from("perguntas_triagem").select("*").eq("ativa", true).eq("empresa_id", empresa.id),
-            supabase.from("opcoes_triagem").select("*")
+            supabase.from("opcoes_triagem").select("*"),
+            supabase.from("regras_agenda").select("*").eq("ativo", true).eq("empresa_id", empresa.id)
           ]);
           
           if (srvs) setServicosDB(srvs);
+          if (regrasDB) setRegrasGlobais(regrasDB);
           if (pergs && ops) {
             const pergsFull = pergs.map(p => ({
               ...p, opcoes: ops.filter(o => o.pergunta_id === p.id)
@@ -162,7 +167,8 @@ export default function AgendamentoPremium() {
     useEffect(() => {
       if (!empresaDados || loadingConfig) return;
 
-      const nomeUrl = searchParams.get("nome");
+      const nomeUrlRaw = searchParams.get("nome");
+      const sobrenomeUrlRaw = searchParams.get("sobrenome");
       const cpfUrl = searchParams.get("cpf");
       const medicoUrl = searchParams.get("medico");
       const wppUrl = searchParams.get("whatsapp");
@@ -176,11 +182,21 @@ export default function AgendamentoPremium() {
         "6": "Colonoscopia", "7": "Endoscopia + Colonoscopia"
       };
       const especialidadeUrl = mapaEsp[espRaw] || espRaw;
-      
       const hideFlag = searchParams.get("hide") === "true";
       
-      if ((nomeUrl !== null || cpfUrl !== null || medicoUrl !== null || wppUrl !== null) && !context.isSmartLink) {
-        if (nomeUrl) { const parts = nomeUrl.trim().split(" "); setValue("nome", parts[0] || ""); setValue("sobrenome", parts.slice(1).join(" ") || ""); }
+      if ((nomeUrlRaw !== null || cpfUrl !== null || medicoUrl !== null || wppUrl !== null) && !context.isSmartLink) {
+        
+        if (nomeUrlRaw) {
+           setValue("nome", nomeUrlRaw);
+           if (sobrenomeUrlRaw) {
+               setValue("sobrenome", sobrenomeUrlRaw);
+           } else {
+               const parts = nomeUrlRaw.trim().split(" ");
+               setValue("nome", parts[0] || "");
+               setValue("sobrenome", parts.slice(1).join(" ") || "");
+           }
+        }
+
         if (cpfUrl) setValue("cpf", masks.cpf(cpfUrl));
         
         let limpaWpp = wppUrl ? wppUrl.replace(/\D/g, "") : "";
@@ -192,56 +208,72 @@ export default function AgendamentoPremium() {
         if (especialidadeUrl) setValue("especialidade", especialidadeUrl);
         
         const hasCpf = !!(cpfUrl && cpfUrl.trim() !== "");
-        const hasNome = !!(nomeUrl && nomeUrl.trim() !== "");
         const hasTel = !!(limpaWpp && limpaWpp.trim() !== "");
-        const hasEmail = !!(emailUrl && emailUrl.trim() !== "");
-        const hasNasc = !!(nascUrl && nascUrl.trim() !== "");
         const hasMedico = !!(medicoUrl && medicoUrl.trim() !== "");
         
         setFlags(f => ({ 
-          ...f, cpfUrl: hasCpf, nomeUrl: hasNome, sobrenomeUrl: hasNome && nomeUrl.trim().split(" ").length > 1, 
-          telUrl: hasTel, emailUrl: hasEmail, nascUrl: hasNasc, exibirConfUri: hasMedico && !hideFlag
+          ...f, 
+          cpfUrl: hasCpf, 
+          nomeUrl: !!nomeUrlRaw, 
+          sobrenomeUrl: !!nomeUrlRaw, // Alterado para não ser estrito
+          telUrl: hasTel, 
+          emailUrl: !!emailUrl, 
+          nascUrl: !!nascUrl, 
+          exibirConfUri: hasMedico && !hideFlag
         }));
         
-        setContext(c => ({ ...c, isSmartLink: true, personalizedName: nomeUrl ? nomeUrl.trim().split(" ")[0] : "" }));
+        setContext(c => ({ ...c, isSmartLink: true, personalizedName: nomeUrlRaw ? nomeUrlRaw.trim().split(" ")[0] : "" }));
         
+        let urlSrvId = null;
         if (hasMedico) {
           const mapped = mapaMedicos[medicoUrl];
           if (mapped) { 
             setValue("tipo_servico", mapped.tipo); 
             setValue(mapped.tipo === "Consulta" ? "medico_profissional" : "subtipo_exame", mapped.nome); 
+            const found = servicosDB.find(s => s.nome.toLowerCase().includes(mapped.nome.toLowerCase()));
+            if(found) urlSrvId = found.id;
           } else if (servicosDB.length > 0) {
             const srv = servicosDB.find(s => s.nome.toLowerCase().includes(medicoUrl.toLowerCase()));
             if (srv) { 
               setValue("tipo_servico", srv.tipo); 
               setValue(srv.tipo === "Consulta" ? "medico_profissional" : "subtipo_exame", srv.nome);
-            } else setValue("medico_profissional", medicoUrl);
+              urlSrvId = srv.id;
+            } else {
+              setValue("medico_profissional", medicoUrl);
+            }
           }
         }
         
+        const hasPerguntas = urlSrvId ? perguntasDB.some(p => p.servico_id === urlSrvId) : false;
         const cpfValid = cpfUrl && cpfUrl.replace(/\D/g, "").length === 11;
         const telValid = limpaWpp.length >= 10;
-        const nomeValid = nomeUrl && nomeUrl.trim().split(" ").length > 1;
         
-        const conf = empresaDados?.config_campos || {};
-        const reqEmail = conf.mostrar_email !== false;
-        const reqNasc = conf.mostrar_nascimento !== false;
-        
-        const canSkipIdentificacao = cpfValid && telValid && nomeValid && (!reqEmail || hasEmail) && (!reqNasc || hasNasc);
+        // PULO INTELIGENTE: Removemos a obrigatoriedade de sobrenome para dar o pulo
+        const canSkipIdentificacao = cpfValid && telValid && !!nomeUrlRaw;
         
         if (canSkipIdentificacao) {
-          let jumpIndex = modulosAtivos.indexOf("especialidade");
+          let jumpTo = "especialidade";
+          
           if (hasMedico && hideFlag) {
-            jumpIndex = modulosAtivos.indexOf("triagem") !== -1 ? modulosAtivos.indexOf("triagem") : modulosAtivos.indexOf("modalidade");
-            if (jumpIndex === -1) jumpIndex = modulosAtivos.indexOf("agenda");
+            if (modulosAtivos.includes("triagem") && hasPerguntas) jumpTo = "triagem";
+            else if (modulosAtivos.includes("modalidade")) jumpTo = "modalidade";
+            else jumpTo = "agenda";
           }
-          if(jumpIndex !== -1) setCurrentStepIndex(jumpIndex); 
+          
+          const jumpIndex = modulosAtivos.indexOf(jumpTo);
+          if(jumpIndex !== -1) {
+            setCurrentStepIndex(jumpIndex); 
+            setMinStepIndex(jumpIndex); 
+          }
         } else {
           const jumpIndex = modulosAtivos.indexOf("identificacao");
-          if(jumpIndex !== -1) setCurrentStepIndex(jumpIndex); 
+          if(jumpIndex !== -1) {
+            setCurrentStepIndex(jumpIndex); 
+            setMinStepIndex(jumpIndex);
+          }
         }
       }
-    }, [searchParams, context.isSmartLink, servicosDB, setValue, loadingConfig, modulosAtivos, empresaDados]);
+    }, [searchParams, context.isSmartLink, servicosDB, perguntasDB, setValue, loadingConfig, modulosAtivos, empresaDados]);
 
     const handleCpfLookup = async () => {
       if (formData.cpf?.length !== 14) return;
@@ -268,35 +300,52 @@ export default function AgendamentoPremium() {
     }, [formData.cpf, currentStepIndex]);
 
     useEffect(() => {
-      if (!formData.data_agendamento) return;
+      if (!formData.data_agendamento || !empresaDados) return;
       const prof = formData.tipo_servico === "Exame" ? formData.subtipo_exame : formData.medico_profissional;
       if (!prof) return;
 
+      let isMounted = true;
       setAgenda(a => ({ ...a, buscando: true }));
       setValue("horario_agendamento", "");
       
       const fetchAgenda = async () => {
         try {
-          const [{ data: ag }, { data: bl }, { data: rg }] = await Promise.all([
-            supabase.from("agendamentos").select("horario_agendamento, medico_profissional, subtipo_exame").eq("data_agendamento", formData.data_agendamento),
-            supabase.from("bloqueios_horarios").select("horario, medico_profissional").eq("data", formData.data_agendamento),
-            // CORREÇÃO APLICADA: Filtra as regras pelo ID da empresa logada
-            supabase.from("regras_agenda").select("*").eq("ativo", true).eq("empresa_id", empresaDados.id)
+          const [{ data: ag }, { data: bl }] = await Promise.all([
+            supabase.from("agendamentos").select("horario_agendamento, medico_profissional, subtipo_exame").eq("data_agendamento", formData.data_agendamento).eq("empresa_id", empresaDados.id),
+            supabase.from("bloqueios_horarios").select("horario, medico_profissional").eq("data", formData.data_agendamento).eq("empresa_id", empresaDados.id)
           ]);
+
+          const formatTime = (timeStr) => {
+            if (!timeStr) return "";
+            const parts = timeStr.trim().split(":");
+            const h = parts[0].padStart(2, "0");
+            const m = (parts[1] || "00").substring(0, 2);
+            return `${h}:${m}`;
+          };
 
           const match = (nDB) => {
             if (!nDB) return false;
             if (nDB === "Todos") return true;
-            const pNorm = prof.toLowerCase().replace(/dra\.|dr\./g, "").trim();
-            return nDB.toLowerCase().includes(pNorm) || pNorm.includes(nDB.toLowerCase()) || nDB.toLowerCase().includes(pNorm.split(" ")[0]);
+            
+            const pNorm = prof.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/dra\.|dr\./g, "").trim();
+            const nNorm = nDB.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+            
+            return nNorm.includes(pNorm) || pNorm.includes(nNorm) || nNorm.includes(pNorm.split(" ")[0]);
           };
 
-          const slots = [...(ag?.filter(a => match(a.medico_profissional) || match(a.subtipo_exame)).map(a => a.horario_agendamento.substring(0,5)) || []), ...(bl?.filter(b => match(b.medico_profissional)).map(b => b.horario.substring(0,5)) || [])];
-          setAgenda({ ocupados: [...new Set(slots)], regras: rg || [], buscando: false });
-        } catch (e) { setAgenda(a => ({ ...a, buscando: false })); }
+          const slots = [
+            ...(ag?.filter(a => match(a.medico_profissional) || match(a.subtipo_exame)).map(a => formatTime(a.horario_agendamento)) || []),
+            ...(bl?.filter(b => match(b.medico_profissional)).map(b => formatTime(b.horario)) || [])
+          ];
+          
+          if (isMounted) setAgenda({ ocupados: [...new Set(slots)], buscando: false });
+        } catch (e) { 
+          if (isMounted) setAgenda(a => ({ ...a, buscando: false })); 
+        }
       };
 
       fetchAgenda();
+      return () => { isMounted = false; };
     }, [formData.data_agendamento, formData.medico_profissional, formData.subtipo_exame, formData.tipo_servico, setValue, empresaDados]);
 
     const salvarNoBanco = async (pago) => {
@@ -518,7 +567,8 @@ export default function AgendamentoPremium() {
       register, watch, trigger, setValue, errors, reset, formData, slug, empresaDados, flags, setFlags, context, setContext,
       servicosDB, perguntasAtuais, respostasTriagem, setRespostasTriagem, bloqueioExtraCalculado, setBloqueioExtraCalculado,
       agenda, setAgenda, calendarMonth, setCalendarMonth, pixData, setPixData, timeLeft, setTimeLeft, valorEntrada,
-      nextStep, isModuleValid, showIsland, modulosAtivos, currentStepIndex, setCurrentStepIndex, selectedSrv, timeSlotsRef, renderLockedOrInput, onSubmitMP, loading
+      nextStep, isModuleValid, showIsland, modulosAtivos, currentStepIndex, setCurrentStepIndex, selectedSrv, timeSlotsRef, renderLockedOrInput, onSubmitMP, loading,
+      regrasGlobais 
     };
 
     if (loadingConfig) return <div className="text-zinc-500 mt-20 flex flex-col items-center"><Activity className="animate-spin mb-4"/> Carregando sistema da clínica...</div>;
@@ -570,7 +620,7 @@ export default function AgendamentoPremium() {
             {modulosAtivos[currentStepIndex] !== "concluido" && (
               <div className="flex-none grid grid-cols-3 items-center px-4 md:px-8 py-3 md:py-4 border-b border-zinc-200 dark:border-zinc-800 bg-white/90 dark:bg-[#0A0A0A]/90 backdrop-blur-md z-20">
                 <div className="flex justify-start">
-                  {currentStepIndex > 0 ? (
+                  {currentStepIndex > minStepIndex ? (
                     <button onClick={() => setCurrentStepIndex(p => p - 1)} className="flex items-center gap-1.5 text-zinc-500 hover:text-zinc-900 dark:hover:text-white text-[13px] font-medium transition-colors">
                       <ChevronLeft size={18} /> Voltar
                     </button>

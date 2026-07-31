@@ -5,7 +5,7 @@ import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import { 
   CalendarDays, CheckCircle2, 
   Plus, Settings2, Code2, Play, FileJson, Copy, Info, Zap, 
-  Clock, Trash2, Building, User, HelpCircle
+  Clock, Trash2, Building, User
 } from "lucide-react";
 
 import { fadeUp, spring, CustomSelect, ButtonPrimary, ToggleSwitch, TextInput } from "../components/SharedUI";
@@ -37,10 +37,9 @@ const EXEMPLO_JSON = `[
 ]`;
 
 export default function RestricoesView({ regras = [], servicosOptions = [], fetchRegras, showToast }) {
-  const [activeView, setActiveView] = useState("lista"); // 'lista' ou 'builder'
+  const [activeView, setActiveView] = useState("lista");
   
-  // Novo estado para facilitar o UX: Regra Geral ou Específica?
-  const [tipoRegra, setTipoRegra] = useState("especifica"); // 'geral' ou 'especifica'
+  const [tipoRegra, setTipoRegra] = useState("especifica");
   const [builderMode, setBuilderMode] = useState("visual"); 
 
   const [formData, setFormData] = useState({
@@ -87,7 +86,6 @@ export default function RestricoesView({ regras = [], servicosOptions = [], fetc
 
     setIsProcessing(true);
     try {
-      // Se for regra da clínica inteira, anulamos o ID do serviço para não restringir
       const payload = { ...formData };
       if (tipoRegra === "geral") {
         payload.servico_id = null;
@@ -99,7 +97,6 @@ export default function RestricoesView({ regras = [], servicosOptions = [], fetc
       if(fetchRegras) await fetchRegras();
       setActiveView("lista");
       
-      // Reseta
       setFormData(prev => ({ ...prev, dias_semana: [], tipos_permitidos: [] }));
     } catch (error) {
       showToast("Erro ao processar regra. Tente novamente.", "error");
@@ -213,8 +210,14 @@ export default function RestricoesView({ regras = [], servicosOptions = [], fetc
                       </div>
 
                       {tipoRegra === "especifica" && (
-                        <motion.div initial={{opacity:0, height:0}} animate={{opacity:1, height:"auto"}} className="pt-4 overflow-hidden">
-                           <CustomSelect label="Qual o profissional afetado?" value={formData.servico_id} onChange={(val) => setFormData({...formData, servico_id: val})} options={servicosOptions} />
+                        <motion.div initial={{opacity:0, y:-10}} animate={{opacity:1, y:0}} className="pt-4 relative z-50">
+                           {servicosOptions.length === 0 ? (
+                               <div className="p-4 bg-amber-50 border border-amber-200 text-amber-700 rounded-xl text-sm font-medium">
+                                  Nenhum colaborador encontrado. Você precisa cadastrar um profissional na aba <strong>Equipe Clínica</strong> primeiro.
+                               </div>
+                           ) : (
+                               <CustomSelect label="Qual o profissional afetado?" value={formData.servico_id} onChange={(val) => setFormData({...formData, servico_id: val})} options={servicosOptions} />
+                           )}
                         </motion.div>
                       )}
                     </section>
@@ -259,14 +262,24 @@ export default function RestricoesView({ regras = [], servicosOptions = [], fetc
                       </div>
                       
                       <div className="grid md:grid-cols-2 gap-8 p-6 bg-zinc-50/50 rounded-3xl border border-zinc-100">
-                        <div>
-                          <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1 mb-3 block">Duração de cada consulta</label>
-                          <div className="flex items-center gap-4">
-                            <input type="range" min="10" max="120" step="5" value={formData.duracao_slot_minutos} onChange={(e) => setFormData({...formData, duracao_slot_minutos: parseInt(e.target.value)})} className="flex-1 accent-zinc-900" />
-                            <div className="bg-white border border-zinc-200 px-4 py-2 rounded-xl font-bold text-zinc-900 min-w-[80px] text-center shadow-sm">
-                              {formData.duracao_slot_minutos} min
-                            </div>
-                          </div>
+                        {/* NOVO SELECT CORRIGIDO: Substitui a barra de rolagem */}
+                        <div className="relative z-40">
+                          <CustomSelect 
+                            label="Duração de cada Consulta (Slot)"
+                            value={formData.duracao_slot_minutos} 
+                            onChange={(val) => setFormData({...formData, duracao_slot_minutos: val})} 
+                            options={[
+                              { value: 10, label: "10 Minutos" },
+                              { value: 15, label: "15 Minutos" },
+                              { value: 20, label: "20 Minutos" },
+                              { value: 30, label: "30 Minutos" },
+                              { value: 40, label: "40 Minutos" },
+                              { value: 45, label: "45 Minutos" },
+                              { value: 60, label: "1 Hora" },
+                              { value: 90, label: "1h 30min" },
+                              { value: 120, label: "2 Horas" }
+                            ]} 
+                          />
                         </div>
                         <div className="flex flex-col justify-center">
                           <ToggleSwitch checked={formData.ocupacao_sequencial} onChange={(val) => setFormData({...formData, ocupacao_sequencial: val})} label="Obrigatório Sequencial" />
