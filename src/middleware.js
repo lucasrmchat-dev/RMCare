@@ -1,40 +1,22 @@
 import { NextResponse } from 'next/server';
-import { verifyAdminSession } from '@/lib/session';
 
-export async function middleware(request) {
-  // 1. Lemos os cookies reais que nossa função de login gera
-  const adminToken = request.cookies.get('rmcare_auth')?.value;
-  const pacienteToken = request.cookies.get('rmcare_auth_paciente')?.value;
-  
-  const path = request.nextUrl.pathname;
+export function middleware(request) {
+  const { pathname } = request.nextUrl;
 
-  // 2. Proteção das rotas Administrativas (Master e Empresa)
-  if (path.startsWith('/admin')) {
-    const session = await verifyAdminSession(adminToken);
-    if (!session) {
-      // Se não tem cookie de admin, chuta de volta pro login
-      const response = NextResponse.redirect(new URL('/login', request.url));
-      response.cookies.delete('rmcare_auth');
-      return response;
-    }
+  const adminToken = request.cookies.get('rmagenda_auth')?.value || request.cookies.get('rmcare_auth')?.value;
+  const pacienteToken = request.cookies.get('rmagenda_auth_paciente')?.value || request.cookies.get('rmcare_auth_paciente')?.value;
+
+  if (pathname.startsWith('/admin') && !adminToken) {
+    return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  // 3. Proteção das rotas do Paciente
-  if (path.startsWith('/paciente')) {
-    if (!pacienteToken) {
-      // Se não tem cookie de paciente, chuta pro login
-      return NextResponse.redirect(new URL('/login', request.url));
-    }
+  if (pathname === '/login' && adminToken) {
+    return NextResponse.redirect(new URL('/admin/empresa', request.url));
   }
 
-  // Se tem o cookie correto, deixa a requisição passar normalmente
   return NextResponse.next();
 }
 
-// 4. Diz ao Next.js quais rotas esse middleware deve vigiar
 export const config = {
-  matcher: [
-    '/admin/:path*', 
-    '/paciente/:path*'
-  ],
+  matcher: ['/admin/:path*', '/login'],
 };

@@ -20,7 +20,7 @@ const supabaseAdmin = createClient(
    ========================================== */
 export async function getAdminLogado() {
   const cookieStore = await cookies();
-  const authCookie = cookieStore.get("rmcare_auth");
+  const authCookie = cookieStore.get("rmagenda_auth") || cookieStore.get("rmcare_auth");
 
   if (!authCookie || !authCookie.value) {
     throw new Error("Sessão expirada ou o navegador (Safari/IP) bloqueou o cookie de autenticação.");
@@ -126,7 +126,7 @@ export async function authenticateUser(payload) {
 
       if (error) return { success: false, error: "Falha ao registrar senha. Tente novamente." };
       
-      cookieStore.set("rmcare_auth_paciente", id, { 
+      cookieStore.set("rmagenda_auth_paciente", id, { 
         httpOnly: true, 
         secure: process.env.NODE_ENV === "production", 
         sameSite: "lax",
@@ -143,7 +143,7 @@ export async function authenticateUser(payload) {
         .maybeSingle();
 
       if (cred) {
-        cookieStore.set("rmcare_auth_paciente", id, { 
+        cookieStore.set("rmagenda_auth_paciente", id, { 
           httpOnly: true, 
           secure: process.env.NODE_ENV === "production", 
           sameSite: "lax",
@@ -178,7 +178,7 @@ export async function authenticateUser(payload) {
     }
 
     if (isAuthorized) {
-      cookieStore.set("rmcare_auth", idClean, {
+      cookieStore.set("rmagenda_auth", idClean, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
@@ -461,7 +461,7 @@ export async function actionSalvarPolicies(config) {
 
 export async function fetchAdminCustomization() {
   const admin = await getAdminLogado();
-  const { data, error } = await supabaseAdmin.from("empresas").select("id,config_campos,config_mensagens").eq("id", admin.empresa_id).single();
+  const { data, error } = await supabaseAdmin.from("empresas").select("id,config_campos,config_mensagens,especialidades").eq("id", admin.empresa_id).single();
   if (error) throw error;
   return data;
 }

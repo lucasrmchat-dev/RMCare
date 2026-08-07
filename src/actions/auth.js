@@ -80,7 +80,7 @@ export async function authenticateUser(payload) {
 
       if (error) return { success: false, error: "Falha ao registrar senha. Tente novamente." };
       
-      cookieStore.set("rmcare_auth_paciente", id, { 
+      cookieStore.set("rmagenda_auth_paciente", id, { 
         httpOnly: true, 
         secure: process.env.NODE_ENV === "production", 
         sameSite: "lax",
@@ -97,7 +97,7 @@ export async function authenticateUser(payload) {
         .maybeSingle();
 
       if (cred) {
-        cookieStore.set("rmcare_auth_paciente", id, { 
+        cookieStore.set("rmagenda_auth_paciente", id, { 
           httpOnly: true, 
           secure: process.env.NODE_ENV === "production", 
           sameSite: "lax",
@@ -135,7 +135,7 @@ export async function authenticateUser(payload) {
 
     if (isAuthorized) {
       // Cria a sessão em Cookie para isolar o Tenant
-      cookieStore.set("rmcare_auth", await createAdminSession(idClean), {
+      cookieStore.set("rmagenda_auth", await createAdminSession(idClean), {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
@@ -153,9 +153,9 @@ export async function authenticateUser(payload) {
 
 export async function refreshAdminSession() {
   const cookieStore = await cookies();
-  const current = await verifyAdminSession(cookieStore.get("rmcare_auth")?.value);
+  const current = await verifyAdminSession(cookieStore.get("rmagenda_auth")?.value || cookieStore.get("rmcare_auth")?.value);
   if (!current) return { success: false };
-  cookieStore.set("rmcare_auth", await createAdminSession(current.sub), {
+  cookieStore.set("rmagenda_auth", await createAdminSession(current.sub), {
     httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax",
     maxAge: ADMIN_SESSION_SECONDS, path: "/"
   });

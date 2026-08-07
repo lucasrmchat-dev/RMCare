@@ -12,10 +12,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: { default: "RMCare", template: "%s · RMCare" },
+  title: { default: "RMAgenda", template: "%s · RMAgenda" },
   description: "Agendamento clínico simples, seguro e rápido.",
-  applicationName: "RMCare",
-  appleWebApp: { capable: true, statusBarStyle: "default", title: "RMCare" },
+  applicationName: "RMAgenda",
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "RMAgenda" },
   formatDetection: { telephone: false },
 };
 
@@ -29,7 +29,24 @@ export default function RootLayout({ children }) {
     <html
       lang="pt-BR"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                var theme = localStorage.getItem('rmagenda_theme') || localStorage.getItem('rmcare_theme');
+                if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                  document.documentElement.classList.add('dark');
+                } else {
+                  document.documentElement.classList.remove('dark');
+                }
+              } catch (e) {}
+            `
+          }}
+        />
+      </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

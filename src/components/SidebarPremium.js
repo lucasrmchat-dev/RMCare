@@ -44,7 +44,6 @@ const SidebarItem = ({ href, icon: Icon, label, isExpanded }) => {
           <div className="absolute left-0 top-0 bottom-0 w-1 bg-zinc-900 dark:bg-white rounded-r-sm" />
         )}
         
-        {/* A SOLUÇÃO: Esta div trava o ícone exatamente nos 88px iniciais, impedindo sobreposição */}
         <div className="flex items-center justify-center w-[88px] h-[56px] shrink-0">
           <Icon 
             size={20} 
@@ -82,7 +81,7 @@ const SidebarItem = ({ href, icon: Icon, label, isExpanded }) => {
 export default function SidebarPremium({ isExpanded, setIsExpanded }) {
   const [isDark, setIsDark] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [empresaNome, setEmpresaNome] = useState("RM CARE");
+  const [empresaNome, setEmpresaNome] = useState("RM AGENDA");
   const [lastSlug, setLastSlug] = useState("");
   
   const params = useParams();
@@ -90,7 +89,7 @@ export default function SidebarPremium({ isExpanded, setIsExpanded }) {
 
   useEffect(() => {
     setMounted(true);
-    const savedTheme = localStorage.getItem('theme');
+    const savedTheme = localStorage.getItem('rmagenda_theme') || localStorage.getItem('theme');
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     
     if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
@@ -105,7 +104,7 @@ export default function SidebarPremium({ isExpanded, setIsExpanded }) {
         if (data) setEmpresaNome(data.nome);
       });
     } else {
-      const savedSlug = localStorage.getItem('rmcare_last_slug');
+      const savedSlug = localStorage.getItem('rmagenda_last_slug') || localStorage.getItem('rmcare_last_slug');
       if (savedSlug) {
         setLastSlug(savedSlug);
         supabase.from('empresas').select('nome').eq('slug', savedSlug).single().then(({data}) => {
@@ -118,8 +117,15 @@ export default function SidebarPremium({ isExpanded, setIsExpanded }) {
   const toggleTheme = () => {
     const nextState = !isDark;
     setIsDark(nextState);
-    if (nextState) { document.documentElement.classList.add('dark'); localStorage.setItem('theme', 'dark'); }
-    else { document.documentElement.classList.remove('dark'); localStorage.setItem('theme', 'light'); }
+    if (nextState) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('rmagenda_theme', 'dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('rmagenda_theme', 'light');
+      localStorage.setItem('theme', 'light');
+    }
   };
 
   const agendamentoHref = lastSlug ? `/${lastSlug}/agendamentos` : "/";
@@ -164,7 +170,7 @@ export default function SidebarPremium({ isExpanded, setIsExpanded }) {
                 className="flex flex-col whitespace-nowrap overflow-hidden flex-1 pr-6"
               >
                 <span className="font-semibold text-[15px] tracking-tight text-zinc-900 dark:text-white leading-none mb-1">{empresaNome.toUpperCase()}</span>
-                <span className="text-[9px] font-bold tracking-[0.2em] text-zinc-400 uppercase">Plataforma RM Care</span>
+                <span className="text-[9px] font-bold tracking-[0.2em] text-zinc-400 uppercase">Plataforma RMAgenda</span>
               </motion.div>
             )}
           </AnimatePresence>

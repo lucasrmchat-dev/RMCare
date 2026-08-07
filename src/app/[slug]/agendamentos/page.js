@@ -85,7 +85,7 @@ export default function AgendamentoPremium() {
     const formMethods = useForm({ resolver: zodResolver(schema), mode: "onChange" });
     const { register, watch, trigger, setValue, formState: { errors }, reset } = formMethods;
     const formData = watch();
-    const draftKey = slug ? `rmcare_jornada:${slug}` : null;
+    const draftKey = slug ? `rmagenda_jornada:${slug}` : null;
 
     useEffect(() => {
       const fetchEmpresaConfigAndData = async () => {
@@ -101,7 +101,7 @@ export default function AgendamentoPremium() {
           }
           
           setEmpresaDados(empresa);
-          localStorage.setItem('rmcare_last_slug', slug);
+          localStorage.setItem('rmagenda_last_slug', slug);
           
           const conf = empresa.config_campos || {};
           let jornada = buildJourney(conf, false);
@@ -154,7 +154,7 @@ export default function AgendamentoPremium() {
           // Retoma rascunho de no máximo 10 minutos
           if (!searchParams.toString() && typeof window !== "undefined") {
             try {
-              const saved = JSON.parse(localStorage.getItem(`rmcare_jornada:${slug}`) || "null");
+              const saved = JSON.parse(localStorage.getItem(`rmagenda_jornada:${slug}`) || localStorage.getItem(`rmcare_jornada:${slug}`) || "null");
               if (isDraftFresh(saved)) {
                 restoringDraftRef.current = true;
                 reset(saved.formData || {});
@@ -170,9 +170,13 @@ export default function AgendamentoPremium() {
                 setIslandState("success");
                 setTimeout(() => setIslandState("default"), 2400);
               } else {
+                localStorage.removeItem(`rmagenda_jornada:${slug}`);
                 localStorage.removeItem(`rmcare_jornada:${slug}`);
               }
-            } catch { localStorage.removeItem(`rmcare_jornada:${slug}`); }
+            } catch { 
+              localStorage.removeItem(`rmagenda_jornada:${slug}`); 
+              localStorage.removeItem(`rmcare_jornada:${slug}`); 
+            }
           }
 
         } catch (err) { console.error("Erro ao carregar dados:", err); } finally { setLoadingConfig(false); }
@@ -697,7 +701,7 @@ export default function AgendamentoPremium() {
           <h2 className="text-3xl font-medium text-zinc-900 dark:text-white">Clínica não encontrada</h2>
           <p className="text-zinc-500 mt-2 max-w-md">O link que você tentou acessar não é válido ou a clínica não está mais disponível em nossa plataforma.</p>
           <button onClick={() => window.location.href = "/"} className="mt-8 bg-zinc-900 dark:bg-white text-white dark:text-black px-8 py-4 rounded-full font-bold text-sm transition-transform hover:scale-105 shadow-xl">
-            Buscar Clínicas na RM Care
+            Buscar Clínicas na RMAgenda
           </button>
         </div>
       );
@@ -709,7 +713,8 @@ export default function AgendamentoPremium() {
 
     return (
       <AgendamentoContext.Provider value={contextValue}>
-        <div className="fixed inset-0 bg-[radial-gradient(circle_at_70%_10%,rgba(159,193,49,.10),transparent_32%),linear-gradient(180deg,#fafafa,#f4f4f5)] dark:bg-[radial-gradient(circle_at_70%_10%,rgba(159,193,49,.08),transparent_30%),linear-gradient(180deg,#050505,#000)] -z-20 pointer-events-none" />
+        {/* CORREÇÃO DO FUNDO: Cor única unificada #FAFAFA / dark:black sem transição de cinza */}
+        <div className="fixed inset-0 bg-[#FAFAFA] dark:bg-black -z-20 pointer-events-none" />
         
         {/* DYNAMIC ISLAND HEADER */}
         <div className="absolute top-3 md:top-6 left-0 right-0 w-full z-[9999] px-4 flex justify-center pointer-events-none">
@@ -740,7 +745,7 @@ export default function AgendamentoPremium() {
         <div className="w-full h-[100dvh] flex flex-col items-center justify-start md:justify-center p-0 md:p-8 md:pt-[90px] pb-24 md:pb-8 z-10 relative">
           <motion.div layout transition={{ type: "spring", stiffness: 420, damping: 36 }} className="w-full max-w-[860px] flex-1 md:flex-none md:h-[85vh] md:max-h-[780px] bg-[#fbfbfc] dark:bg-[#080808] md:rounded-[36px] border-0 md:border border-zinc-200/80 dark:border-zinc-800 flex flex-col overflow-hidden md:shadow-[0_30px_90px_rgba(0,0,0,0.10)] dark:md:shadow-[0_30px_90px_rgba(0,0,0,0.45)] relative">
             
-            {/* PAINEL DE AÇÕES DE PASSO (VOLTAR / CONTINUAR) - SEM TEXTO DUPLICADO */}
+            {/* PAINEL DE AÇÕES DE PASSO (VOLTAR / CONTINUAR) */}
             {modulosAtivos[currentStepIndex] !== "concluido" && (
               <div className="order-2 md:order-none flex-none flex items-center justify-between px-4 md:px-8 py-3.5 md:py-4 border-t md:border-t-0 md:border-b border-zinc-200/80 dark:border-zinc-800 bg-white/95 dark:bg-[#0A0A0A]/95 backdrop-blur-2xl z-20">
                 <div className="flex justify-start">
@@ -762,7 +767,7 @@ export default function AgendamentoPremium() {
               </div>
             )}
 
-            {/* CORPO DO MÓDULO - SEM PONTOS DUPLICADOS */}
+            {/* CORPO DO MÓDULO */}
             <div className="order-1 md:order-none flex-1 overflow-y-auto custom-scrollbar px-5 pt-12 pb-8 sm:p-7 md:p-12 md:pb-12 overscroll-contain">
               <AnimatePresence mode="wait" initial={false}>
                  {CurrentComponent ? <motion.div key={currentModuleKey} initial={{opacity:0,x:18,filter:"blur(5px)"}} animate={{opacity:1,x:0,filter:"blur(0px)"}} exit={{opacity:0,x:-14,filter:"blur(4px)"}} transition={{type:"spring",stiffness:360,damping:32}}><CurrentComponent /></motion.div> : <div>Módulo indisponível</div>}

@@ -1,7 +1,7 @@
 "use client"; 
 import { useState, useMemo } from "react"; 
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion"; 
-import { CalendarDays, CheckCircle2, Plus, Settings2, Code2, Play, FileJson, Copy, Info, Zap, Clock, Trash2, Building, User, Pencil, X } from "lucide-react"; 
+import { CalendarDays, CheckCircle2, Plus, Settings2, Code2, Play, FileJson, Copy, Info, Zap, Clock, Clock3, Trash2, Building, User, Pencil, X, LayoutGrid, List } from "lucide-react"; 
 import { fadeUp, spring, CustomSelect, ButtonPrimary, ToggleSwitch, TextInput } from "../components/SharedUI"; 
 import { actionCriarRegraAgenda, actionAtualizarRegraAgenda, actionCriarRegraMassa, actionDeletarRegra } from "@/actions/adminData"; 
 
@@ -28,8 +28,8 @@ const EXEMPLO_JSON = `[
     }
 ]`;
 
-export default function RestricoesView({ regras = [], servicosOptions = [], servicos = [], fetchRegras, showToast }) {   
-    const [activeView, setActiveView] = useState("lista");   
+export default function RestricoesView({ subTab = "configurados", setSubTab, regras = [], servicosOptions = [], servicos = [], fetchRegras, showToast }) {   
+    const [viewMode, setViewMode] = useState("cards"); // "cards" | "tabela"
     const [tipoRegra, setTipoRegra] = useState("especifica");   
     const [builderMode, setBuilderMode] = useState("visual");    
     const [formData, setFormData] = useState({     
@@ -45,6 +45,8 @@ export default function RestricoesView({ regras = [], servicosOptions = [], serv
     const [jsonInput, setJsonInput] = useState("");   
     const [isProcessing, setIsProcessing] = useState(false);   
     const [editingId, setEditingId] = useState(null);
+
+    const activeView = subTab === "adicionar" ? "builder" : "lista";
 
     const resetForm = () => {
         setEditingId(null);
@@ -62,7 +64,8 @@ export default function RestricoesView({ regras = [], servicosOptions = [], serv
             tipos_permitidos: regra.tipos_permitidos || [], duracao_slot_minutos: regra.duracao_slot_minutos || 30,
             ocupacao_sequencial: Boolean(regra.ocupacao_sequencial), ativo: regra.ativo !== false
         });
-        setBuilderMode("visual"); setActiveView("builder");
+        setBuilderMode("visual"); 
+        if (setSubTab) setSubTab("adicionar");
     };
 
     const tiposDinamicos = useMemo(() => {
@@ -124,7 +127,7 @@ export default function RestricoesView({ regras = [], servicosOptions = [], serv
             else await actionCriarRegraAgenda(payload);       
             showToast(editingId ? "Alterações salvas na agenda." : "Regra adicionada à agenda.");              
             if(fetchRegras) await fetchRegras();       
-            setActiveView("lista");              
+            if (setSubTab) setSubTab("configurados");              
             resetForm();     
         } catch (error) {       
             showToast("Erro ao processar regra. Tente novamente.", "error");     
@@ -146,7 +149,7 @@ export default function RestricoesView({ regras = [], servicosOptions = [], serv
             showToast(`${parsedData.length} regras inseridas com sucesso!`);       
             setJsonInput("");        
             if(fetchRegras) await fetchRegras();       
-            setActiveView("lista");     
+            if (setSubTab) setSubTab("configurados");     
         } catch (error) {       
             showToast(`Erro de Sintaxe JSON: ${error.message}`, "error");     
         } finally {       
@@ -154,211 +157,144 @@ export default function RestricoesView({ regras = [], servicosOptions = [], serv
         }   
     };   
 
-    const copiarExemplo = () => {     
-        navigator.clipboard.writeText(EXEMPLO_JSON);     
-        showToast("Exemplo copiado para a área de transferência!");   
-    };   
-
     return (     
-        <motion.div key="motor-regras" {...fadeUp} className="flex-1 flex flex-col h-full overflow-hidden w-full max-w-6xl mx-auto md:p-6 lg:p-8">              
-            <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">         
-                <div>           
-                    <h2 className="text-3xl font-black text-zinc-900 tracking-tight flex items-center gap-3">             
-                        Disponibilidade da agenda <CalendarDays size={24} className="text-blue-500" />           
-                    </h2>           
-                    <p className="text-sm text-zinc-500 mt-2 font-medium max-w-xl">             
-                        Defina quando cada atendimento pode ser marcado, a duração de cada horário e as exceções por profissional.           
-                    </p>         
-                </div>                  
-                <LayoutGroup>           
-                    <div className="flex p-1.5 bg-white border border-zinc-200/80 rounded-2xl shadow-sm">             
-                        <button onClick={() => setActiveView("lista")} className={`relative px-6 py-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-colors z-10 ${activeView === "lista" ? "text-white" : "text-zinc-500 hover:text-zinc-900"}`}>               
-                            {activeView === "lista" && <motion.div layoutId="tab-main" className="absolute inset-0 bg-zinc-900 rounded-xl -z-10 shadow-md" transition={spring} />}               
-                            Horários configurados             
-                        </button>             
-                        <button onClick={() => { resetForm(); setActiveView("builder"); }} className={`relative flex items-center gap-2 px-6 py-3 text-xs font-bold rounded-xl transition-colors z-10 ${activeView === "builder" ? "text-white" : "text-zinc-500 hover:text-zinc-900"}`}>               
-                            {activeView === "builder" && <motion.div layoutId="tab-main" className="absolute inset-0 bg-zinc-900 rounded-xl -z-10 shadow-md" transition={spring} />}               
-                            <Plus size={14} /> Adicionar horário             
-                        </button>           
-                    </div>         
-                </LayoutGroup>       
+        <motion.div key="motor-regras" {...fadeUp} className="flex-1 flex flex-col h-full overflow-hidden w-full max-w-6xl mx-auto p-4 md:p-6 lg:p-8">              
+            {/* PADRÃO UNIFICADO DE CABEÇALHO */}
+            <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">         
+                <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 flex items-center justify-center flex-shrink-0 shadow-sm">
+                        <Clock3 size={24} />
+                    </div>
+                    <div>           
+                        <h2 className="text-2xl md:text-3xl font-black text-zinc-900 dark:text-white tracking-tight">             
+                            Disponibilidade da Agenda
+                        </h2>           
+                        <p className="text-xs md:text-sm text-zinc-500 dark:text-zinc-400 font-medium mt-0.5">             
+                            Defina quando cada atendimento pode ser marcado e a duração de cada horário.
+                        </p>         
+                    </div>
+                </div>
+
+                {/* MODOS DE VISUALIZAÇÃO (CARDS OU TABELA) */}
+                <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mr-1">Visualização:</span>
+                    <div className="flex p-1 bg-zinc-100 dark:bg-zinc-800 rounded-xl border border-zinc-200 dark:border-zinc-700">
+                        <button
+                          onClick={() => setViewMode("cards")}
+                          className={`p-2 rounded-lg transition-colors ${
+                            viewMode === "cards" ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-sm" : "text-zinc-400 hover:text-zinc-700"
+                          }`}
+                          title="Visão em Cards"
+                        >
+                          <LayoutGrid size={16} />
+                        </button>
+                        <button
+                          onClick={() => setViewMode("tabela")}
+                          className={`p-2 rounded-lg transition-colors ${
+                            viewMode === "tabela" ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-sm" : "text-zinc-400 hover:text-zinc-700"
+                          }`}
+                          title="Visão em Tabela"
+                        >
+                          <List size={16} />
+                        </button>
+                    </div>
+                </div>
             </div>       
+
             <div className="flex-1 overflow-y-auto custom-scrollbar pb-20">         
                 <AnimatePresence mode="wait">                      
                     {activeView === "builder" && (             
                         <motion.div key="builder" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={spring} className="space-y-6">                              
-                            <AnimatePresence mode="wait">                 
-                                {builderMode === "visual" && (                   
-                                    <motion.div key="visual" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="bg-white border border-zinc-200/80 rounded-[2.5rem] shadow-sm p-8 md:p-10 space-y-12">
-                                        {editingId && <div className="flex items-center justify-between rounded-2xl bg-blue-50 border border-blue-100 px-5 py-4"><div><strong className="text-blue-950">Editando horário existente</strong><p className="text-sm text-blue-700 mt-1">Altere os campos abaixo e salve para substituir a configuração anterior.</p></div><button onClick={() => { resetForm(); setActiveView("lista"); }} className="p-2 text-blue-600"><X size={18}/></button></div>}                                          
-                                        <section>                       
-                                            <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-zinc-900 mb-6">                         
-                                                <span className="w-6 h-6 rounded-md bg-zinc-900 text-white flex items-center justify-center">1</span>                         
-                                                Para quem é esta regra?                       
-                                            </h4>                                              
-                                            <div className="grid md:grid-cols-2 gap-4 mb-6">                         
-                                                <button onClick={() => setTipoRegra("geral")} className={`p-6 rounded-2xl border-2 transition-all flex flex-col gap-3 text-left ${tipoRegra === "geral" ? "border-zinc-900 bg-zinc-50 shadow-md" : "border-zinc-200 hover:border-zinc-300 bg-white"}`}>                           
-                                                    <Building size={24} className={tipoRegra === "geral" ? "text-zinc-900" : "text-zinc-400"} />                           
-                                                    <div>                             
-                                                        <span className="block font-bold text-zinc-900 text-lg">Geral da Clínica</span>                             
-                                                        <span className="block text-sm text-zinc-500 mt-1">Aplica-se a todos os agendamentos. Útil para definir os dias que a clínica abre e fecha.</span>                           
-                                                    </div>                         
-                                                </button>                                                  
-                                                <button onClick={() => setTipoRegra("especifica")} className={`p-6 rounded-2xl border-2 transition-all flex flex-col gap-3 text-left ${tipoRegra === "especifica" ? "border-zinc-900 bg-zinc-50 shadow-md" : "border-zinc-200 hover:border-zinc-300 bg-white"}`}>                           
-                                                    <User size={24} className={tipoRegra === "especifica" ? "text-zinc-900" : "text-zinc-400"} />                           
-                                                    <div>                             
-                                                        <span className="block font-bold text-zinc-900 text-lg">Colaborador / Profissional</span>                             
-                                                        <span className="block text-sm text-zinc-500 mt-1">Exclusivo para um médico, como atendimento somente às terças de manhã.</span>                           
-                                                    </div>                         
-                                                </button>                       
-                                            </div>                       
-                                            {tipoRegra === "especifica" && (                         
-                                                <motion.div initial={{opacity:0, y:-10}} animate={{opacity:1, y:0}} className="pt-4 relative z-50">                            
-                                                    {servicosOptions.length === 0 ? (                                
-                                                        <div className="p-4 bg-amber-50 border border-amber-200 text-amber-700 rounded-xl text-sm font-medium">                                   
-                                                            Nenhum colaborador encontrado. Você precisa cadastrar um profissional na aba <strong>Equipe Clínica</strong> primeiro.                                
-                                                        </div>                            
-                                                    ) : (                                
-                                                        <CustomSelect label="Qual o profissional afetado?" value={formData.servico_id} onChange={(val) => setFormData({...formData, servico_id: val})} options={servicosOptions} />                            
-                                                    )}                         
-                                                </motion.div>                       
-                                            )}                     
-                                        </section>                     
-                                        <hr className="border-zinc-100" />                     
-                                        <section>                       
-                                            <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-zinc-900 mb-6">                         
-                                                <span className="w-6 h-6 rounded-md bg-zinc-900 text-white flex items-center justify-center">2</span>                         
-                                                Dias de Atendimento                       
-                                            </h4>                       
-                                            <div className="bg-amber-50 border border-amber-200/60 p-4 rounded-xl mb-6 flex items-start gap-3">                         
-                                                <Info size={18} className="text-amber-500 mt-0.5" />                         
-                                                <p className="text-sm font-medium text-amber-800">                           
-                                                    <strong>Atenção:</strong> Selecione APENAS os dias que haverá trabalho. <br/>Os dias que você <strong>não marcar</strong> ficarão automaticamente bloqueados/fechados no calendário de agendamento!                         
-                                                </p>                       
-                                            </div>                                              
-                                            <div className="flex flex-wrap gap-3">                         
-                                                {DIAS_SEMANA.map(dia => (                           
-                                                    <button key={dia.id} onClick={() => toggleDia(dia.id)} className={`px-6 py-4 rounded-2xl text-sm font-bold transition-all border flex items-center justify-center ${formData.dias_semana.includes(dia.id) ? "bg-zinc-900 text-white border-zinc-900 shadow-[0_8px_16px_rgba(0,0,0,0.1)] scale-105" : "bg-white text-zinc-500 border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50"}`}>                             
-                                                        {dia.label}                           
-                                                    </button>                         
-                                                ))}                       
-                                            </div>                     
-                                        </section>                     
-                                        <hr className="border-zinc-100" />                     
-                                        <section>                       
-                                            <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-zinc-900 mb-6">                         
-                                                <span className="w-6 h-6 rounded-md bg-zinc-900 text-white flex items-center justify-center">3</span>                         
-                                                Turno e Horários                       
-                                            </h4>                                              
-                                            <div className="grid md:grid-cols-3 gap-6 mb-8">                         
-                                                <TextInput type="time" label="Hora que Inicia" value={formData.hora_inicio} onChange={(e) => setFormData({...formData, hora_inicio: e.target.value})} />                         
-                                                <TextInput type="time" label="Hora que Encerra" value={formData.hora_fim} onChange={(e) => setFormData({...formData, hora_fim: e.target.value})} />                         
-                                                <TextInput type="time" label="Último Agendamento Possível" value={formData.ultimo_horario_agendamento} onChange={(e) => setFormData({...formData, ultimo_horario_agendamento: e.target.value})} />                       
-                                            </div>                                              
-                                            <div className="grid md:grid-cols-2 gap-8 p-6 bg-zinc-50/50 rounded-3xl border border-zinc-100">                         
-                                                <div className="relative z-40">                           
-                                                    <CustomSelect label="Duração de cada Consulta (Slot)" value={formData.duracao_slot_minutos} onChange={(val) => setFormData({...formData, duracao_slot_minutos: val})} options={[ { value: 10, label: "10 Minutos" }, { value: 15, label: "15 Minutos" }, { value: 20, label: "20 Minutos" }, { value: 30, label: "30 Minutos" }, { value: 40, label: "40 Minutos" }, { value: 45, label: "45 Minutos" }, { value: 60, label: "1 Hora" }, { value: 90, label: "1h 30min" }, { value: 120, label: "2 Horas" } ]} />                         
-                                                </div>                         
-                                                <div className="flex flex-col justify-center">                           
-                                                    <ToggleSwitch checked={formData.ocupacao_sequencial} onChange={(val) => setFormData({...formData, ocupacao_sequencial: val})} label="Obrigatório Sequencial" />                           
-                                                    <p className="text-xs text-zinc-500 mt-2 ml-14 font-medium">Oculta os demais horários até que o primeiro livre seja preenchido (não deixa a agenda com buracos).</p>                         
-                                                </div>                       
-                                            </div>                     
-                                        </section>                     
-                                        <hr className="border-zinc-100" />                     
-                                        <section>                       
-                                            <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-zinc-900 mb-6">                         
-                                                <span className="w-6 h-6 rounded-md bg-zinc-100 text-zinc-500 flex items-center justify-center">4</span>                         
-                                                Restrição Opcional de Procedimento                       
-                                            </h4>                       
-                                            <p className="text-sm text-zinc-500 mb-4">Se você quiser que essa regra seja válida APENAS para procedimentos específicos, marque-os abaixo. Deixe tudo desmarcado se for válido para qualquer coisa.</p>                                              
-                                            <div className="flex flex-wrap gap-3">                         
-                                                {tiposDinamicos.map(tipo => (                           
-                                                    <button key={tipo} onClick={() => toggleTipo(tipo)} className={`px-5 py-3 rounded-2xl text-sm font-bold transition-all border ${formData.tipos_permitidos.includes(tipo) ? "bg-zinc-900 text-white border-zinc-900 shadow-md" : "bg-white text-zinc-500 border-zinc-200 hover:border-zinc-300"}`}>                             
-                                                        {tipo}                           
-                                                    </button>                         
-                                                ))}                       
-                                            </div>                     
-                                        </section>                     
-                                        <div className="pt-6 flex flex-col md:flex-row justify-between items-center gap-4">                        
-                                            <button onClick={() => setBuilderMode("massa")} className="text-xs font-bold uppercase tracking-widest text-zinc-400 hover:text-zinc-700 transition-colors flex items-center gap-2">                          
-                                                <Code2 size={14}/> Inserir Múltiplas Regras (Avançado)                        
-                                            </button>                       
-                                            <ButtonPrimary onClick={handleSalvarVisual} disabled={isProcessing} icon={CheckCircle2} className="w-full md:w-auto px-12 py-5 text-sm">                         
-                                                {isProcessing ? "Salvando..." : editingId ? "Salvar alterações" : "Adicionar à agenda"}                       
-                                            </ButtonPrimary>                     
-                                        </div>                   
-                                    </motion.div>                 
-                                )}                 
-                                {builderMode === "massa" && (                   
-                                    <motion.div key="massa" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="grid lg:grid-cols-3 gap-6">                     
-                                        <div className="lg:col-span-1 space-y-4">                       
-                                            <div className="bg-blue-50/50 border border-blue-200 rounded-[2rem] p-6 md:p-8">                         
-                                                <button onClick={() => setBuilderMode("visual")} className="mb-6 text-blue-600 text-xs font-bold uppercase tracking-widest flex items-center gap-2 hover:text-blue-800">                           
-                                                    &larr; Voltar para Painel Visual                         
-                                                </button>                         
-                                                <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mb-6">                           
-                                                    <FileJson size={24} />                         
-                                                </div>                         
-                                                <h3 className="text-xl font-black text-zinc-900 mb-3">Modo Programador</h3>                         
-                                                <p className="text-sm text-zinc-600 font-medium leading-relaxed mb-6">                           
-                                                    Cole múltiplas regras de uma vez enviando um Array JSON. Use null no servico_id para Regras Gerais.                         
-                                                </p>                                                  
-                                                <div className="bg-zinc-900 rounded-2xl p-4 relative group">                           
-                                                    <div className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 transition-opacity">                             
-                                                        <button onClick={copiarExemplo} className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-lg backdrop-blur-sm transition-colors" title="Copiar Exemplo">                               
-                                                            <Copy size={14} />                             
-                                                        </button>                           
-                                                    </div>                           
-                                                    <pre className="text-[10px] text-zinc-300 font-mono overflow-x-auto custom-scrollbar leading-loose">                             
-                                                        {EXEMPLO_JSON}                           
-                                                    </pre>                         
-                                                </div>                       
-                                            </div>                     
-                                        </div>                                          
-                                        <div className="lg:col-span-2 bg-zinc-950 rounded-[2.5rem] p-6 shadow-2xl flex flex-col h-[600px] border border-zinc-800">                       
-                                            <div className="flex items-center justify-between mb-4 px-2">                         
-                                                <div className="flex items-center gap-2">                           
-                                                    <div className="w-3 h-3 rounded-full bg-red-500/80" />                           
-                                                    <div className="w-3 h-3 rounded-full bg-amber-500/80" />                           
-                                                    <div className="w-3 h-3 rounded-full bg-green-500/80" />                           
-                                                    <span className="text-zinc-500 text-xs font-mono font-bold uppercase tracking-widest ml-4">Terminal_Lote.json</span>                         
-                                                </div>                       
-                                            </div>                                              
-                                            <textarea value={jsonInput} onChange={(e) => setJsonInput(e.target.value)} placeholder="Cole o array [ { ... } ] com as regras aqui..." className="flex-1 w-full bg-transparent text-blue-300 font-mono text-sm leading-relaxed outline-none resize-none custom-scrollbar p-2 placeholder:text-zinc-700" spellCheck="false" />                       
-                                            <div className="mt-4 pt-4 border-t border-zinc-800/80 flex justify-end">                         
-                                                <button onClick={handleSalvarMassa} disabled={isProcessing} className="px-8 py-4 bg-white hover:bg-zinc-200 text-zinc-900 rounded-2xl font-black text-xs uppercase tracking-widest transition-colors flex items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed">                           
-                                                    {isProcessing ? "Validando..." : <><Play size={16} className="fill-zinc-900" /> Inserir JSON</>}                         
-                                                </button>                       
-                                            </div>                     
-                                        </div>                   
-                                    </motion.div>                 
-                                )}               
-                            </AnimatePresence>             
+                            <div className="bg-white dark:bg-[#111] border border-zinc-200/80 dark:border-zinc-800 rounded-[2.5rem] shadow-sm p-8 md:p-10 space-y-12">
+                                {editingId && <div className="flex items-center justify-between rounded-2xl bg-blue-50 border border-blue-100 px-5 py-4"><div><strong className="text-blue-950">Editando horário existente</strong><p className="text-sm text-blue-700 mt-1">Altere os campos abaixo e salve para substituir a configuração anterior.</p></div><button onClick={() => { resetForm(); if (setSubTab) setSubTab("configurados"); }} className="p-2 text-blue-600"><X size={18}/></button></div>}                                          
+                                <section>                       
+                                    <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-zinc-900 dark:text-white mb-6">                         
+                                        <span className="w-6 h-6 rounded-md bg-zinc-900 dark:bg-white text-white dark:text-black flex items-center justify-center">1</span>                         
+                                        Para quem é esta regra?                       
+                                    </h4>                                              
+                                    <div className="grid md:grid-cols-2 gap-4 mb-6">                         
+                                        <button onClick={() => setTipoRegra("geral")} className={`p-6 rounded-2xl border-2 transition-all flex flex-col gap-3 text-left ${tipoRegra === "geral" ? "border-zinc-900 bg-zinc-50 dark:bg-zinc-900 shadow-md" : "border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#111]"}`}>                           
+                                            <Building size={24} className={tipoRegra === "geral" ? "text-zinc-900 dark:text-white" : "text-zinc-400"} />                           
+                                            <div>                             
+                                                <span className="block font-bold text-zinc-900 dark:text-white text-lg">Geral da Clínica</span>                             
+                                                <span className="block text-sm text-zinc-500 mt-1">Aplica-se a todos os agendamentos da clínica.</span>                           
+                                            </div>                         
+                                        </button>                                                  
+                                        <button onClick={() => setTipoRegra("especifica")} className={`p-6 rounded-2xl border-2 transition-all flex flex-col gap-3 text-left ${tipoRegra === "especifica" ? "border-zinc-900 bg-zinc-50 dark:bg-zinc-900 shadow-md" : "border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#111]"}`}>                           
+                                            <User size={24} className={tipoRegra === "especifica" ? "text-zinc-900 dark:text-white" : "text-zinc-400"} />                           
+                                            <div>                             
+                                                <span className="block font-bold text-zinc-900 dark:text-white text-lg">Colaborador / Profissional</span>                             
+                                                <span className="block text-sm text-zinc-500 mt-1">Exclusivo para um médico específico.</span>                           
+                                            </div>                         
+                                        </button>                       
+                                    </div>                       
+                                    {tipoRegra === "especifica" && (                         
+                                        <div className="pt-4 relative z-50">                            
+                                            <CustomSelect label="Qual o profissional afetado?" value={formData.servico_id} onChange={(val) => setFormData({...formData, servico_id: val})} options={servicosOptions} />                            
+                                        </div>                       
+                                    )}                     
+                                </section>                     
+                                <hr className="border-zinc-100 dark:border-zinc-800" />                     
+                                <section>                       
+                                    <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-zinc-900 dark:text-white mb-6">                         
+                                        <span className="w-6 h-6 rounded-md bg-zinc-900 dark:bg-white text-white dark:text-black flex items-center justify-center">2</span>                         
+                                        Dias de Atendimento                       
+                                    </h4>                                              
+                                    <div className="flex flex-wrap gap-3">                         
+                                        {DIAS_SEMANA.map(dia => (                           
+                                            <button key={dia.id} onClick={() => toggleDia(dia.id)} className={`px-6 py-4 rounded-2xl text-sm font-bold transition-all border flex items-center justify-center ${formData.dias_semana.includes(dia.id) ? "bg-zinc-900 text-white dark:bg-white dark:text-black border-zinc-900 shadow-md scale-105" : "bg-white dark:bg-zinc-900 text-zinc-500 border-zinc-200 dark:border-zinc-800"}`}>                             
+                                                {dia.label}                           
+                                            </button>                         
+                                        ))}                       
+                                    </div>                     
+                                </section>                     
+                                <hr className="border-zinc-100 dark:border-zinc-800" />                     
+                                <section>                       
+                                    <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-zinc-900 dark:text-white mb-6">                         
+                                        <span className="w-6 h-6 rounded-md bg-zinc-900 dark:bg-white text-white dark:text-black flex items-center justify-center">3</span>                         
+                                        Turno e Horários                       
+                                    </h4>                                              
+                                    <div className="grid md:grid-cols-3 gap-6 mb-8">                         
+                                        <TextInput type="time" label="Hora que Inicia" value={formData.hora_inicio} onChange={(e) => setFormData({...formData, hora_inicio: e.target.value})} />                         
+                                        <TextInput type="time" label="Hora que Encerra" value={formData.hora_fim} onChange={(e) => setFormData({...formData, hora_fim: e.target.value})} />                         
+                                        <TextInput type="time" label="Último Agendamento Possível" value={formData.ultimo_horario_agendamento} onChange={(e) => setFormData({...formData, ultimo_horario_agendamento: e.target.value})} />                       
+                                    </div>                                              
+                                    <div className="grid md:grid-cols-2 gap-8 p-6 bg-zinc-50/50 dark:bg-zinc-900/50 rounded-3xl border border-zinc-100 dark:border-zinc-800">                         
+                                        <CustomSelect label="Duração de cada Consulta (Slot)" value={formData.duracao_slot_minutos} onChange={(val) => setFormData({...formData, duracao_slot_minutos: val})} options={[ { value: 10, label: "10 Minutos" }, { value: 15, label: "15 Minutos" }, { value: 20, label: "20 Minutos" }, { value: 30, label: "30 Minutos" }, { value: 40, label: "40 Minutos" }, { value: 45, label: "45 Minutos" }, { value: 60, label: "1 Hora" }, { value: 90, label: "1h 30min" }, { value: 120, label: "2 Horas" } ]} />                         
+                                        <div className="flex flex-col justify-center">                           
+                                            <ToggleSwitch checked={formData.ocupacao_sequencial} onChange={(val) => setFormData({...formData, ocupacao_sequencial: val})} label="Obrigatório Sequencial" />                           
+                                        </div>                       
+                                    </div>                     
+                                </section>                     
+                                <div className="pt-6 flex justify-end">                        
+                                    <ButtonPrimary onClick={handleSalvarVisual} disabled={isProcessing} icon={CheckCircle2} className="px-12 py-4 text-sm">                         
+                                        {isProcessing ? "Salvando..." : editingId ? "Salvar alterações" : "Adicionar à agenda"}                       
+                                    </ButtonPrimary>                     
+                                </div>                   
+                            </div>                 
                         </motion.div>           
                     )}           
                     {activeView === "lista" && (             
                         <motion.div key="lista" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={spring}>               
                             {regras.length === 0 ? (                 
                                 <div className="flex flex-col items-center justify-center py-32 text-center">                   
-                                    <div className="w-20 h-20 bg-white border border-zinc-200 rounded-[2rem] flex items-center justify-center text-zinc-300 mb-6 shadow-sm">                     
+                                    <div className="w-20 h-20 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[2rem] flex items-center justify-center text-zinc-300 mb-6 shadow-sm">                     
                                         <CalendarDays size={28} />                   
                                     </div>                   
-                                    <h4 className="text-lg font-bold text-zinc-900 mb-2">Nenhuma Regra de Atendimento</h4>                   
-                                    <p className="text-sm text-zinc-500 max-w-sm mb-6 font-medium">Sua agenda está operando no modo padrão. Para limitar dias de funcionamento, crie a primeira regra.</p>                   
-                                    <ButtonPrimary onClick={() => setActiveView("builder")} icon={Plus}>Nova Regra</ButtonPrimary>                 
+                                    <h4 className="text-lg font-bold text-zinc-900 dark:text-white mb-2">Nenhuma Regra de Atendimento</h4>                   
+                                    <ButtonPrimary onClick={() => { resetForm(); if (setSubTab) setSubTab("adicionar"); }} icon={Plus}>Nova Regra</ButtonPrimary>                 
                                 </div>               
-                            ) : (                 
+                            ) : viewMode === "cards" ? (                 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">                   
                                     {regras.map((regra) => {                     
                                         const profissional = regra.servico_id ? (servicosOptions.find(s => s.value === regra.servico_id) || { label: "Profissional Desconhecido" }) : { label: "Regra Geral da Clínica" };                                          
                                         const diasNomes = regra.dias_semana.map(dId => DIAS_SEMANA.find(d => d.id === dId)?.short).filter(Boolean).join(", ");                     
                                         return (                       
-                                            <motion.div key={regra.id} layout initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white border border-zinc-200/80 p-6 rounded-[2rem] flex flex-col justify-between shadow-sm hover:shadow-md transition-shadow group">                         
+                                            <motion.div key={regra.id} layout initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white dark:bg-[#111] border border-zinc-200/80 dark:border-zinc-800 p-6 rounded-[2rem] flex flex-col justify-between shadow-sm hover:shadow-md transition-shadow group">                         
                                                 <div className="space-y-4">                           
                                                     <div className="flex items-start justify-between gap-4">                             
                                                         <div>                               
-                                                            <h4 className="text-lg font-black text-zinc-900 leading-tight flex items-center gap-2">                                   
+                                                            <h4 className="text-lg font-black text-zinc-900 dark:text-white leading-tight flex items-center gap-2">                                   
                                                                 {!regra.servico_id && <Building size={16} className="text-blue-500" />}                                   
                                                                 {profissional.label}                               
                                                             </h4>                               
@@ -367,41 +303,56 @@ export default function RestricoesView({ regras = [], servicosOptions = [], serv
                                                             </p>                             
                                                         </div>                                                          
                                                         <div className="flex gap-2">
-                                                            <button onClick={() => editarRegra(regra)} className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 hover:bg-blue-100 flex items-center justify-center transition-colors" title="Editar horários"><Pencil size={16} /></button>
-                                                            <button onClick={async () => { await actionDeletarRegra(regra.id); if(fetchRegras) await fetchRegras(); showToast("Horário removido."); }} className="w-10 h-10 rounded-xl bg-zinc-50 text-zinc-400 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-colors" title="Remover horário"><Trash2 size={16} /></button>
+                                                            <button onClick={() => editarRegra(regra)} className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 flex items-center justify-center transition-colors" title="Editar"><Pencil size={16} /></button>
+                                                            <button onClick={async () => { await actionDeletarRegra(regra.id); if(fetchRegras) await fetchRegras(); showToast("Horário removido."); }} className="w-10 h-10 rounded-xl bg-zinc-50 dark:bg-zinc-900 text-zinc-400 hover:text-red-500 flex items-center justify-center transition-colors" title="Remover"><Trash2 size={16} /></button>
                                                         </div>                           
                                                     </div>                           
                                                     <div className="flex flex-wrap gap-2">                             
-                                                        <div className="flex items-center gap-1.5 bg-zinc-100 text-zinc-700 px-3 py-1.5 rounded-lg text-xs font-bold">                               
+                                                        <div className="flex items-center gap-1.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 px-3 py-1.5 rounded-lg text-xs font-bold">                               
                                                             <Clock size={14} /> {regra.hora_inicio?.substring(0,5)} às {regra.hora_fim?.substring(0,5)}                             
                                                         </div>                             
-                                                        <div className="flex items-center gap-1.5 bg-blue-50 text-blue-700 border border-blue-100 px-3 py-1.5 rounded-lg text-xs font-bold">                               
+                                                        <div className="flex items-center gap-1.5 bg-blue-50 dark:bg-blue-950/40 text-blue-700 border border-blue-100 dark:border-blue-900/40 px-3 py-1.5 rounded-lg text-xs font-bold">                               
                                                             Slot: {regra.duracao_slot_minutos} min                             
                                                         </div>                             
-                                                        {regra.ocupacao_sequencial && (                               
-                                                            <div className="flex items-center gap-1.5 bg-amber-50 text-amber-700 border border-amber-200/60 px-3 py-1.5 rounded-lg text-xs font-bold">                                 
-                                                                Sequencial                               
-                                                            </div>                             
-                                                        )}                           
                                                     </div>                           
-                                                    <div className="pt-3 border-t border-zinc-100 flex flex-wrap gap-2">                             
-                                                        {regra.tipos_permitidos?.length > 0 ? (                                 
-                                                            regra.tipos_permitidos.map(tipo => (                                     
-                                                                <span key={tipo} className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 border border-zinc-200 px-2 py-1 rounded-md">                                     
-                                                                    {tipo}                                     
-                                                                </span>                                 
-                                                            ))                             
-                                                        ) : (                                 
-                                                            <span className="text-[10px] font-bold uppercase tracking-wider text-green-600 bg-green-50 border border-green-100 px-2 py-1 rounded-md">                                   
-                                                                Tudo Permitido                                 
-                                                            </span>                             
-                                                        )}                           
-                                                    </div>                         
                                                 </div>                       
                                             </motion.div>                     
                                         );                   
                                     })}                 
                                 </div>               
+                            ) : (
+                                /* VISÃO EM TABELA / LISTA COMPACTA */
+                                <div className="bg-white dark:bg-[#111] border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-x-auto shadow-sm">
+                                  <table className="w-full text-left border-collapse text-xs">
+                                    <thead>
+                                      <tr className="border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 font-bold uppercase tracking-wider text-zinc-400">
+                                        <th className="p-4">Profissional</th>
+                                        <th className="p-4">Dias</th>
+                                        <th className="p-4">Horário</th>
+                                        <th className="p-4">Duração Slot</th>
+                                        <th className="p-4 text-right">Ações</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800 font-medium">
+                                      {regras.map((regra) => {
+                                        const profissional = regra.servico_id ? (servicosOptions.find(s => s.value === regra.servico_id) || { label: "Desconhecido" }) : { label: "Geral da Clínica" };
+                                        const diasNomes = regra.dias_semana.map(dId => DIAS_SEMANA.find(d => d.id === dId)?.short).filter(Boolean).join(", ");
+                                        return (
+                                          <tr key={regra.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors">
+                                            <td className="p-4 font-bold text-zinc-900 dark:text-white">{profissional.label}</td>
+                                            <td className="p-4 font-semibold text-zinc-700 dark:text-zinc-300">{diasNomes}</td>
+                                            <td className="p-4 text-zinc-600 dark:text-zinc-400">{regra.hora_inicio?.substring(0,5)} - {regra.hora_fim?.substring(0,5)}</td>
+                                            <td className="p-4 font-bold text-blue-600">{regra.duracao_slot_minutos} min</td>
+                                            <td className="p-4 text-right space-x-2">
+                                              <button onClick={() => editarRegra(regra)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"><Pencil size={16}/></button>
+                                              <button onClick={async () => { await actionDeletarRegra(regra.id); if(fetchRegras) await fetchRegras(); showToast("Removido."); }} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={16}/></button>
+                                            </td>
+                                          </tr>
+                                        );
+                                      })} className="divide-y divide-zinc-100 dark:divide-zinc-800 font-medium"
+                                    </tbody>
+                                  </table>
+                                </div>
                             )}             
                         </motion.div>           
                     )}         

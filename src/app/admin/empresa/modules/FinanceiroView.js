@@ -1,26 +1,22 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   PenLine,
   Plus,
   X,
   Stethoscope,
-  Code,
-  Info,
   DollarSign,
   CalendarDays,
   CheckCircle2,
-  ChevronRight,
-  Hash,
   Trash2,
   Layers,
-  Clock3,
   PauseCircle,
-  Calendar,
   Search,
-  UserCheck
+  UserCheck,
+  LayoutGrid,
+  List
 } from "lucide-react";
 import {
   fadeUp,
@@ -126,8 +122,6 @@ const ServicoForm = ({ initialData, onSave, onCancel, loading, especialidadesLis
     motivo_bloqueio_agenda: initialData?.motivo_bloqueio_agenda || "",
     ativo: initialData?.ativo !== false
   });
-
-  const [devModeEnabled, setDevModeEnabled] = useState(false);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -259,9 +253,6 @@ const ServicoForm = ({ initialData, onSave, onCancel, loading, especialidadesLis
                 value={formData.motivo_bloqueio_agenda}
                 onChange={(e) => setFormData({ ...formData, motivo_bloqueio_agenda: e.target.value })}
               />
-              <p className="md:col-span-2 text-xs text-amber-800 dark:text-amber-300 leading-relaxed font-medium">
-                O perfil do especialista permanece ativo e visível na clínica, mas o calendário só libera vagas após o dia informado acima.
-              </p>
             </div>
           </section>
 
@@ -323,8 +314,8 @@ const ServicoForm = ({ initialData, onSave, onCancel, loading, especialidadesLis
 // ==========================================
 // COMPONENTE PRINCIPAL (VIEW)
 // ==========================================
-export default function FinanceiroView({ servicos = [], showToast, fetchServicos }) {
-  const [subTab, setSubTab] = useState("catalogo"); // "catalogo" | "especialidades" | "pausas"
+export default function FinanceiroView({ subTab = "corpo", setSubTab, servicos = [], showToast, fetchServicos }) {
+  const [viewMode, setViewMode] = useState("cards"); // "cards" | "tabela"
   const [editingServico, setEditingServico] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -347,12 +338,12 @@ export default function FinanceiroView({ servicos = [], showToast, fetchServicos
 
   const handleOpenForm = (servico = null) => {
     setEditingServico(servico);
-    setSubTab("formulario");
+    if (setSubTab) setSubTab("formulario");
   };
 
   const handleCloseForm = () => {
     setEditingServico(null);
-    setSubTab("catalogo");
+    if (setSubTab) setSubTab("corpo");
   };
 
   const handleSaveServico = async (formData, isEditing) => {
@@ -443,72 +434,45 @@ export default function FinanceiroView({ servicos = [], showToast, fetchServicos
   return (
     <motion.div key="financeiro" {...fadeUp} className="p-6 md:p-10 mx-auto w-full max-w-7xl overflow-y-auto h-full custom-scrollbar relative">
       
-      {/* Cabeçalho e Sub-abas */}
-      <div className="mb-8 flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6">
+      {/* PADRÃO UNIFICADO DE CABEÇALHO */}
+      <div className="mb-8 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
         <div>
-          <h2 className="text-3xl font-black text-zinc-900 dark:text-white tracking-tight">Catálogo e Profissionais</h2>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-2 font-medium">
+          <h2 className="text-3xl font-black text-zinc-900 dark:text-white tracking-tight">Serviços e Profissionais</h2>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1 font-medium">
             Gerencie especialidades, corpo clínico e pausamento temporário de horários.
           </p>
         </div>
 
-        <LayoutGroup>
-          <div className="flex p-1.5 bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl shadow-sm overflow-x-auto">
+        {/* MODOS DE VISUALIZAÇÃO (CARDS OU TABELA) */}
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mr-1">Visualização:</span>
+          <div className="flex p-1 bg-zinc-100 dark:bg-zinc-800 rounded-xl border border-zinc-200 dark:border-zinc-700">
             <button
-              onClick={handleCloseForm}
-              className={`relative px-5 py-2.5 text-xs font-bold uppercase tracking-widest rounded-xl transition-colors z-10 whitespace-nowrap ${
-                subTab === "catalogo" ? "text-white" : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+              onClick={() => setViewMode("cards")}
+              className={`p-2 rounded-lg transition-colors ${
+                viewMode === "cards" ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-sm" : "text-zinc-400 hover:text-zinc-700"
               }`}
+              title="Visão em Cards"
             >
-              {subTab === "catalogo" && (
-                <motion.div layoutId="tab-fin" className="absolute inset-0 bg-zinc-900 dark:bg-white dark:text-black rounded-xl -z-10 shadow-md" transition={spring} />
-              )}
-              Corpo Clínico ({servicos.length})
+              <LayoutGrid size={16} />
             </button>
-
             <button
-              onClick={() => setSubTab("especialidades")}
-              className={`relative px-5 py-2.5 text-xs font-bold uppercase tracking-widest rounded-xl transition-colors z-10 whitespace-nowrap ${
-                subTab === "especialidades" ? "text-white" : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+              onClick={() => setViewMode("tabela")}
+              className={`p-2 rounded-lg transition-colors ${
+                viewMode === "tabela" ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-sm" : "text-zinc-400 hover:text-zinc-700"
               }`}
+              title="Visão em Tabela"
             >
-              {subTab === "especialidades" && (
-                <motion.div layoutId="tab-fin" className="absolute inset-0 bg-zinc-900 dark:bg-white dark:text-black rounded-xl -z-10 shadow-md" transition={spring} />
-              )}
-              Especialidades
-            </button>
-
-            <button
-              onClick={() => setSubTab("pausas")}
-              className={`relative px-5 py-2.5 text-xs font-bold uppercase tracking-widest rounded-xl transition-colors z-10 whitespace-nowrap flex items-center gap-1.5 ${
-                subTab === "pausas" ? "text-white" : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
-              }`}
-            >
-              {subTab === "pausas" && (
-                <motion.div layoutId="tab-fin" className="absolute inset-0 bg-zinc-900 dark:bg-white dark:text-black rounded-xl -z-10 shadow-md" transition={spring} />
-              )}
-              <PauseCircle size={14} /> Pausas por Especialista ({servicosPausados.length})
-            </button>
-
-            <button
-              onClick={() => handleOpenForm(null)}
-              className={`relative flex items-center gap-1.5 px-5 py-2.5 text-xs font-bold uppercase tracking-widest rounded-xl transition-colors z-10 whitespace-nowrap ${
-                subTab === "formulario" && !editingServico ? "text-white" : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
-              }`}
-            >
-              {subTab === "formulario" && !editingServico && (
-                <motion.div layoutId="tab-fin" className="absolute inset-0 bg-zinc-900 dark:bg-white dark:text-black rounded-xl -z-10 shadow-md" transition={spring} />
-              )}
-              <Plus size={14} /> Novo Cadastro
+              <List size={16} />
             </button>
           </div>
-        </LayoutGroup>
+        </div>
       </div>
 
       <AnimatePresence mode="wait">
         
         {/* SUB-ABA 1: CORPO CLÍNICO */}
-        {subTab === "catalogo" && (
+        {subTab === "corpo" && (
           <motion.div key="grid" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={spring} className="space-y-6">
             <div className="relative max-w-md">
               <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" />
@@ -527,15 +491,48 @@ export default function FinanceiroView({ servicos = [], showToast, fetchServicos
                   <Stethoscope size={28} />
                 </div>
                 <h4 className="text-lg font-bold text-zinc-900 dark:text-white mb-2">Nenhum profissional cadastrado</h4>
-                <p className="text-sm text-zinc-500 max-w-sm mb-6">Comece adicionando o corpo clínico para habilitar o agendamento.</p>
                 <ButtonPrimary onClick={() => handleOpenForm(null)} icon={Plus}>Adicionar Primeiro Cadastro</ButtonPrimary>
               </div>
-            ) : (
+            ) : viewMode === "cards" ? (
               <motion.div variants={staggerContainer} initial="initial" animate="animate" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredServicos.map((srv) => (
                   <ServicoCard key={srv.id} srv={srv} onEdit={handleOpenForm} />
                 ))}
               </motion.div>
+            ) : (
+              /* VISÃO EM TABELA / LISTA COMPACTA */
+              <div className="bg-white dark:bg-[#111] border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-x-auto shadow-sm">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 font-bold uppercase tracking-wider text-zinc-400">
+                      <th className="p-4">Profissional / Serviço</th>
+                      <th className="p-4">Categoria</th>
+                      <th className="p-4">Especialidade(s)</th>
+                      <th className="p-4">Valor Total</th>
+                      <th className="p-4">Status</th>
+                      <th className="p-4 text-right">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800 font-medium">
+                    {filteredServicos.map((srv) => (
+                      <tr key={srv.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors">
+                        <td className="p-4 font-bold text-zinc-900 dark:text-white">{srv.nome}</td>
+                        <td className="p-4 text-zinc-600 dark:text-zinc-400">{srv.tipo}</td>
+                        <td className="p-4 text-zinc-600 dark:text-zinc-400">{srv.especialidade || "-"}</td>
+                        <td className="p-4 font-bold text-zinc-900 dark:text-white">R$ {srv.preco ? Number(srv.preco).toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : "0,00"}</td>
+                        <td className="p-4">
+                          <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold uppercase ${srv.ativo ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-700"}`}>
+                            {srv.ativo ? "Ativo" : "Inativo"}
+                          </span>
+                        </td>
+                        <td className="p-4 text-right">
+                          <button onClick={() => handleOpenForm(srv)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"><PenLine size={16}/></button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </motion.div>
         )}
@@ -583,7 +580,7 @@ export default function FinanceiroView({ servicos = [], showToast, fetchServicos
           </motion.div>
         )}
 
-        {/* SUB-ABA 3: PAUSAS POR ESPECIALISTA (ATÉ DETERMINADA DATA) */}
+        {/* SUB-ABA 3: PAUSAS POR ESPECIALISTA */}
         {subTab === "pausas" && (
           <motion.div key="pausas" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={spring} className="max-w-4xl mx-auto space-y-6">
             <div className="bg-white dark:bg-[#111] p-8 border border-zinc-200/80 dark:border-zinc-800 rounded-[2.5rem] shadow-sm">
@@ -601,7 +598,6 @@ export default function FinanceiroView({ servicos = [], showToast, fetchServicos
                 <div className="text-center p-12 bg-zinc-50 dark:bg-zinc-900 border border-dashed border-zinc-200 dark:border-zinc-800 rounded-3xl text-zinc-500">
                   <UserCheck size={36} className="mx-auto mb-3 text-zinc-300 dark:text-zinc-700" />
                   <p className="font-bold text-base">Todos os especialistas estão com agenda liberada normalmente!</p>
-                  <p className="text-xs text-zinc-400 mt-1">Para pausar um especialista até X dia, edite o cadastro dele no Corpo Clínico.</p>
                 </div>
               ) : (
                 <div className="grid gap-4">
@@ -617,9 +613,6 @@ export default function FinanceiroView({ servicos = [], showToast, fetchServicos
                         <p className="text-xs text-amber-800 dark:text-amber-300 mt-2 font-medium">
                           Indisponível até: <strong>{new Date(`${srv.agendamento_bloqueado_ate}T12:00:00`).toLocaleDateString("pt-BR")}</strong>
                         </p>
-                        {srv.motivo_bloqueio_agenda && (
-                          <p className="text-xs text-zinc-500 mt-1">Motivo: {srv.motivo_bloqueio_agenda}</p>
-                        )}
                       </div>
 
                       <button onClick={() => handleOpenForm(srv)} className="px-4 py-2.5 bg-white dark:bg-zinc-900 border border-amber-200 dark:border-amber-900/40 text-amber-900 dark:text-amber-200 rounded-xl text-xs font-bold hover:bg-amber-100 transition-colors self-start sm:self-center">

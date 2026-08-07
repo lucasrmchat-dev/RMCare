@@ -193,7 +193,7 @@ export default function AccountView({ showToast }) {
                 <TextInput
                   type="text"
                   label="Novo Usuário (Login) *"
-                  placeholder="Ex.: admin.rmcare"
+                  placeholder="Ex.: admin.rmagenda"
                   value={usernameForm.newUsername}
                   onChange={(e) => handleCheckUsername(e.target.value)}
                   required

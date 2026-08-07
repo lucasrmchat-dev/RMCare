@@ -1,7 +1,7 @@
 export default function manifest() {
   return {
-    name: "RMCare",
-    short_name: "RMCare",
+    name: "RMAgenda",
+    short_name: "RMAgenda",
     description: "Agendamento clínico simples, seguro e rápido.",
     start_url: "/",
     display: "standalone",

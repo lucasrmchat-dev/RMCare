@@ -11,7 +11,7 @@ if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_MP_PUBLIC_KEY) {
 
 export const URL_WEBHOOK_PUSH = "https://acessoapi.rmchat.com.br/w/875a4a21-8b19-42f1-97d7-d420f72f4310";
 
-// Substitui as variáveis {nome}, {servico}, etc.
+// Substitui as variáveis {nome}, {servico}, {especialista}, {chave_pix}, etc.
 export const parseTemplate = (template, variaveis) => {
   if (!template) return "";
   let texto = template;
@@ -107,8 +107,8 @@ export const mapaMedicos = {
   "7": { tipo: "Exame", nome: "Colonoscopia" }
 };
 
-// O MOTOR COMPLETO QUE PROCESSA TODAS AS CATEGORIAS DE MENSAGEM NOS MOMENTOS EXATOS
-export const processarMensagensDinamicas = async (formData, empresaDados, agendamentoId = null, gatilhoFiltro = null) => {
+// O MOTOR COMPLETO QUE PROCESSA TODAS AS CATEGORIAS E DADOS ADICIONAIS (PIX, VALOR, ESPECIALISTA)
+export const processarMensagensDinamicas = async (formData, empresaDados, agendamentoId = null, gatilhoFiltro = null, extraData = null) => {
   const { nome, telefone_whatsapp, data_agendamento, horario_agendamento, especialidade, medico_profissional, subtipo_exame } = formData || {};
   const servicoSelecionado = formData?.tipo_servico === "Exame" ? subtipo_exame : medico_profissional;
   
@@ -118,16 +118,21 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
   let mensagensParaFila = [];
   const dataFormatada = data_agendamento ? data_agendamento.split("-").reverse().join("/") : "";
   
+  // DADOS E VARIÁVEIS SUPORTADAS EM TODOS OS MODELOS
   const vars = { 
     nome: (nome || "").trim(), 
     servico: servicoSelecionado || "", 
+    especialista: servicoSelecionado || medico_profissional || "",
     especialidade: especialidade || "",
     data: dataFormatada, 
-    hora: horario_agendamento || "" 
+    hora: horario_agendamento || "",
+    valor: extraData?.valor ? `R$ ${Number(extraData.valor).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "",
+    chave_pix: extraData?.chave_pix || extraData?.qr_code || "",
+    pix_copia_cola: extraData?.chave_pix || extraData?.qr_code || "",
+    link_pagamento: extraData?.link_pagamento || ""
   };
 
   for (const regra of regrasMensagens) {
-    // Se foi especificado um gatilho único (ex: 'remarcado', 'cancelado', 'pagamento_aprovado'), filtra apenas ele
     if (gatilhoFiltro && regra.gatilho !== gatilhoFiltro) continue;
 
     const alvo = regra.alvo || (regra.especialidade === "Todas" ? "Todas" : `especialidade:${regra.especialidade}`);
@@ -139,13 +144,11 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
 
     const textoFormatado = parseTemplate(regra.mensagem, vars);
 
-    // DISPAROS IMEDIATOS (Na hora do agendamento, remarcado, cancelado, pagamento aprovado)
     if (["imediato", "remarcado", "cancelado", "pagamento_aprovado", "antes_pagamento"].includes(regra.gatilho)) {
       if (telefone_whatsapp) {
         await dispararPushRmChat(telefone_whatsapp, vars.nome, textoFormatado);
       }
     } else if (["agendado", "pos_atendimento"].includes(regra.gatilho)) {
-      // REGISTRO NA FILA DE AGENDAMENTOS FUTUROS
       const dataEnvioProgramado = regra.gatilho === "pos_atendimento"
         ? getMessageSchedule(regra, data_agendamento, horario_agendamento)
         : gerarData(data_agendamento, parseInt(regra.dias_antes || 1), regra.hora_envio);

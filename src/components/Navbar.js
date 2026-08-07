@@ -51,7 +51,7 @@ export default function Navbar() {
 
   useEffect(() => {
     setMounted(true);
-    const savedTheme = localStorage.getItem('theme');
+    const savedTheme = localStorage.getItem('rmagenda_theme') || localStorage.getItem('theme');
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     
     if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
@@ -65,7 +65,7 @@ export default function Navbar() {
     if (currentSlug) {
       setLastSlug(currentSlug);
     } else {
-      const savedSlug = localStorage.getItem('rmcare_last_slug');
+      const savedSlug = localStorage.getItem('rmagenda_last_slug') || localStorage.getItem('rmcare_last_slug');
       if (savedSlug) setLastSlug(savedSlug);
     }
   }, [currentSlug]);
@@ -75,9 +75,11 @@ export default function Navbar() {
     setIsDark(nextState);
     if (nextState) {
       document.documentElement.classList.add('dark');
+      localStorage.setItem('rmagenda_theme', 'dark');
       localStorage.setItem('theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
+      localStorage.setItem('rmagenda_theme', 'light');
       localStorage.setItem('theme', 'light');
     }
   };

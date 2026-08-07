@@ -1,37 +1,31 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronLeft,
   ChevronRight,
   User,
   CalendarDays,
-  Stethoscope,
-  CreditCard,
   Server,
   Filter,
   Trash2,
   RotateCcw,
   X,
   Activity,
-  AlertTriangle,
   Info,
   Search,
   Users,
   Phone,
   Calendar,
-  CheckCircle2,
   LayoutGrid,
-  List
+  List,
+  CheckCircle2
 } from "lucide-react";
 import {
   getHojeLocal,
   fadeUp,
-  staggerContainer,
-  staggerItem,
   CustomSelect,
-  ToggleSwitch,
   TextInput,
   spring
 } from "../components/SharedUI";
@@ -41,17 +35,14 @@ import {
   actionRemarcarAgendamentoAdmin
 } from "@/actions/adminData";
 
-export default function AgendaView({ agendamentos = [], bloqueios = [], servicos = [], fetchAgendamentos, showToast }) {
-  // Sub-abas unificadas de visão
-  const [subTab, setSubTab] = useState("calendario"); // "calendario" | "lista"
+export default function AgendaView({ subTab = "calendario", setSubTab, agendamentos = [], bloqueios = [], servicos = [], fetchAgendamentos, showToast }) {
   const [viewMode, setViewMode] = useState("cards"); // "cards" | "tabela"
 
-  // Busca e Filtro de Origem (Todos | Local | ERP Medicalsys)
+  // Busca e Filtros com Rótulos Claros
   const [searchTerm, setSearchTerm] = useState("");
-  const [origemFilter, setOrigemFilter] = useState("todos"); // "todos" | "local" | "erp"
+  const [origemFilter, setOrigemFilter] = useState("todos"); // "todos" | "rmclick" | "medicalsys"
+  const [statusFilter, setStatusFilter] = useState("todos"); // "todos" | "agendado" | "reagendado" | "cancelado"
   const [filterMedico, setFilterMedico] = useState("Todos");
-  const [showBlockedInAgenda, setShowBlockedInAgenda] = useState(false);
-  const [showCanceled, setShowCanceled] = useState(true);
 
   // Calendário
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -74,7 +65,7 @@ export default function AgendaView({ agendamentos = [], bloqueios = [], servicos
   const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
   const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
 
-  // Opções do filtro de médicos/serviços
+  // Opções do filtro de médicos/serviços com largura corrigida
   const profissionaisOptions = useMemo(() => {
     const defaultOption = { value: "Todos", label: "Todos os Profissionais" };
     if (!servicos || servicos.length === 0) return [defaultOption];
@@ -108,7 +99,7 @@ export default function AgendaView({ agendamentos = [], bloqueios = [], servicos
   const listaUnificadaTodosPacientes = useMemo(() => {
     const locais = agendamentos.map((a) => ({
       id: a.id,
-      tipo: "local",
+      tipo: "rmclick",
       data: a.data_agendamento,
       horario: a.horario_agendamento?.substring(0, 5),
       nomePaciente: a.pacientes?.nome_completo || "Paciente Local",
@@ -127,7 +118,7 @@ export default function AgendaView({ agendamentos = [], bloqueios = [], servicos
       .filter((b) => b.status === "importado" || b.medicalsys_id)
       .map((b) => ({
         id: b.id,
-        tipo: "erp",
+        tipo: "medicalsys",
         data: b.data,
         horario: b.horario?.substring(0, 5),
         nomePaciente: b.nome_paciente || "Paciente ERP",
@@ -143,11 +134,16 @@ export default function AgendaView({ agendamentos = [], bloqueios = [], servicos
       }));
 
     return [...locais, ...erp]
-      .filter((item) => (showCanceled ? true : item.statusAtendimento !== "cancelado"))
       .filter((item) => {
-        if (origemFilter === "local") return item.tipo === "local";
-        if (origemFilter === "erp") return item.tipo === "erp";
+        if (statusFilter === "todos") return true;
+        if (statusFilter === "cancelado") return item.statusAtendimento === "cancelado";
+        if (statusFilter === "reagendado") return item.remarcado === true;
+        if (statusFilter === "agendado") return item.statusAtendimento !== "cancelado" && !item.remarcado;
         return true;
+      })
+      .filter((item) => {
+        if (origemFilter === "todos") return true;
+        return item.tipo === origemFilter;
       })
       .filter((item) => {
         if (filterMedico === "Todos") return true;
@@ -155,7 +151,7 @@ export default function AgendaView({ agendamentos = [], bloqueios = [], servicos
       })
       .filter((item) => matchesSearch(item.nomePaciente, item.cpfPaciente, item.telefonePaciente))
       .sort((a, b) => new Date(`${b.data}T${b.horario || "00:00"}`) - new Date(`${a.data}T${a.horario || "00:00"}`));
-  }, [agendamentos, bloqueios, showCanceled, origemFilter, filterMedico, searchTerm]);
+  }, [agendamentos, bloqueios, statusFilter, origemFilter, filterMedico, searchTerm]);
 
   // Registros do dia selecionado
   const eventosAgendaMistaDiaria = useMemo(() => {
@@ -176,22 +172,6 @@ export default function AgendaView({ agendamentos = [], bloqueios = [], servicos
       setReason("");
     } catch (err) {
       if (showToast) showToast(`Erro ao cancelar: ${err.message}`, "error");
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // Executar exclusão física pelo admin
-  const handleExcluirAdmin = async () => {
-    if (!deleteModalItem) return;
-    setIsProcessing(true);
-    try {
-      await actionExcluirAgendamentoAdmin(deleteModalItem.id);
-      if (showToast) showToast("Agendamento excluído permanentemente do banco!");
-      if (fetchAgendamentos) await fetchAgendamentos();
-      setDeleteModalItem(null);
-    } catch (err) {
-      if (showToast) showToast(`Erro ao excluir: ${err.message}`, "error");
     } finally {
       setIsProcessing(false);
     }
@@ -222,7 +202,7 @@ export default function AgendaView({ agendamentos = [], bloqueios = [], servicos
     <motion.div key="agenda" {...fadeUp} className="flex-1 flex flex-col h-full overflow-hidden w-full max-w-7xl mx-auto p-4 md:p-6 lg:p-8">
       <div className="bg-white dark:bg-[#0d0d0d] rounded-[2.5rem] border border-zinc-200/80 dark:border-zinc-800 shadow-sm flex flex-col h-full overflow-hidden">
         
-        {/* PADRÃO UNIFICADO DE CABEÇALHO COM ÍCONE NA ESQUERDA */}
+        {/* PADRÃO UNIFICADO DE CABEÇALHO */}
         <div className="px-6 md:px-8 pt-6 pb-5 border-b border-zinc-100 dark:border-zinc-800/80 bg-zinc-50/40 dark:bg-zinc-900/20 flex flex-col gap-5">
           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
             <div className="flex items-center gap-3">
@@ -234,49 +214,21 @@ export default function AgendaView({ agendamentos = [], bloqueios = [], servicos
                   Agenda de Pacientes
                 </h2>
                 <p className="text-xs md:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5 font-medium">
-                  Gerencie todos os atendimentos da clínica em uma única tela, com filtros por origem e busca avançada.
+                  Visão consolidada de atendimentos com filtros avançados e busca unificada.
                 </p>
               </div>
             </div>
 
-            {/* SEGMENTED CONTROL / SUB-ABAS E MODO DE VISÃO */}
-            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
-              <LayoutGroup>
-                <div className="flex p-1.5 bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl shadow-sm">
-                  <button
-                    onClick={() => setSubTab("calendario")}
-                    className={`relative px-5 py-2.5 text-xs font-bold uppercase tracking-widest rounded-xl transition-colors z-10 whitespace-nowrap flex items-center gap-2 ${
-                      subTab === "calendario" ? "text-white" : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
-                    }`}
-                  >
-                    {subTab === "calendario" && (
-                      <motion.div layoutId="subtab-agenda" className="absolute inset-0 bg-zinc-900 dark:bg-white dark:text-black rounded-xl -z-10 shadow-md" transition={spring} />
-                    )}
-                    <Calendar size={14} /> Calendário Diário
-                  </button>
-
-                  <button
-                    onClick={() => setSubTab("lista")}
-                    className={`relative px-5 py-2.5 text-xs font-bold uppercase tracking-widest rounded-xl transition-colors z-10 whitespace-nowrap flex items-center gap-2 ${
-                      subTab === "lista" ? "text-white" : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
-                    }`}
-                  >
-                    {subTab === "lista" && (
-                      <motion.div layoutId="subtab-agenda" className="absolute inset-0 bg-zinc-900 dark:bg-white dark:text-black rounded-xl -z-10 shadow-md" transition={spring} />
-                    )}
-                    <Users size={14} /> Lista Unificada ({listaUnificadaTodosPacientes.length})
-                  </button>
-                </div>
-              </LayoutGroup>
-
-              {/* Botões do modo de visualização (Cards vs Lista) */}
+            {/* MODO DE VISUALIZAÇÃO (CARDS OU LISTA TABELA) */}
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mr-1">Visualização:</span>
               <div className="flex p-1 bg-zinc-100 dark:bg-zinc-800 rounded-xl border border-zinc-200 dark:border-zinc-700">
                 <button
                   onClick={() => setViewMode("cards")}
                   className={`p-2 rounded-lg transition-colors ${
                     viewMode === "cards" ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-sm" : "text-zinc-400 hover:text-zinc-700"
                   }`}
-                  title="Exibir em formato de Cards"
+                  title="Visão em Cards"
                 >
                   <LayoutGrid size={16} />
                 </button>
@@ -285,7 +237,7 @@ export default function AgendaView({ agendamentos = [], bloqueios = [], servicos
                   className={`p-2 rounded-lg transition-colors ${
                     viewMode === "tabela" ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-sm" : "text-zinc-400 hover:text-zinc-700"
                   }`}
-                  title="Exibir em formato de Lista Tabela"
+                  title="Visão em Tabela"
                 >
                   <List size={16} />
                 </button>
@@ -293,59 +245,69 @@ export default function AgendaView({ agendamentos = [], bloqueios = [], servicos
             </div>
           </div>
 
-          {/* BARRA DE PESQUISA UNIFICADA + FILTROS DE ORIGEM */}
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-            <div className="md:col-span-5 relative">
-              <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Buscar paciente por nome, CPF ou telefone..."
-                className="w-full pl-11 pr-4 py-2.5 bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl text-sm font-medium text-zinc-900 dark:text-white outline-none focus:border-zinc-900 dark:focus:border-white transition-all shadow-sm placeholder:text-zinc-400"
+          {/* BARRA DE PESQUISA E FILTROS ORGANIZADOS COM NOMENCLATURAS CLARAS */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-4 items-end pt-2">
+            
+            {/* BUSCA POR TEXTO */}
+            <div className="lg:col-span-4 space-y-1">
+              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">Buscar Paciente</label>
+              <div className="relative">
+                <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Nome, CPF ou Telefone..."
+                  className="w-full pl-11 pr-4 py-2.5 bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl text-xs font-medium text-zinc-900 dark:text-white outline-none focus:border-zinc-900 transition-all"
+                />
+                {searchTerm && (
+                  <button onClick={() => setSearchTerm("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700">
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* FILTRO DE ORIGEM */}
+            <div className="lg:col-span-3 space-y-1">
+              <CustomSelect
+                label="Origem da Agenda"
+                value={origemFilter}
+                onChange={setOrigemFilter}
+                options={[
+                  { value: "todos", label: "Todas as Origens" },
+                  { value: "rmclick", label: "RMClick (Plataforma Local)" },
+                  { value: "medicalsys", label: "MedicalSYS (ERP)" }
+                ]}
               />
-              {searchTerm && (
-                <button onClick={() => setSearchTerm("")} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-zinc-400 hover:text-zinc-700">
-                  <X size={16} />
-                </button>
-              )}
             </div>
 
-            {/* Filtro de Origem Unificado */}
-            <div className="md:col-span-3 flex p-1 bg-zinc-100 dark:bg-zinc-900 rounded-2xl border border-zinc-200/80 dark:border-zinc-800">
-              <button
-                onClick={() => setOrigemFilter("todos")}
-                className={`flex-1 py-1.5 text-[11px] font-bold uppercase rounded-xl transition-all ${
-                  origemFilter === "todos" ? "bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm" : "text-zinc-500 hover:text-zinc-900"
-                }`}
-              >
-                Todos
-              </button>
-              <button
-                onClick={() => setOrigemFilter("local")}
-                className={`flex-1 py-1.5 text-[11px] font-bold uppercase rounded-xl transition-all ${
-                  origemFilter === "local" ? "bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm" : "text-zinc-500 hover:text-zinc-900"
-                }`}
-              >
-                Plataforma
-              </button>
-              <button
-                onClick={() => setOrigemFilter("erp")}
-                className={`flex-1 py-1.5 text-[11px] font-bold uppercase rounded-xl transition-all ${
-                  origemFilter === "erp" ? "bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm" : "text-zinc-500 hover:text-zinc-900"
-                }`}
-              >
-                Medicalsys
-              </button>
+            {/* FILTRO DE STATUS */}
+            <div className="lg:col-span-2 space-y-1">
+              <CustomSelect
+                label="Status do Atendimento"
+                value={statusFilter}
+                onChange={setStatusFilter}
+                options={[
+                  { value: "todos", label: "Ver tudo" },
+                  { value: "agendado", label: "Agendados" },
+                  { value: "reagendado", label: "Reagendados" },
+                  { value: "cancelado", label: "Cancelados" }
+                ]}
+              />
             </div>
 
-            <div className="md:col-span-2">
-              <CustomSelect label="" value={filterMedico} onChange={setFilterMedico} options={profissionaisOptions} icon={Filter} />
+            {/* FILTRO DE PROFISSIONAL (CORRIGIDO PARA NÃO VAZAR) */}
+            <div className="lg:col-span-3 space-y-1">
+              <CustomSelect
+                label="Médico / Atendimento"
+                value={filterMedico}
+                onChange={setFilterMedico}
+                options={profissionaisOptions}
+                icon={Filter}
+              />
             </div>
 
-            <div className="md:col-span-2 flex items-center justify-end">
-              <ToggleSwitch checked={showCanceled} onChange={setShowCanceled} label="Ver Cancelados" />
-            </div>
           </div>
         </div>
 
@@ -462,13 +424,13 @@ export default function AgendaView({ agendamentos = [], bloqueios = [], servicos
                               <div>
                                 <div className="flex flex-wrap items-center gap-2">
                                   <h4 className="font-bold text-zinc-900 dark:text-white text-base">{item.nomePaciente}</h4>
-                                  {item.tipo === "erp" ? (
+                                  {item.tipo === "medicalsys" ? (
                                     <span className="text-[9px] font-black uppercase px-2 py-0.5 bg-blue-100 dark:bg-blue-950/50 text-blue-800 dark:text-blue-300 rounded-md flex items-center gap-1">
                                       <Server size={10} /> Medicalsys ERP
                                     </span>
                                   ) : (
                                     <span className="text-[9px] font-black uppercase px-2 py-0.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-md">
-                                      Plataforma Local
+                                      RMClick
                                     </span>
                                   )}
                                   {item.cpfPaciente && (
@@ -477,7 +439,7 @@ export default function AgendaView({ agendamentos = [], bloqueios = [], servicos
                                     </span>
                                   )}
                                   <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-md ${isCanceled ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-800"}`}>
-                                    {isCanceled ? "Cancelado" : "Confirmado"}
+                                    {isCanceled ? "Cancelado" : item.remarcado ? "Reagendado" : "Confirmado"}
                                   </span>
                                 </div>
 
@@ -522,7 +484,7 @@ export default function AgendaView({ agendamentos = [], bloqueios = [], servicos
                       })}
                     </div>
                   ) : (
-                    /* VISÃO EM TABELA UNIFICADA */
+                    /* VISÃO EM TABELA COM BOTÃO REMARCAR INCLUSO */
                     <div className="bg-white dark:bg-[#111] border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-x-auto shadow-sm">
                       <table className="w-full text-left border-collapse text-xs">
                         <thead>
@@ -544,10 +506,10 @@ export default function AgendaView({ agendamentos = [], bloqueios = [], servicos
                                 {item.cpfPaciente && <div className="text-[10px] text-zinc-400">CPF: {item.cpfPaciente}</div>}
                               </td>
                               <td className="p-4">
-                                {item.tipo === "erp" ? (
+                                {item.tipo === "medicalsys" ? (
                                   <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-[10px] font-bold uppercase">Medicalsys</span>
                                 ) : (
-                                  <span className="bg-zinc-100 text-zinc-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase">Local</span>
+                                  <span className="bg-zinc-100 text-zinc-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase">RMClick</span>
                                 )}
                               </td>
                               <td className="p-4">
@@ -559,18 +521,30 @@ export default function AgendaView({ agendamentos = [], bloqueios = [], servicos
                                   {item.statusAtendimento}
                                 </span>
                               </td>
-                              <td className="p-4 text-right">
+                              <td className="p-4 text-right space-x-2">
                                 {item.statusAtendimento !== "cancelado" && (
-                                  <button
-                                    onClick={() => {
-                                      setCancelModalItem(item.rawItem || item);
-                                      setReason("");
-                                    }}
-                                    className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                    title="Cancelar"
-                                  >
-                                    <Trash2 size={16} />
-                                  </button>
+                                  <>
+                                    <button
+                                      onClick={() => {
+                                        setRescheduleModalItem(item.rawItem || item);
+                                        setNewDate(item.data || selectedDay);
+                                        setNewTime(item.horario || "09:00");
+                                      }}
+                                      className="px-2.5 py-1.5 border border-zinc-200 text-zinc-700 rounded-lg hover:bg-zinc-100 text-[11px] font-bold"
+                                    >
+                                      Remarcar
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setCancelModalItem(item.rawItem || item);
+                                        setReason("");
+                                      }}
+                                      className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                      title="Cancelar"
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
+                                  </>
                                 )}
                               </td>
                             </tr>
@@ -618,13 +592,13 @@ export default function AgendaView({ agendamentos = [], bloqueios = [], servicos
                             <div>
                               <div className="flex flex-wrap items-center gap-2">
                                 <h4 className="font-bold text-zinc-900 dark:text-white text-base">{item.nomePaciente}</h4>
-                                {item.tipo === "erp" ? (
+                                {item.tipo === "medicalsys" ? (
                                   <span className="text-[9px] font-black uppercase px-2 py-0.5 bg-blue-100 dark:bg-blue-950/50 text-blue-800 dark:text-blue-300 rounded-md flex items-center gap-1">
                                     <Server size={10} /> Medicalsys ERP
                                   </span>
                                 ) : (
                                   <span className="text-[9px] font-black uppercase px-2 py-0.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-md">
-                                    Plataforma
+                                    RMClick
                                   </span>
                                 )}
                                 {item.cpfPaciente && (
@@ -633,7 +607,7 @@ export default function AgendaView({ agendamentos = [], bloqueios = [], servicos
                                   </span>
                                 )}
                                 <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-md ${isCanceled ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-800"}`}>
-                                  {isCanceled ? "Cancelado" : "Confirmado"}
+                                  {isCanceled ? "Cancelado" : item.remarcado ? "Reagendado" : "Confirmado"}
                                 </span>
                               </div>
 
@@ -651,15 +625,27 @@ export default function AgendaView({ agendamentos = [], bloqueios = [], servicos
 
                           <div className="flex items-center gap-2 self-end md:self-center">
                             {!isCanceled && (
-                              <button
-                                onClick={() => {
-                                  setCancelModalItem(item.rawItem || item);
-                                  setReason("");
-                                }}
-                                className="px-3 py-2 bg-red-50 text-red-700 rounded-xl text-xs font-bold hover:bg-red-100 transition-colors flex items-center gap-1"
-                              >
-                                <Trash2 size={14} /> Cancelar
-                              </button>
+                              <>
+                                <button
+                                  onClick={() => {
+                                    setRescheduleModalItem(item.rawItem || item);
+                                    setNewDate(item.data || selectedDay);
+                                    setNewTime(item.horario || "09:00");
+                                  }}
+                                  className="px-3 py-2 border border-zinc-200 text-zinc-700 rounded-xl text-xs font-bold hover:bg-zinc-100 transition-colors flex items-center gap-1"
+                                >
+                                  <RotateCcw size={14} className="text-blue-600" /> Remarcar
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setCancelModalItem(item.rawItem || item);
+                                    setReason("");
+                                  }}
+                                  className="px-3 py-2 bg-red-50 text-red-700 rounded-xl text-xs font-bold hover:bg-red-100 transition-colors flex items-center gap-1"
+                                >
+                                  <Trash2 size={14} /> Cancelar
+                                </button>
+                              </>
                             )}
                           </div>
                         </div>
