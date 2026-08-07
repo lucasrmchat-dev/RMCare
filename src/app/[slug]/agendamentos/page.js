@@ -354,7 +354,7 @@ export default function AgendamentoPremium() {
       }
       
       try {
-        const { data } = await supabase.from("pacientes").select("*").eq("cpf", formData.cpf).maybeSingle();
+        const { data } = await supabase.from("pacientes").select("*").eq("cpf", formData.cpf).eq("empresa_id", empresaDados.id).maybeSingle();
         if (data) {
           if (data.nome_completo) { const p = data.nome_completo.trim().split(" "); setValue("nome", p[0] || ""); setValue("sobrenome", p.slice(1).join(" ") || ""); }
           setValue("telefone_whatsapp", data.telefone_whatsapp || "");
@@ -428,7 +428,7 @@ export default function AgendamentoPremium() {
           if (!result.success) { showIsland(result.error); return false; }
           return { id: result.appointmentId, rescheduled: true };
         }
-        let pacienteId = (await supabase.from("pacientes").select("id").eq("cpf", formData.cpf).maybeSingle()).data?.id;
+        let pacienteId = (await supabase.from("pacientes").select("id").eq("cpf", formData.cpf).eq("empresa_id", empresaDados.id).maybeSingle()).data?.id;
 
         const pacienteData = { 
           nome_completo: `${formData.nome} ${formData.sobrenome}`.trim(), 
@@ -641,7 +641,7 @@ export default function AgendamentoPremium() {
         });
         const result = await res.json();
         if (result.success && result.status === "approved") {
-          const { data: paciente } = await supabase.from("pacientes").select("id").eq("cpf", formData.cpf).maybeSingle();
+          const { data: paciente } = await supabase.from("pacientes").select("id").eq("cpf", formData.cpf).eq("empresa_id", empresaDados.id).maybeSingle();
           if (paciente) {
             await supabase.from("agendamentos").update({ status_pagamento_antecipado: true }).eq("paciente_id", paciente.id).eq("data_agendamento", formData.data_agendamento).eq("horario_agendamento", formData.horario_agendamento);
           }

@@ -3,12 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LogOut, ShieldCheck, Sun, Moon } from "lucide-react";
 import { logoutAdmin, refreshAdminSession } from "@/actions/auth";
-import { useRouter } from "next/navigation";
 
 const SESSION_SECONDS = 30 * 60;
 
 export default function AdminSessionBar() {
-  const router = useRouter();
   const [remaining, setRemaining] = useState(SESSION_SECONDS);
   const [isDark, setIsDark] = useState(false);
   const lastRefresh = useRef(0);
@@ -34,10 +32,15 @@ export default function AdminSessionBar() {
   };
 
   const leave = useCallback(async () => {
-    await logoutAdmin();
-    router.replace("/login");
-    router.refresh();
-  }, [router]);
+    try {
+      await logoutAdmin();
+    } catch (err) {
+      console.error("Erro ao sair:", err);
+    }
+    if (typeof window !== "undefined") {
+      window.location.href = "/login";
+    }
+  }, []);
 
   useEffect(() => {
     const tick = setInterval(() => setRemaining((value) => {

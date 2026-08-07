@@ -62,3 +62,12 @@ export async function GET(request) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+// Suporte a requisições POST e HEAD enviadas por serviços de Cron Job (ex: cron-job.org)
+export async function POST(request) {
+  return GET(request);
+}
+
+export async function HEAD(request) {
+  return GET(request);
+}
