@@ -44,10 +44,10 @@ export function useOutsideClick(ref, callback) {
 }
 
 export const SidebarItem = ({ id, icon: Icon, label, activeView, onClick }) => (
-  <button onClick={() => onClick(id)} className={`group w-full flex items-center gap-3.5 px-4 py-3 rounded-2xl transition-all duration-300 relative ${activeView === id ? "text-zinc-900" : "text-zinc-500 hover:text-zinc-900"}`}>
+  <button onClick={() => onClick(id)} className={`group w-full min-h-12 flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-left transition-all duration-300 relative ${activeView === id ? "text-zinc-950" : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50"}`}>
     {activeView === id && <motion.div layoutId="active-tab" className="absolute inset-0 bg-white shadow-[0_2px_10px_rgba(0,0,0,0.04)] border border-zinc-200/50 rounded-2xl -z-10" transition={spring} />}
-    <Icon size={18} className={activeView === id ? "text-zinc-900" : "text-zinc-400 group-hover:text-zinc-900 transition-colors"} />
-    <span className="text-sm font-semibold tracking-wide">{label}</span>
+    <Icon size={18} className={`shrink-0 ${activeView === id ? "text-zinc-900" : "text-zinc-400 group-hover:text-zinc-900 transition-colors"}`} />
+    <span className="text-[13px] font-medium leading-4">{label}</span>
   </button>
 );
 
@@ -152,12 +152,12 @@ export const ToggleSwitch = ({ checked, onChange, label }) => (
       <div className={`block w-10 h-6 rounded-full transition-colors ${checked ? 'bg-zinc-900' : 'bg-zinc-200'}`}></div>
       <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${checked ? 'transform translate-x-4' : ''}`}></div>
     </div>
-    {label && <span className="text-xs font-bold text-zinc-500 uppercase tracking-widest">{label}</span>}
+    {label && <span className="text-sm font-medium text-zinc-600">{label}</span>}
   </label>
 );
 
 export const ButtonPrimary = ({ children, onClick, disabled, className = "", icon: Icon }) => (
-  <motion.button whileTap={!disabled ? { scale: 0.97 } : {}} onClick={onClick} disabled={disabled} className={`relative overflow-hidden bg-zinc-900 hover:bg-black text-white px-6 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest shadow-[0_8px_20px_rgba(0,0,0,0.12)] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${className}`}>
+  <motion.button whileTap={!disabled ? { scale: 0.98 } : {}} onClick={onClick} disabled={disabled} className={`relative overflow-hidden bg-zinc-900 hover:bg-black text-white px-6 py-3.5 rounded-2xl font-semibold text-sm shadow-[0_8px_20px_rgba(0,0,0,0.10)] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${className}`}>
     {Icon && <Icon size={16} />}
     {children}
   </motion.button>

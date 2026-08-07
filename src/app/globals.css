@@ -29,3 +29,31 @@ body {
   /* Transição suave para o fundo da página ao clicar no botão */
   transition: background-color 0.5s ease, color 0.5s ease; 
 }
+
+html, body {
+  overscroll-behavior-y: none;
+}
+
+button, a, input, textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button, a {
+  touch-action: manipulation;
+}
+
+@media (max-width: 767px) {
+  body {
+    min-height: 100dvh;
+    overflow: hidden;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

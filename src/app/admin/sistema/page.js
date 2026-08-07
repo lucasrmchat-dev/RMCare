@@ -1,45 +1,48 @@
 "use client"; 
 
 import { useState, useEffect } from "react"; 
-import { supabase } from "@/lib/supabase"; 
 import { Plus, LayoutDashboard, Building2, ShieldCheck, Database, Server, Activity } from "lucide-react"; 
 import Navbar from "@/components/Navbar"; 
+import AdminSessionBar from "@/components/AdminSessionBar";
+import { actionListarEmpresas, actionProvisionarEmpresa } from "@/actions/adminData";
 
 export default function SuperAdminSistema() {   
   const [empresas, setEmpresas] = useState([]);   
   const [nome, setNome] = useState("");   
   const [slug, setSlug] = useState("");   
+  const [usuario, setUsuario] = useState("");
+  const [senha, setSenha] = useState("");
+  const [feedback, setFeedback] = useState("");
   const [loading, setLoading] = useState(false);   
 
   useEffect(() => {     
     fetchEmpresas();   
   }, []);   
 
-  const fetchEmpresas = async () => {     
-    const { data } = await supabase.from("empresas").select("*").order("created_at", { ascending: false });     
-    if (data) setEmpresas(data);   
-  };   
+  async function fetchEmpresas() {     
+    try { setEmpresas(await actionListarEmpresas()); } catch (error) { setFeedback(error.message); }
+  }   
 
   const handleProvisionar = async (e) => {     
     e.preventDefault();     
     if (!nome || !slug) return;     
     
     setLoading(true);     
-    const { error } = await supabase.from("empresas").insert([{ nome, slug: slug.toLowerCase().replace(/\s+/g, "-") }]);     
-    
-    if (!error) {       
+    try {
+      await actionProvisionarEmpresa({ nome, slug, usuario, senha });
       setNome("");       
       setSlug("");       
-      fetchEmpresas();     
-    }     
+      setUsuario(""); setSenha(""); setFeedback("Ambiente e administrador criados com sucesso.");
+      await fetchEmpresas();
+    } catch (error) { setFeedback(error.message); }
     setLoading(false);   
   };   
 
   return (     
-    <main className="min-h-screen bg-[#0A0A0A] text-white p-6 pt-28 antialiased">       
-      <Navbar />              
+    <main className="min-h-screen bg-[#0A0A0A] text-white antialiased">       
+      <AdminSessionBar />
       
-      <div className="max-w-6xl mx-auto space-y-10 relative z-10">
+      <div className="w-full px-6 lg:px-10 py-8 space-y-10 relative z-10">
         
         {/* HEADER */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-white/10 pb-8">         
@@ -78,6 +81,15 @@ export default function SuperAdminSistema() {
                   className="w-full p-4 bg-black/40 border border-white/10 rounded-2xl text-sm font-medium outline-none text-white focus:border-[#9FC131] focus:ring-1 focus:ring-[#9FC131] transition-all placeholder:text-zinc-700" 
                 />             
               </div>             
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest ml-1">Login do administrador</label>
+                <input required value={usuario} onChange={(e) => setUsuario(e.target.value)} className="w-full p-4 bg-black/40 border border-white/10 rounded-2xl text-sm text-white" placeholder="admin-clinica" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest ml-1">Senha inicial</label>
+                <input required minLength={8} type="password" value={senha} onChange={(e) => setSenha(e.target.value)} className="w-full p-4 bg-black/40 border border-white/10 rounded-2xl text-sm text-white" placeholder="Mínimo de 8 caracteres" />
+              </div>
+              {feedback && <p role="status" className="text-xs text-[#9FC131]">{feedback}</p>}
               <div className="space-y-2">               
                 <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest ml-1">Slug da URL (Identificador)</label>               
                 <input 

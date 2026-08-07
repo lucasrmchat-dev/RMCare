@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
+import { verifyAdminSession } from '@/lib/session';
 
-export function middleware(request) {
+export async function middleware(request) {
   // 1. Lemos os cookies reais que nossa função de login gera
   const adminToken = request.cookies.get('rmcare_auth')?.value;
   const pacienteToken = request.cookies.get('rmcare_auth_paciente')?.value;
@@ -9,9 +10,12 @@ export function middleware(request) {
 
   // 2. Proteção das rotas Administrativas (Master e Empresa)
   if (path.startsWith('/admin')) {
-    if (!adminToken) {
+    const session = await verifyAdminSession(adminToken);
+    if (!session) {
       // Se não tem cookie de admin, chuta de volta pro login
-      return NextResponse.redirect(new URL('/login', request.url));
+      const response = NextResponse.redirect(new URL('/login', request.url));
+      response.cookies.delete('rmcare_auth');
+      return response;
     }
   }
 

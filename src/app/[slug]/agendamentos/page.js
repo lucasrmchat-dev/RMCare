@@ -8,14 +8,16 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { supabase } from "@/lib/supabase";
 import { ArrowRight, CheckCircle, AlertTriangle, Activity, Pencil, ChevronLeft } from "lucide-react";
 
-import Navbar from "@/components/Navbar";
 import SidebarPremium from "@/components/SidebarPremium";
 import { AgendamentoContext } from "./context";
 import { MODULE_REGISTRY } from "./modules";
-import { 
+import {
   schema, helpers, masks, calcularDataLimite, mapaMedicos, 
   processarMensagensDinamicas 
 } from "./utils";
+import { validateReturnEligibility } from "@/lib/appointmentRules";
+import { buildJourney, DEFAULT_JOURNEY, isDraftFresh } from "@/lib/journey";
+import { getAppointmentForReschedule, remarcarAgendamentoPaciente } from "@/actions/appointments";
 
 export default function AgendamentoPremium() {
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
@@ -23,7 +25,6 @@ export default function AgendamentoPremium() {
   return (
     <div className="flex min-h-[100dvh] w-full bg-[#FAFAFA] dark:bg-black text-zinc-900 dark:text-zinc-50 transition-colors duration-500 font-sans antialiased">
       <SidebarPremium isExpanded={isSidebarExpanded} setIsExpanded={setIsSidebarExpanded} />
-      <Navbar />
       <main className={`flex-1 relative flex flex-col items-center transition-[margin] duration-500 ease-in-out w-full min-h-[100dvh] overflow-hidden ${isSidebarExpanded ? "md:ml-[260px]" : "md:ml-[88px]"}`}>
         <Suspense fallback={<div className="min-h-[100dvh] flex items-center justify-center w-full"><motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }} className="w-8 h-8 border-[3px] border-zinc-900 dark:border-white border-t-transparent rounded-full" /></div>}>
           <AgendamentoOrquestrador />
@@ -37,10 +38,12 @@ export default function AgendamentoPremium() {
     const searchParams = useSearchParams();
     const slug = params?.slug;
 
-    const modulosBase = ["boas_vindas", "identificacao", "especialidade", "triagem", "modalidade", "agenda", "checkout", "concluido"];
+    const modulosBase = DEFAULT_JOURNEY;
     const [modulosAtivos, setModulosAtivos] = useState(modulosBase);
     
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
+    const currentStepRef = useRef(0);
+    currentStepRef.current = currentStepIndex;
     const [minStepIndex, setMinStepIndex] = useState(0); 
 
     const [empresaDados, setEmpresaDados] = useState(null);
@@ -62,6 +65,7 @@ export default function AgendamentoPremium() {
     const [pixData, setPixData] = useState(null);
     const [timeLeft, setTimeLeft] = useState(0);
     const checkingRef = useRef(false);
+    const restoringDraftRef = useRef(false);
     const timeLeftRef = useRef(timeLeft);
 
     useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
@@ -69,6 +73,7 @@ export default function AgendamentoPremium() {
     const [context, setContext] = useState({ isSmartLink: false, personalizedName: "", dataUltimaConsulta: null, userFound: false, checkingUser: false });
     const [calendarMonth, setCalendarMonth] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
     const [agenda, setAgenda] = useState({ ocupados: [], buscando: false });
+    const [rescheduleContext, setRescheduleContext] = useState(null);
 
     const [flags, setFlags] = useState({
       cpfUrl: false, nomeUrl: false, sobrenomeUrl: false, telUrl: false, emailUrl: false, nascUrl: false,
@@ -78,6 +83,7 @@ export default function AgendamentoPremium() {
     const formMethods = useForm({ resolver: zodResolver(schema), mode: "onChange" });
     const { register, watch, trigger, setValue, formState: { errors }, reset } = formMethods;
     const formData = watch();
+    const draftKey = slug ? `rmcare_jornada:${slug}` : null;
 
     useEffect(() => {
       const fetchEmpresaConfigAndData = async () => {
@@ -95,12 +101,8 @@ export default function AgendamentoPremium() {
           setEmpresaDados(empresa);
           localStorage.setItem('rmcare_last_slug', slug);
           
-          let jornada = [...modulosBase];
           const conf = empresa.config_campos || {};
-          
-          if (conf.ocultar_triagem) jornada = jornada.filter(m => m !== "triagem");
-          if (conf.ocultar_modalidade) jornada = jornada.filter(m => m !== "modalidade");
-          if (conf.ocultar_checkout) jornada = jornada.filter(m => m !== "checkout");
+          let jornada = buildJourney(conf, false);
 
           const urlModalidadeRaw = searchParams.get("modalidade");
           const mapaMod = { "1": "Convênio", "2": "Particular" };
@@ -132,6 +134,43 @@ export default function AgendamentoPremium() {
             setPerguntasDB(pergsFull);
           }
 
+          const rescheduleId = searchParams.get("reagendar");
+          const rescheduleToken = searchParams.get("token");
+          if (rescheduleId && rescheduleToken) {
+            const result = await getAppointmentForReschedule({ id: rescheduleId, token: rescheduleToken });
+            if (!result.success || result.appointment.empresa_id !== empresa.id) throw new Error(result.error || "Agendamento inválido para esta clínica.");
+            const appointment = result.appointment;
+            const patient = appointment.pacientes || {};
+            const names = (patient.nome_completo || "").trim().split(" ");
+            reset({ cpf: patient.cpf || "", nome: names[0] || "", sobrenome: names.slice(1).join(" "), data_nascimento: patient.data_nascimento?.split("-").reverse().join("/") || "", tipo_servico: appointment.tipo_servico, subtipo_exame: appointment.subtipo_exame || "", medico_profissional: appointment.medico_profissional || "", modalidade: appointment.modalidade || "", data_agendamento: "", horario_agendamento: "" });
+            setRescheduleContext({ id: rescheduleId, token: rescheduleToken });
+            const agendaIndex = jornada.indexOf("agenda");
+            setCurrentStepIndex(agendaIndex >= 0 ? agendaIndex : 0);
+            setMinStepIndex(Math.max(0, jornada.indexOf("especialidade")));
+          }
+
+          // Retoma uma jornada recente somente em acessos normais. Parâmetros de link inteligente têm prioridade.
+          if (!searchParams.toString() && typeof window !== "undefined") {
+            try {
+              const saved = JSON.parse(localStorage.getItem(`rmcare_jornada:${slug}`) || "null");
+              if (isDraftFresh(saved)) {
+                restoringDraftRef.current = true;
+                reset(saved.formData || {});
+                setRespostasTriagem(saved.respostasTriagem || {});
+                const savedServiceName = saved.formData?.tipo_servico === "Exame" ? saved.formData?.subtipo_exame : saved.formData?.medico_profissional;
+                const savedService = srvs?.find((service) => service.nome === savedServiceName);
+                const hasQuestions = pergs?.some((question) => !question.servico_id || question.servico_id === savedService?.id);
+                const restoredJourney = buildJourney(conf, hasQuestions);
+                setModulosAtivos(restoredJourney);
+                const restoredIndex = restoredJourney.indexOf(saved.step);
+                if (restoredIndex >= 0 && saved.step !== "concluido") setCurrentStepIndex(restoredIndex);
+                setIslandMessage("Continuamos de onde você parou.");
+                setIslandState("success");
+                setTimeout(() => setIslandState("default"), 2400);
+              }
+            } catch { localStorage.removeItem(`rmcare_jornada:${slug}`); }
+          }
+
         } catch (err) { console.error("Erro ao carregar dados:", err); } finally { setLoadingConfig(false); }
       };
 
@@ -153,7 +192,31 @@ export default function AgendamentoPremium() {
     
     const selectedSrv = getSelectedService();
     const valorEntrada = selectedSrv ? (selectedSrv.preco / 2) : 0;
-    const perguntasAtuais = selectedSrv ? perguntasDB.filter(p => p.servico_id === selectedSrv.id) : [];
+    const perguntasAtuais = perguntasDB.filter(p => !p.servico_id || p.servico_id === selectedSrv?.id);
+
+    // A jornada é sempre recalculada pelo serviço selecionado. Assim a triagem nunca aparece sem perguntas aplicáveis.
+    useEffect(() => {
+      if (loadingConfig || !empresaDados) return;
+      setModulosAtivos((previous) => {
+        const currentKey = previous[currentStepRef.current];
+        const triageEnabled = empresaDados.config_campos?.ocultar_triagem !== true && perguntasAtuais.length > 0;
+        const next = buildJourney(empresaDados.config_campos || {}, triageEnabled);
+        if (next.join("|") === previous.join("|")) return previous;
+        const nextIndex = next.indexOf(currentKey);
+        if (nextIndex >= 0) queueMicrotask(() => setCurrentStepIndex(nextIndex));
+        return next;
+      });
+    }, [perguntasAtuais.length, loadingConfig, empresaDados]);
+
+    useEffect(() => {
+      if (!draftKey || loadingConfig || !empresaDados) return;
+      const step = modulosAtivos[currentStepIndex];
+      if (step === "concluido") { localStorage.removeItem(draftKey); return; }
+      const timeout = setTimeout(() => {
+        localStorage.setItem(draftKey, JSON.stringify({ version: 1, savedAt: Date.now(), step, formData, respostasTriagem }));
+      }, 250);
+      return () => clearTimeout(timeout);
+    }, [draftKey, loadingConfig, empresaDados, currentStepIndex, modulosAtivos, formData, respostasTriagem]);
 
     const showIsland = (msg, type = "error") => {
       setIslandMessage(msg); setIslandState(type);
@@ -278,7 +341,11 @@ export default function AgendamentoPremium() {
     const handleCpfLookup = async () => {
       if (formData.cpf?.length !== 14) return;
       setContext(c => ({ ...c, checkingUser: true }));
-      if (!context.isSmartLink || flags.unlockedAll) ["nome", "sobrenome", "telefone_whatsapp", "email", "data_nascimento"].forEach(f => setValue(f, ""));
+      if (restoringDraftRef.current) {
+        restoringDraftRef.current = false;
+      } else if (!context.isSmartLink || flags.unlockedAll) {
+        ["nome", "sobrenome", "telefone_whatsapp", "email", "data_nascimento"].forEach(f => setValue(f, ""));
+      }
       
       try {
         const { data } = await supabase.from("pacientes").select("*").eq("cpf", formData.cpf).maybeSingle();
@@ -305,13 +372,13 @@ export default function AgendamentoPremium() {
       if (!prof) return;
 
       let isMounted = true;
+      const requestStartedAt = Date.now();
       setAgenda(a => ({ ...a, buscando: true }));
-      setValue("horario_agendamento", "");
       
       const fetchAgenda = async () => {
         try {
           const [{ data: ag }, { data: bl }] = await Promise.all([
-            supabase.from("agendamentos").select("horario_agendamento, medico_profissional, subtipo_exame").eq("data_agendamento", formData.data_agendamento).eq("empresa_id", empresaDados.id),
+            supabase.from("agendamentos").select("id,horario_agendamento, medico_profissional, subtipo_exame,status_atendimento").eq("data_agendamento", formData.data_agendamento).eq("empresa_id", empresaDados.id).neq("status_atendimento", "cancelado"),
             supabase.from("bloqueios_horarios").select("horario, medico_profissional").eq("data", formData.data_agendamento).eq("empresa_id", empresaDados.id)
           ]);
 
@@ -338,7 +405,7 @@ export default function AgendamentoPremium() {
             ...(bl?.filter(b => match(b.medico_profissional)).map(b => formatTime(b.horario)) || [])
           ];
           
-          if (isMounted) setAgenda({ ocupados: [...new Set(slots)], buscando: false });
+          if (isMounted) setAgenda({ ocupados: [...new Set(slots)], buscando: false, agora: requestStartedAt });
         } catch (e) { 
           if (isMounted) setAgenda(a => ({ ...a, buscando: false })); 
         }
@@ -350,6 +417,11 @@ export default function AgendamentoPremium() {
 
     const salvarNoBanco = async (pago) => {
       try {
+        if (rescheduleContext) {
+          const result = await remarcarAgendamentoPaciente({ id: rescheduleContext.id, token: rescheduleContext.token, data: formData.data_agendamento, horario: formData.horario_agendamento });
+          if (!result.success) { showIsland(result.error); return false; }
+          return { id: result.appointmentId, rescheduled: true };
+        }
         let pacienteId = (await supabase.from("pacientes").select("id").eq("cpf", formData.cpf).maybeSingle()).data?.id;
 
         const pacienteData = { 
@@ -369,7 +441,23 @@ export default function AgendamentoPremium() {
           pacienteId = novoPac.id;
         }
         
-        const { error: errAgendamento } = await supabase.from("agendamentos").insert({
+        let consultaInicialId = null;
+        if (formData.tipo_servico === "Retorno") {
+          const { data: anteriores, error: retornoError } = await supabase.from("agendamentos")
+            .select("id,tipo_servico,data_agendamento,status_pagamento_antecipado")
+            .eq("paciente_id", pacienteId).eq("empresa_id", empresaDados.id)
+            .lte("data_agendamento", formData.data_agendamento);
+          if (retornoError) throw retornoError;
+          const policy = empresaDados.config_regras || {};
+          const eligibility = validateReturnEligibility(anteriores, formData.data_agendamento, {
+            windowDays: policy.retorno_prazo_dias,
+            requirePayment: policy.retorno_exige_pagamento
+          });
+          if (!eligibility.valid) { showIsland(eligibility.error); return false; }
+          consultaInicialId = eligibility.initialAppointment.id;
+        }
+
+        const { data: savedAppointment, error: errAgendamento } = await supabase.from("agendamentos").insert({
           paciente_id: pacienteId, 
           empresa_id: empresaDados.id, 
           tipo_servico: formData.tipo_servico, 
@@ -379,11 +467,13 @@ export default function AgendamentoPremium() {
           data_agendamento: formData.data_agendamento, 
           horario_agendamento: formData.horario_agendamento, 
           status_pagamento_antecipado: pago, 
-          valor_total: valorEntrada * 2
-        });
+          valor_total: valorEntrada * 2,
+          categoria_atendimento: formData.tipo_servico === "Retorno" ? "retorno" : "inicial",
+          consulta_inicial_id: consultaInicialId
+        }).select("id").single();
         
         if (errAgendamento) throw errAgendamento;
-        return true;
+        return savedAppointment;
       } catch (error) {
         console.error("ERRO DETALHADO AO SALVAR NO SUPABASE:", error);
         return false; 
@@ -450,11 +540,18 @@ export default function AgendamentoPremium() {
 
         if (currentModule === "agenda") {
           if (!formData.data_agendamento || !formData.horario_agendamento) return showIsland("Escolha uma data e horário.");
+          const correctionDelay = Number(empresaDados?.config_regras?.delay_confirmacao_segundos || 0);
+          if (correctionDelay > 0) {
+            showIsland(`Aguarde ${correctionDelay}s para revisar os dados antes da confirmação.`, "loading");
+            await new Promise((resolve) => setTimeout(resolve, correctionDelay * 1000));
+            if (currentStepRef.current !== currentStepIndex) return showIsland("Confirmação cancelada para você corrigir os dados.");
+          }
           
           const temCheckout = modulosAtivos.includes("checkout") && modulosAtivos.indexOf("checkout") > currentStepIndex;
           if (formData.tipo_servico === "Retorno" || formData.modalidade === "Convênio" || !temCheckout) {
-            if (await salvarNoBanco(false)) { 
-              await processarMensagensDinamicas(formData, empresaDados);
+            const saved = await salvarNoBanco(false);
+            if (saved) { 
+              await processarMensagensDinamicas(formData, empresaDados, saved.id);
               showIsland("Agendamento Finalizado", "success");
               
               const idxConcluido = modulosAtivos.indexOf("concluido");
@@ -491,14 +588,15 @@ export default function AgendamentoPremium() {
           
           if (data.success && ["approved", "in_process", "pending"].includes(data.status)) { 
             const isPix = data.status === "pending";
-            if (!(await salvarNoBanco(!isPix))) { showIsland("Erro ao gerar agendamento."); return resolve(); }
+            const saved = await salvarNoBanco(!isPix);
+            if (!saved) { showIsland("Erro ao gerar agendamento."); return resolve(); }
             
             if (!isPix) {
-              await processarMensagensDinamicas(formData, empresaDados);
+              await processarMensagensDinamicas(formData, empresaDados, saved.id);
               showIsland("Pagamento Aprovado", "success");
             } else {
               if (data.transaction_data) {
-                setPixData({ ...data.transaction_data, payment_id: data.id }); setTimeLeft(300);
+                setPixData({ ...data.transaction_data, payment_id: data.id, appointment_id: saved.id }); setTimeLeft(300);
               }
               showIsland("Pix gerado com sucesso!", "success");
             }
@@ -524,7 +622,7 @@ export default function AgendamentoPremium() {
           if (paciente) {
             await supabase.from("agendamentos").update({ status_pagamento_antecipado: true }).eq("paciente_id", paciente.id).eq("data_agendamento", formData.data_agendamento).eq("horario_agendamento", formData.horario_agendamento);
           }
-          await processarMensagensDinamicas(formData, empresaDados);
+          await processarMensagensDinamicas(formData, empresaDados, pixData?.appointment_id || null);
           setPixData(null); setTimeLeft(0); showIsland("Pagamento Confirmado!", "success");
         }
       } catch (e) { console.error("Erro no polling:", e); } finally { checkingRef.current = false; }
@@ -586,27 +684,29 @@ export default function AgendamentoPremium() {
       );
     }
 
-    const CurrentComponent = MODULE_REGISTRY[modulosAtivos[currentStepIndex]];
+    const currentModuleKey = modulosAtivos[currentStepIndex];
+    const CurrentComponent = MODULE_REGISTRY[currentModuleKey];
+    const stepLabels = { boas_vindas: "Boas-vindas", identificacao: "Seus dados", especialidade: "Atendimento", triagem: "Cuidados", modalidade: "Cobertura", agenda: "Data e horário", checkout: "Pagamento", concluido: "Tudo certo" };
 
     return (
       <AgendamentoContext.Provider value={contextValue}>
-        <div className="fixed inset-0 bg-[#FAFAFA] dark:bg-black -z-20 pointer-events-none" />
+        <div className="fixed inset-0 bg-[radial-gradient(circle_at_70%_10%,rgba(159,193,49,.10),transparent_32%),linear-gradient(180deg,#fafafa,#f4f4f5)] dark:bg-[radial-gradient(circle_at_70%_10%,rgba(159,193,49,.08),transparent_30%),linear-gradient(180deg,#050505,#000)] -z-20 pointer-events-none" />
         
-        <div className="absolute top-6 left-0 right-0 w-full z-[9999] px-4 flex justify-center pointer-events-none">
+        <div className="absolute top-3 md:top-6 left-0 right-0 w-full z-[9999] px-4 flex justify-center pointer-events-none">
           <motion.div layout className={`pointer-events-auto rounded-full px-5 py-2.5 max-w-sm flex transition-colors shadow-[0_8px_30px_rgb(0,0,0,0.12)] ${islandState === "error" ? "bg-red-500 text-white" : islandState === "success" ? "bg-[#9FC131] text-black font-medium" : "bg-black/90 dark:bg-white/90 backdrop-blur-xl text-white dark:text-black border border-transparent dark:border-black/10"}`}>
             <AnimatePresence mode="wait">
                {islandState === "error" && <motion.div key="e" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="flex items-center gap-2 text-xs"><AlertTriangle size={14} />{islandMessage}</motion.div>}
                {islandState === "success" && <motion.div key="s" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="flex items-center gap-2 text-xs"><CheckCircle size={14} />{islandMessage}</motion.div>}
                {islandState === "loading" && <motion.div key="l" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="flex items-center gap-3 text-xs"><Activity size={14} className="animate-spin opacity-80" />{islandMessage || "Processando"}</motion.div>}
                {islandState === "default" && (
-                  <motion.div key="d" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="flex items-center gap-4">
+                  <motion.div key="d" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="hidden sm:flex items-center gap-4">
                     <div className="flex gap-1.5">
                       {modulosAtivos.filter(m => m !== "concluido").map((_, i) => (
                         <div key={i} className={`h-1.5 rounded-full transition-all ${currentStepIndex === i ? "w-4 bg-white dark:bg-black" : currentStepIndex > i ? "w-1.5 bg-white/40 dark:bg-black/40" : "w-1.5 bg-white/10 dark:bg-black/10"}`}/>
                       ))}
                     </div>
                     <div className="text-[10px] tracking-widest text-zinc-400 dark:text-zinc-500 border-l border-zinc-700 dark:border-zinc-300 pl-4 uppercase">
-                      {modulosAtivos[currentStepIndex].replace("_", " ")}
+                      {stepLabels[currentModuleKey] || currentModuleKey}
                     </div>
                   </motion.div>
                )}
@@ -614,35 +714,37 @@ export default function AgendamentoPremium() {
           </motion.div>
         </div>
 
-        <div className="w-full h-[100dvh] flex flex-col items-center justify-center p-0 md:p-8 pt-[70px] md:pt-[90px] z-10 relative">
-          <motion.div layout transition={{ type: "spring", stiffness: 450, damping: 35 }} className="w-full max-w-[800px] flex-1 md:flex-none md:h-[85vh] md:max-h-[750px] bg-white dark:bg-[#0A0A0A] md:rounded-[32px] border-0 md:border border-zinc-200 dark:border-zinc-800 flex flex-col overflow-hidden shadow-2xl md:shadow-[0_20px_60px_rgba(0,0,0,0.06)] dark:md:shadow-[0_20px_60px_rgba(0,0,0,0.3)] relative">
+        <div className="w-full h-[100dvh] flex flex-col items-center justify-start md:justify-center p-0 md:p-8 md:pt-[90px] z-10 relative">
+          <motion.div layout transition={{ type: "spring", stiffness: 420, damping: 36 }} className="w-full max-w-[860px] flex-1 md:flex-none md:h-[85vh] md:max-h-[780px] bg-[#fbfbfc] dark:bg-[#080808] md:rounded-[36px] border-0 md:border border-zinc-200/80 dark:border-zinc-800 flex flex-col overflow-hidden md:shadow-[0_30px_90px_rgba(0,0,0,0.10)] dark:md:shadow-[0_30px_90px_rgba(0,0,0,0.45)] relative">
             
             {modulosAtivos[currentStepIndex] !== "concluido" && (
-              <div className="flex-none grid grid-cols-3 items-center px-4 md:px-8 py-3 md:py-4 border-b border-zinc-200 dark:border-zinc-800 bg-white/90 dark:bg-[#0A0A0A]/90 backdrop-blur-md z-20">
+              <div className="order-2 md:order-none flex-none grid grid-cols-3 items-center px-4 md:px-8 py-3.5 md:py-4 border-t md:border-t-0 md:border-b border-zinc-200/80 dark:border-zinc-800 bg-white/95 dark:bg-[#0A0A0A]/95 backdrop-blur-2xl z-20 pb-[max(.875rem,env(safe-area-inset-bottom))] md:pb-4">
                 <div className="flex justify-start">
                   {currentStepIndex > minStepIndex ? (
-                    <button onClick={() => setCurrentStepIndex(p => p - 1)} className="flex items-center gap-1.5 text-zinc-500 hover:text-zinc-900 dark:hover:text-white text-[13px] font-medium transition-colors">
+                    <button onClick={() => setCurrentStepIndex(p => p - 1)} className="min-h-11 flex items-center gap-1 text-zinc-500 hover:text-zinc-900 dark:hover:text-white text-[13px] font-medium transition-colors">
                       <ChevronLeft size={18} /> Voltar
                     </button>
                   ) : <div />}
                 </div>
-                <div className="flex justify-center text-[10px] md:text-[11px] uppercase tracking-widest font-bold text-zinc-400 dark:text-zinc-500 whitespace-nowrap">
-                  Etapa {currentStepIndex + 1} de {modulosAtivos.filter(m => m !== "concluido").length}
+                <div className="flex flex-col items-center justify-center whitespace-nowrap">
+                  <span className="text-[10px] font-semibold text-zinc-400">{currentStepIndex + 1} de {modulosAtivos.filter(m => m !== "concluido").length}</span>
+                  <span className="text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mt-0.5">{stepLabels[currentModuleKey]}</span>
                 </div>
                 <div className="flex justify-end">
                   {modulosAtivos[currentStepIndex] !== "checkout" && !(modulosAtivos[currentStepIndex] === "especialidade" && flags.exibirConfUri && !flags.confirmouUri) ? (
-                    <button onClick={nextStep} disabled={loading || !isModuleValid(modulosAtivos[currentStepIndex])} className={`font-bold text-[12px] px-5 py-2.5 rounded-full flex items-center justify-center gap-1.5 uppercase transition-all duration-300 shadow-sm whitespace-nowrap ${isModuleValid(modulosAtivos[currentStepIndex]) ? "bg-zinc-900 hover:bg-black dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black hover:scale-[1.02] active:scale-[0.98]" : "bg-zinc-100 dark:bg-zinc-900 text-zinc-400 dark:text-zinc-600"}`}>
+                    <motion.button whileTap={{scale:.94}} onClick={nextStep} disabled={loading || !isModuleValid(modulosAtivos[currentStepIndex])} className={`min-h-11 font-semibold text-[13px] px-5 py-2.5 rounded-full flex items-center justify-center gap-1.5 transition-all duration-300 shadow-sm whitespace-nowrap ${isModuleValid(modulosAtivos[currentStepIndex]) ? "bg-zinc-900 hover:bg-black dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black shadow-zinc-900/15" : "bg-zinc-100 dark:bg-zinc-900 text-zinc-400 dark:text-zinc-600"}`}>
                       {loading ? "Processando" : (modulosAtivos[currentStepIndex] === "agenda" && (formData.modalidade === "Convênio" || formData.tipo_servico === "Retorno") ? "Finalizar" : "Continuar")}
                       {!loading && <ArrowRight size={14}/>}
-                    </button>
+                    </motion.button>
                   ) : <div />}
                 </div>
               </div>
             )}
 
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-12 pb-16 md:pb-12">
-              <AnimatePresence mode="wait">
-                 {CurrentComponent ? <CurrentComponent key={modulosAtivos[currentStepIndex]} /> : <div>Modulo Indisponível</div>}
+            <div className="order-1 md:order-none flex-1 overflow-y-auto custom-scrollbar px-5 pt-16 pb-8 sm:p-7 md:p-12 md:pb-12 overscroll-contain">
+              <div className="md:hidden flex items-center justify-between mb-7"><div><span className="text-[11px] text-zinc-400 font-semibold">{empresaDados.nome}</span><p className="text-sm font-semibold">Agendamento</p></div><div className="flex gap-1">{modulosAtivos.filter(m => m !== "concluido").map((step, index) => <motion.span layout key={step} className={`h-1.5 rounded-full ${index === currentStepIndex ? "w-6 bg-zinc-900 dark:bg-white" : index < currentStepIndex ? "w-2 bg-[#9FC131]" : "w-2 bg-zinc-200 dark:bg-zinc-800"}`}/>)}</div></div>
+              <AnimatePresence mode="wait" initial={false}>
+                 {CurrentComponent ? <motion.div key={currentModuleKey} initial={{opacity:0,x:18,filter:"blur(5px)"}} animate={{opacity:1,x:0,filter:"blur(0px)"}} exit={{opacity:0,x:-14,filter:"blur(4px)"}} transition={{type:"spring",stiffness:360,damping:32}}><CurrentComponent /></motion.div> : <div>Módulo indisponível</div>}
               </AnimatePresence>
             </div>
 

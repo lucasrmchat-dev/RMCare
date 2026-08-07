@@ -2,6 +2,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+import { createAdminSession, verifyAdminSession, ADMIN_SESSION_SECONDS } from "@/lib/session";
 
 // Trava de segurança: avisa imediatamente se as variáveis estiverem faltando
 if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -134,11 +135,11 @@ export async function authenticateUser(payload) {
 
     if (isAuthorized) {
       // Cria a sessão em Cookie para isolar o Tenant
-      cookieStore.set("rmcare_auth", idClean, {
+      cookieStore.set("rmcare_auth", await createAdminSession(idClean), {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
-        maxAge: 60 * 60 * 24 * 7, // 7 dias de sessão
+        maxAge: ADMIN_SESSION_SECONDS,
         path: "/"
       });
       return { success: true, message: "Acesso autorizado!" };
@@ -148,4 +149,38 @@ export async function authenticateUser(payload) {
   }
 
   return { success: false, error: "Erro de autenticação." };
+}
+
+export async function refreshAdminSession() {
+  const cookieStore = await cookies();
+  const current = await verifyAdminSession(cookieStore.get("rmcare_auth")?.value);
+  if (!current) return { success: false };
+  cookieStore.set("rmcare_auth", await createAdminSession(current.sub), {
+    httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax",
+    maxAge: ADMIN_SESSION_SECONDS, path: "/"
+  });
+  return { success: true, expiresIn: ADMIN_SESSION_SECONDS };
+}
+
+export async function logoutAdmin() {
+  const cookieStore = await cookies();
+  cookieStore.delete("rmcare_auth");
+  return { success: true };
+}
+
+export async function updateAdminCredentials({ currentPassword, newUsername, newPassword }) {
+  const cookieStore = await cookies();
+  const session = await verifyAdminSession(cookieStore.get("rmcare_auth")?.value);
+  if (!session) return { success: false, error: "Sessão expirada." };
+  const username = newUsername.trim().toLowerCase();
+  if (username.length < 3 || newPassword.length < 8) return { success: false, error: "Use login com 3+ caracteres e senha com 8+ caracteres." };
+  const { data: legacyAdmin } = await supabaseAdmin.from("administradores").select("id").eq("usuario", session.sub).eq("senha_hash", currentPassword).maybeSingle();
+  const { data: hashedValid } = legacyAdmin ? { data: true } : await supabaseAdmin.rpc("verificar_senha_admin", { p_usuario: session.sub, p_senha: currentPassword });
+  if (!hashedValid) return { success: false, error: "Senha atual inválida." };
+  const { error } = await supabaseAdmin.rpc("alterar_credenciais_admin", { p_usuario_atual: session.sub, p_novo_usuario: username, p_nova_senha: newPassword });
+  if (error) return { success: false, error: error.code === "23505" ? "Este login já está em uso." : error.message };
+  cookieStore.set("rmcare_auth", await createAdminSession(username), {
+    httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: ADMIN_SESSION_SECONDS, path: "/"
+  });
+  return { success: true };
 }

@@ -2,6 +2,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+import { verifyAdminSession } from "@/lib/session";
 
 // Trava de segurança: avisa imediatamente se as variáveis estiverem faltando
 if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -26,7 +27,9 @@ export async function getAdminLogado() {
     throw new Error("Sessão expirada ou o navegador (Safari/IP) bloqueou o cookie de autenticação.");
   }
 
-  const usuarioLogado = authCookie.value;
+  const session = await verifyAdminSession(authCookie.value);
+  if (!session) throw new Error("Sessão expirada.");
+  const usuarioLogado = session.sub;
 
   const { data: admin, error } = await supabaseAdmin
     .from("administradores")
@@ -208,6 +211,39 @@ export async function fetchAdminAgendamentos() {
   return data || [];
 }
 
+export async function actionCancelarAgendamentoAdmin(id, motivo = "Cancelado pela clínica") {
+  const admin = await getAdminLogado();
+  let query = supabaseAdmin.from("agendamentos").select("empresa_id").eq("id", id);
+  if (admin.role !== "sistema") query = query.eq("empresa_id", admin.empresa_id);
+  const { data: appointment } = await query.maybeSingle();
+  if (!appointment) throw new Error("Agendamento não encontrado.");
+  const { data, error } = await supabaseAdmin.rpc("cancelar_agendamento", { p_agendamento_id: id, p_empresa_id: appointment.empresa_id, p_paciente_id: null, p_cancelado_por: "administrador", p_motivo: motivo });
+  if (error) throw error;
+  return data;
+}
+
+export async function actionExcluirAgendamentoAdmin(id) {
+  const admin = await getAdminLogado();
+  let query = supabaseAdmin.from("agendamentos").select("empresa_id").eq("id", id);
+  if (admin.role !== "sistema") query = query.eq("empresa_id", admin.empresa_id);
+  const { data: appointment } = await query.maybeSingle();
+  if (!appointment) throw new Error("Agendamento não encontrado.");
+  const { data, error } = await supabaseAdmin.rpc("excluir_agendamento", { p_agendamento_id: id, p_empresa_id: appointment.empresa_id, p_paciente_id: null });
+  if (error) throw error;
+  return data;
+}
+
+export async function actionRemarcarAgendamentoAdmin(id, data, horario) {
+  const admin = await getAdminLogado();
+  let query = supabaseAdmin.from("agendamentos").select("empresa_id").eq("id", id);
+  if (admin.role !== "sistema") query = query.eq("empresa_id", admin.empresa_id);
+  const { data: appointment } = await query.maybeSingle();
+  if (!appointment) throw new Error("Agendamento não encontrado.");
+  const { data: updated, error } = await supabaseAdmin.rpc("remarcar_agendamento", { p_agendamento_id: id, p_empresa_id: appointment.empresa_id, p_paciente_id: null, p_nova_data: data, p_novo_horario: horario });
+  if (error) throw error;
+  return updated;
+}
+
 export async function fetchAdminServicos() {
   const admin = await getAdminLogado();
 
@@ -269,7 +305,9 @@ export async function actionAtualizarServico(id, srvData) {
     preco: Number(srvData.preco),
     dias_bloqueio_padrao: Number(srvData.dias_bloqueio_padrao),
     tipo_contagem_dias: srvData.tipo_contagem_dias,
-    especialidade: srvData.especialidade
+    especialidade: srvData.especialidade,
+    agendamento_bloqueado_ate: srvData.agendamento_bloqueado_ate || null,
+    motivo_bloqueio_agenda: srvData.motivo_bloqueio_agenda || null
   }).eq("id", id);
 
   if (admin.role !== 'sistema') query = query.eq("empresa_id", admin.empresa_id);
@@ -292,6 +330,8 @@ export async function actionCriarServico(payload) {
     ...payload, 
     empresa_id: empresaId,
     especialidade: payload.especialidade || null
+    ,agendamento_bloqueado_ate: payload.agendamento_bloqueado_ate || null
+    ,motivo_bloqueio_agenda: payload.motivo_bloqueio_agenda || null
   }]).select().single();
   
   if (error) throw error;
@@ -373,6 +413,61 @@ export async function actionCriarRegraAgenda(regra) {
   return data;
 }
 
+export async function actionAtualizarRegraAgenda(id, regra) {
+  const admin = await getAdminLogado();
+  const allowed = {
+    servico_id: regra.servico_id || null,
+    dias_semana: regra.dias_semana,
+    hora_inicio: regra.hora_inicio,
+    hora_fim: regra.hora_fim,
+    ultimo_horario_agendamento: regra.ultimo_horario_agendamento,
+    tipos_permitidos: regra.tipos_permitidos || [],
+    duracao_slot_minutos: Number(regra.duracao_slot_minutos),
+    ocupacao_sequencial: Boolean(regra.ocupacao_sequencial),
+    ativo: regra.ativo !== false
+  };
+  let query = supabaseAdmin.from("regras_agenda").update(allowed).eq("id", id);
+  if (admin.role !== "sistema") query = query.eq("empresa_id", admin.empresa_id);
+  const { data, error } = await query.select().single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function fetchAdminPolicies() {
+  const admin = await getAdminLogado();
+  if (!admin.empresa_id) return {};
+  const { data, error } = await supabaseAdmin.from("empresas").select("config_regras").eq("id", admin.empresa_id).single();
+  if (error) throw error;
+  return data?.config_regras || {};
+}
+
+export async function actionSalvarPolicies(config) {
+  const admin = await getAdminLogado();
+  if (!admin.empresa_id) throw new Error("Clínica não vinculada.");
+  const normalized = {
+    retorno_prazo_dias: Math.min(365, Math.max(1, Number(config.retorno_prazo_dias || 30))),
+    retorno_exige_pagamento: config.retorno_exige_pagamento !== false,
+    delay_confirmacao_segundos: Math.min(300, Math.max(0, Number(config.delay_confirmacao_segundos || 0)))
+  };
+  const { error } = await supabaseAdmin.from("empresas").update({ config_regras: normalized }).eq("id", admin.empresa_id);
+  if (error) throw error;
+  return normalized;
+}
+
+export async function fetchAdminCustomization() {
+  const admin = await getAdminLogado();
+  const { data, error } = await supabaseAdmin.from("empresas").select("id,config_campos,config_mensagens").eq("id", admin.empresa_id).single();
+  if (error) throw error;
+  return data;
+}
+
+export async function actionSalvarCustomization({ config_campos, config_mensagens }) {
+  const admin = await getAdminLogado();
+  const { error } = await supabaseAdmin.from("empresas").update({ config_campos, config_mensagens }).eq("id", admin.empresa_id);
+  if (error) throw error;
+  return true;
+}
+
 export async function actionCriarRegraMassa(regrasArray) {
   const admin = await getAdminLogado();
 
@@ -392,4 +487,25 @@ export async function actionDeletarRegra(id) {
   const { error } = await query;
   if (error) throw new Error(error.message);
   return true;
+}
+
+export async function actionProvisionarEmpresa({ nome, slug, usuario, senha }) {
+  const admin = await getAdminLogado();
+  if (admin.role !== "sistema") throw new Error("Apenas administradores do sistema podem provisionar ambientes.");
+  const cleanSlug = slug.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "");
+  const cleanUser = usuario.trim().toLowerCase();
+  if (!nome.trim() || cleanSlug.length < 3 || cleanUser.length < 3 || senha.length < 8) throw new Error("Preencha nome, slug, login e uma senha com pelo menos 8 caracteres.");
+  const { data, error } = await supabaseAdmin.rpc("provisionar_empresa", {
+    p_nome: nome.trim(), p_slug: cleanSlug, p_usuario: cleanUser, p_senha: senha
+  });
+  if (error) throw new Error(error.code === "23505" ? "Slug ou login já cadastrado." : error.message);
+  return data;
+}
+
+export async function actionListarEmpresas() {
+  const admin = await getAdminLogado();
+  if (admin.role !== "sistema") throw new Error("Acesso negado.");
+  const { data, error } = await supabaseAdmin.from("empresas").select("id,nome,slug,created_at").order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
 }

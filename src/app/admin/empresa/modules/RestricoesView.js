@@ -1,9 +1,9 @@
 "use client"; 
 import { useState, useMemo } from "react"; 
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion"; 
-import { CalendarDays, CheckCircle2, Plus, Settings2, Code2, Play, FileJson, Copy, Info, Zap, Clock, Trash2, Building, User } from "lucide-react"; 
+import { CalendarDays, CheckCircle2, Plus, Settings2, Code2, Play, FileJson, Copy, Info, Zap, Clock, Trash2, Building, User, Pencil, X } from "lucide-react"; 
 import { fadeUp, spring, CustomSelect, ButtonPrimary, ToggleSwitch, TextInput } from "../components/SharedUI"; 
-import { actionCriarRegraAgenda, actionCriarRegraMassa, actionDeletarRegra } from "@/actions/adminData"; 
+import { actionCriarRegraAgenda, actionAtualizarRegraAgenda, actionCriarRegraMassa, actionDeletarRegra } from "@/actions/adminData"; 
 
 const DIAS_SEMANA = [   
     { id: 1, label: "Segunda", short: "Seg" },   
@@ -44,12 +44,34 @@ export default function RestricoesView({ regras = [], servicosOptions = [], serv
     });   
     const [jsonInput, setJsonInput] = useState("");   
     const [isProcessing, setIsProcessing] = useState(false);   
+    const [editingId, setEditingId] = useState(null);
+
+    const resetForm = () => {
+        setEditingId(null);
+        setTipoRegra("especifica");
+        setFormData({ servico_id: "", dias_semana: [], hora_inicio: "08:00", hora_fim: "18:00", ultimo_horario_agendamento: "17:30", tipos_permitidos: [], duracao_slot_minutos: 30, ocupacao_sequencial: false });
+    };
+
+    const editarRegra = (regra) => {
+        setEditingId(regra.id);
+        setTipoRegra(regra.servico_id ? "especifica" : "geral");
+        setFormData({
+            servico_id: regra.servico_id || "", dias_semana: regra.dias_semana || [],
+            hora_inicio: regra.hora_inicio?.slice(0, 5) || "08:00", hora_fim: regra.hora_fim?.slice(0, 5) || "18:00",
+            ultimo_horario_agendamento: regra.ultimo_horario_agendamento?.slice(0, 5) || "17:30",
+            tipos_permitidos: regra.tipos_permitidos || [], duracao_slot_minutos: regra.duracao_slot_minutos || 30,
+            ocupacao_sequencial: Boolean(regra.ocupacao_sequencial), ativo: regra.ativo !== false
+        });
+        setBuilderMode("visual"); setActiveView("builder");
+    };
 
     const tiposDinamicos = useMemo(() => {
         const items = new Set();
         
         items.add("Consulta Particular");
         items.add("Consulta Convênio");
+        items.add("Consulta Particular Inicial");
+        items.add("Retorno");
     
         if (Array.isArray(servicos)) {
             servicos.forEach(s => {
@@ -98,11 +120,12 @@ export default function RestricoesView({ regras = [], servicosOptions = [], serv
             if (tipoRegra === "geral") {         
                 payload.servico_id = null;       
             }       
-            await actionCriarRegraAgenda(payload);       
-            showToast("Regra criada e ativada com sucesso!");              
+            if (editingId) await actionAtualizarRegraAgenda(editingId, payload);
+            else await actionCriarRegraAgenda(payload);       
+            showToast(editingId ? "Alterações salvas na agenda." : "Regra adicionada à agenda.");              
             if(fetchRegras) await fetchRegras();       
             setActiveView("lista");              
-            setFormData(prev => ({ ...prev, dias_semana: [], tipos_permitidos: [] }));     
+            resetForm();     
         } catch (error) {       
             showToast("Erro ao processar regra. Tente novamente.", "error");     
         } finally {       
@@ -141,21 +164,21 @@ export default function RestricoesView({ regras = [], servicosOptions = [], serv
             <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">         
                 <div>           
                     <h2 className="text-3xl font-black text-zinc-900 tracking-tight flex items-center gap-3">             
-                        Motor de Atendimento <Zap size={24} className="text-amber-400 fill-amber-400" />           
+                        Disponibilidade da agenda <CalendarDays size={24} className="text-blue-500" />           
                     </h2>           
                     <p className="text-sm text-zinc-500 mt-2 font-medium max-w-xl">             
-                        Configure dias e horários de funcionamento. Crie as regras gerais da clínica ou restrições exclusivas para cada médico/colaborador.           
+                        Defina quando cada atendimento pode ser marcado, a duração de cada horário e as exceções por profissional.           
                     </p>         
                 </div>                  
                 <LayoutGroup>           
                     <div className="flex p-1.5 bg-white border border-zinc-200/80 rounded-2xl shadow-sm">             
                         <button onClick={() => setActiveView("lista")} className={`relative px-6 py-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-colors z-10 ${activeView === "lista" ? "text-white" : "text-zinc-500 hover:text-zinc-900"}`}>               
                             {activeView === "lista" && <motion.div layoutId="tab-main" className="absolute inset-0 bg-zinc-900 rounded-xl -z-10 shadow-md" transition={spring} />}               
-                            Regras Ativas             
+                            Horários configurados             
                         </button>             
-                        <button onClick={() => setActiveView("builder")} className={`relative flex items-center gap-2 px-6 py-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-colors z-10 ${activeView === "builder" ? "text-white" : "text-zinc-500 hover:text-zinc-900"}`}>               
+                        <button onClick={() => { resetForm(); setActiveView("builder"); }} className={`relative flex items-center gap-2 px-6 py-3 text-xs font-bold rounded-xl transition-colors z-10 ${activeView === "builder" ? "text-white" : "text-zinc-500 hover:text-zinc-900"}`}>               
                             {activeView === "builder" && <motion.div layoutId="tab-main" className="absolute inset-0 bg-zinc-900 rounded-xl -z-10 shadow-md" transition={spring} />}               
-                            <Plus size={14} /> Nova Regra             
+                            <Plus size={14} /> Adicionar horário             
                         </button>           
                     </div>         
                 </LayoutGroup>       
@@ -166,7 +189,8 @@ export default function RestricoesView({ regras = [], servicosOptions = [], serv
                         <motion.div key="builder" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={spring} className="space-y-6">                              
                             <AnimatePresence mode="wait">                 
                                 {builderMode === "visual" && (                   
-                                    <motion.div key="visual" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="bg-white border border-zinc-200/80 rounded-[2.5rem] shadow-sm p-8 md:p-10 space-y-12">                                          
+                                    <motion.div key="visual" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="bg-white border border-zinc-200/80 rounded-[2.5rem] shadow-sm p-8 md:p-10 space-y-12">
+                                        {editingId && <div className="flex items-center justify-between rounded-2xl bg-blue-50 border border-blue-100 px-5 py-4"><div><strong className="text-blue-950">Editando horário existente</strong><p className="text-sm text-blue-700 mt-1">Altere os campos abaixo e salve para substituir a configuração anterior.</p></div><button onClick={() => { resetForm(); setActiveView("lista"); }} className="p-2 text-blue-600"><X size={18}/></button></div>}                                          
                                         <section>                       
                                             <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-zinc-900 mb-6">                         
                                                 <span className="w-6 h-6 rounded-md bg-zinc-900 text-white flex items-center justify-center">1</span>                         
@@ -184,7 +208,7 @@ export default function RestricoesView({ regras = [], servicosOptions = [], serv
                                                     <User size={24} className={tipoRegra === "especifica" ? "text-zinc-900" : "text-zinc-400"} />                           
                                                     <div>                             
                                                         <span className="block font-bold text-zinc-900 text-lg">Colaborador / Profissional</span>                             
-                                                        <span className="block text-sm text-zinc-500 mt-1">Exclusivo para um médico. Ex: "Dra. Maria só atende às terças de manhã".</span>                           
+                                                        <span className="block text-sm text-zinc-500 mt-1">Exclusivo para um médico, como atendimento somente às terças de manhã.</span>                           
                                                     </div>                         
                                                 </button>                       
                                             </div>                       
@@ -261,7 +285,7 @@ export default function RestricoesView({ regras = [], servicosOptions = [], serv
                                                 <Code2 size={14}/> Inserir Múltiplas Regras (Avançado)                        
                                             </button>                       
                                             <ButtonPrimary onClick={handleSalvarVisual} disabled={isProcessing} icon={CheckCircle2} className="w-full md:w-auto px-12 py-5 text-sm">                         
-                                                {isProcessing ? "Processando..." : "Salvar Esta Regra"}                       
+                                                {isProcessing ? "Salvando..." : editingId ? "Salvar alterações" : "Adicionar à agenda"}                       
                                             </ButtonPrimary>                     
                                         </div>                   
                                     </motion.div>                 
@@ -278,7 +302,7 @@ export default function RestricoesView({ regras = [], servicosOptions = [], serv
                                                 </div>                         
                                                 <h3 className="text-xl font-black text-zinc-900 mb-3">Modo Programador</h3>                         
                                                 <p className="text-sm text-zinc-600 font-medium leading-relaxed mb-6">                           
-                                                    Cole múltiplas regras de uma vez enviando um Array JSON. Use "null" no servico_id para Regras Gerais.                         
+                                                    Cole múltiplas regras de uma vez enviando um Array JSON. Use null no servico_id para Regras Gerais.                         
                                                 </p>                                                  
                                                 <div className="bg-zinc-900 rounded-2xl p-4 relative group">                           
                                                     <div className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 transition-opacity">                             
@@ -342,9 +366,10 @@ export default function RestricoesView({ regras = [], servicosOptions = [], serv
                                                                 <CalendarDays size={14} /> {diasNomes}                               
                                                             </p>                             
                                                         </div>                                                          
-                                                        <button onClick={async () => { await actionDeletarRegra(regra.id); if(fetchRegras) await fetchRegras(); showToast("Regra removida com sucesso!"); }} className="w-10 h-10 rounded-xl bg-zinc-50 text-zinc-400 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-colors flex-shrink-0" title="Remover Regra">                               
-                                                            <Trash2 size={16} />                             
-                                                        </button>                           
+                                                        <div className="flex gap-2">
+                                                            <button onClick={() => editarRegra(regra)} className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 hover:bg-blue-100 flex items-center justify-center transition-colors" title="Editar horários"><Pencil size={16} /></button>
+                                                            <button onClick={async () => { await actionDeletarRegra(regra.id); if(fetchRegras) await fetchRegras(); showToast("Horário removido."); }} className="w-10 h-10 rounded-xl bg-zinc-50 text-zinc-400 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-colors" title="Remover horário"><Trash2 size={16} /></button>
+                                                        </div>                           
                                                     </div>                           
                                                     <div className="flex flex-wrap gap-2">                             
                                                         <div className="flex items-center gap-1.5 bg-zinc-100 text-zinc-700 px-3 py-1.5 rounded-lg text-xs font-bold">                               

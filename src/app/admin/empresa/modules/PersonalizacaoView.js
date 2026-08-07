@@ -4,9 +4,9 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import { Save, MessageSquare, LayoutTemplate, Plus, Trash2, Zap, CheckCircle2, ListChecks, Lock } from "lucide-react";
 import { fadeUp, ButtonPrimary, ToggleSwitch, CustomSelect, TextInput, spring } from "../components/SharedUI";
-import { supabase } from "@/lib/supabase";
+import { actionSalvarCustomization, fetchAdminCustomization } from "@/actions/adminData";
 
-export default function PersonalizacaoView({ showToast }) {
+export default function PersonalizacaoView({ showToast, servicos = [] }) {
   const [activeTab, setActiveTab] = useState("jornada");
   const [loading, setLoading] = useState(false);
   const [empresaId, setEmpresaId] = useState(null);
@@ -23,10 +23,11 @@ export default function PersonalizacaoView({ showToast }) {
   
   const [regrasMensagens, setRegrasMensagens] = useState([]);
   const [especialidadesUnicas, setEspecialidadesUnicas] = useState([]);
+  const [servicosAlvo, setServicosAlvo] = useState([]);
 
   useEffect(() => {
     const fetchDados = async () => {
-      const { data: emp } = await supabase.from('empresas').select('id, config_campos, config_mensagens').limit(1).single();
+      const emp = await fetchAdminCustomization();
       if (emp) {
         setEmpresaId(emp.id);
         if (emp.config_campos) {
@@ -40,16 +41,17 @@ export default function PersonalizacaoView({ showToast }) {
         if (Array.isArray(emp.config_mensagens)) setRegrasMensagens(emp.config_mensagens);
       }
       
-      const { data: srvs } = await supabase.from('servicos').select('especialidade').not('especialidade', 'is', null);
+      const srvs = servicos;
       if (srvs) {
+        setServicosAlvo(srvs);
         const unicas = [...new Set(
-          srvs.flatMap(s => s.especialidade.split(',').map(e => e.trim()))
+          srvs.filter(s => s.especialidade).flatMap(s => s.especialidade.split(',').map(e => e.trim()))
         )].sort();
         setEspecialidadesUnicas(unicas);
       }
     };
     fetchDados();
-  }, []);
+  }, [servicos]);
 
   const handleSave = async () => {
     if (!empresaId) {
@@ -58,16 +60,7 @@ export default function PersonalizacaoView({ showToast }) {
     }
     setLoading(true);
     try {
-      const { data, error } = await supabase.from('empresas')
-        .update({
-          config_campos: campos,
-          config_mensagens: regrasMensagens
-        })
-        .eq('id', empresaId)
-        .select();
-      
-      if (error) throw error;
-      if (!data || data.length === 0) throw new Error("Bloqueio de segurança (RLS) no Supabase.");
+      await actionSalvarCustomization({ config_campos: campos, config_mensagens: regrasMensagens });
       
       showToast("Painel atualizado com sucesso!");
     } catch (e) {
@@ -80,7 +73,7 @@ export default function PersonalizacaoView({ showToast }) {
 
   // Funções de Mensagens
   const adicionarNovaRegra = () => {
-    const novaRegra = { id: Date.now().toString(), especialidade: "Todas", gatilho: "imediato", dias_antes: 1, hora_envio: "08:00", mensagem: "Olá {nome}, seu agendamento de {servico} está confirmado!" };
+    const novaRegra = { id: Date.now().toString(), alvo: "Todas", especialidade: "Todas", gatilho: "imediato", dias_antes: 1, hora_envio: "08:00", mensagem: "Olá {nome}, seu agendamento de {servico} está confirmado!" };
     setRegrasMensagens([novaRegra, ...regrasMensagens]);
   };
   const atualizarRegra = (id, campo, valor) => setRegrasMensagens(regrasMensagens.map(r => r.id === id ? { ...r, [campo]: valor } : r));
@@ -106,7 +99,12 @@ export default function PersonalizacaoView({ showToast }) {
     }));
   };
 
-  const espOptions = [{ value: "Todas", label: "Geral (Aplicar para todas)" }, ...especialidadesUnicas.map(e => ({ value: e, label: e }))];
+  const alvoOptions = [
+    { value: "Todas", label: "Todos os atendimentos" },
+    ...servicosAlvo.map(s => ({ value: `servico:${s.nome}`, label: `Serviço · ${s.nome}` })),
+    ...especialidadesUnicas.map(e => ({ value: `especialidade:${e}`, label: `Especialidade · ${e}` })),
+    { value: "tipo:Exame", label: "Todos os exames" }, { value: "tipo:Consulta", label: "Todas as consultas" }, { value: "tipo:Retorno", label: "Todos os retornos" }
+  ];
 
   return (
     <motion.div key="personalizacao" {...fadeUp} className="flex-1 flex flex-col h-full overflow-hidden w-full max-w-7xl mx-auto relative bg-[#F4F4F5]">
@@ -117,7 +115,7 @@ export default function PersonalizacaoView({ showToast }) {
             Personalização <LayoutTemplate size={24} className="text-blue-500" />
           </h2>
           <p className="text-sm text-zinc-500 mt-2 font-medium">
-            Molde a experiência do seu paciente. Personalize jornadas, dados e mensagens.
+            Defina os dados solicitados, as formas de atendimento e as mensagens que cada paciente recebe.
           </p>
         </div>
         
@@ -128,21 +126,21 @@ export default function PersonalizacaoView({ showToast }) {
               className={`relative px-5 py-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-colors z-10 whitespace-nowrap ${activeTab === "jornada" ? "text-white" : "text-zinc-500 hover:text-zinc-900"}`}
             >
               {activeTab === "jornada" && <motion.div layoutId="tab-pill-pers" className="absolute inset-0 bg-zinc-900 rounded-xl -z-10 shadow-md" transition={spring} />}
-              Jornada & Campos
+              Dados do paciente
             </button>
             <button 
               onClick={() => setActiveTab("modalidades")}
               className={`relative px-5 py-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-colors z-10 whitespace-nowrap ${activeTab === "modalidades" ? "text-white" : "text-zinc-500 hover:text-zinc-900"}`}
             >
               {activeTab === "modalidades" && <motion.div layoutId="tab-pill-pers" className="absolute inset-0 bg-zinc-900 rounded-xl -z-10 shadow-md" transition={spring} />}
-              Métodos de Atendimento
+              Formas de atendimento
             </button>
             <button 
               onClick={() => setActiveTab("mensagens")}
               className={`relative px-5 py-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-colors z-10 whitespace-nowrap ${activeTab === "mensagens" ? "text-white" : "text-zinc-500 hover:text-zinc-900"}`}
             >
               {activeTab === "mensagens" && <motion.div layoutId="tab-pill-pers" className="absolute inset-0 bg-zinc-900 rounded-xl -z-10 shadow-md" transition={spring} />}
-              Automações WhatsApp
+              Mensagens automáticas
             </button>
           </div>
         </LayoutGroup>
@@ -204,7 +202,7 @@ export default function PersonalizacaoView({ showToast }) {
                     options={campos.modalidades_opcoes.map(m => ({value: m.nome, label: m.nome}))}
                   />
                   <p className="text-xs font-bold text-blue-700/80 uppercase tracking-widest mt-3">
-                    A modalidade padrão será aplicada automaticamente a todos os agendamentos caso você ative "Ocultar Particular/Convênio" na aba anterior.
+                    A modalidade padrão será aplicada automaticamente quando a opção Ocultar Particular/Convênio estiver ativa.
                   </p>
                 </div>
 
@@ -259,7 +257,7 @@ export default function PersonalizacaoView({ showToast }) {
                     </p>
                   </div>
                   <button onClick={adicionarNovaRegra} className="flex items-center justify-center gap-2 px-5 py-3 bg-zinc-900 text-white text-xs font-bold uppercase tracking-widest rounded-xl hover:bg-black transition-transform shadow-md">
-                    <Plus size={16} /> Nova Mensagem
+                    <Plus size={16} /> Adicionar mensagem
                   </button>
                 </div>
 
@@ -284,21 +282,21 @@ export default function PersonalizacaoView({ showToast }) {
                           <div className="flex-1 space-y-5">
                             <div className="flex items-center gap-2 mb-2">
                               <span className="w-6 h-6 rounded-full bg-zinc-900 text-white flex items-center justify-center text-xs font-bold">{index + 1}</span>
-                              <h4 className="font-bold text-zinc-900 text-sm uppercase tracking-widest">Configuração da Regra</h4>
+                              <h4 className="font-semibold text-zinc-900 text-sm">Quando esta mensagem será usada</h4>
                             </div>
                             
-                            <CustomSelect label="Alvo (Especialidade)" value={regra.especialidade} onChange={(v) => atualizarRegra(regra.id, 'especialidade', v)} options={espOptions} />
+                            <CustomSelect label="Atendimento que receberá a mensagem" value={regra.alvo || (regra.especialidade === "Todas" ? "Todas" : `especialidade:${regra.especialidade}`)} onChange={(v) => atualizarRegra(regra.id, 'alvo', v)} options={alvoOptions} />
                             
                             <div className="grid grid-cols-2 gap-4">
                               <div className="col-span-2">
-                                <CustomSelect label="Quando Enviar?" value={regra.gatilho} onChange={(v) => atualizarRegra(regra.id, 'gatilho', v)} options={[ {value: "imediato", label: "Na hora do Agendamento"}, {value: "agendado", label: "Programar para o Futuro"} ]} />
+                                <CustomSelect label="Quando Enviar?" value={regra.gatilho} onChange={(v) => atualizarRegra(regra.id, 'gatilho', v)} options={[ {value: "imediato", label: "Na hora do Agendamento"}, {value: "agendado", label: "Dias antes do Atendimento"}, {value: "pos_atendimento", label: "Após Consulta/Exame"} ]} />
                               </div>
                               
-                              {regra.gatilho === "agendado" ? (
+                              {["agendado", "pos_atendimento"].includes(regra.gatilho) ? (
                                 <>
                                   <div>
-                                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1 mb-1.5 block">Dias Antes da Consulta</label>
-                                    <input type="number" min="0" max="30" value={regra.dias_antes} onChange={(e) => atualizarRegra(regra.id, 'dias_antes', e.target.value)} className="w-full px-4 py-3 bg-white border border-zinc-200/80 rounded-xl text-sm font-medium outline-none" />
+                                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1 mb-1.5 block">{regra.gatilho === "pos_atendimento" ? "Dias Depois" : "Dias Antes"}</label>
+                                    <input type="number" min="0" max="30" value={regra.gatilho === "pos_atendimento" ? (regra.dias_depois || 0) : regra.dias_antes} onChange={(e) => atualizarRegra(regra.id, regra.gatilho === "pos_atendimento" ? 'dias_depois' : 'dias_antes', e.target.value)} className="w-full px-4 py-3 bg-white border border-zinc-200/80 rounded-xl text-sm font-medium outline-none" />
                                   </div>
                                   <div>
                                     <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1 mb-1.5 block">Hora de Envio</label>

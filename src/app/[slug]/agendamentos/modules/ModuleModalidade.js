@@ -40,15 +40,15 @@ export default function ModuleModalidade() {
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="max-w-lg mx-auto text-center space-y-6">
       <div>
-        <h2 className="text-3xl font-medium">Garantia Financeira</h2>
-        <p className="text-zinc-500 text-sm mt-2">Escolha o método de cobertura.</p>
+        <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">Como será o atendimento?</h2>
+        <p className="text-zinc-500 text-sm md:text-base mt-2">Escolha a opção correspondente para vermos as condições corretas.</p>
       </div>
 
       {formData.tipo_servico === "Retorno" ? (
         <div className="p-8 border rounded-3xl bg-zinc-50 dark:bg-[#111111]">
           <ShieldCheck className="w-10 h-10 mx-auto mb-4 text-zinc-400" />
           <h3 className="text-lg font-medium">Retorno Isento</h3>
-          <p className="text-sm text-zinc-500 mt-2">Dentro da janela regulamentar de 30 dias.</p>
+          <p className="text-sm text-zinc-500 mt-2">Dentro da janela de {empresaDados?.config_regras?.retorno_prazo_dias || 30} dias definida pela clínica.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

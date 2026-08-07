@@ -71,7 +71,7 @@ export default function ModuleEspecialidade() {
                             )) : (                 
                                 <div className="col-span-2 p-8 text-center border border-dashed rounded-3xl border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-[#111111]">                   
                                     <p className="text-zinc-500 font-medium">Nenhuma especialidade cadastrada ainda.</p>                   
-                                    <p className="text-sm text-zinc-400 mt-2">Vá no Supabase e substitua os valores "NULL" da coluna "especialidade" pelos nomes corretos.</p>                 
+                                    <p className="text-sm text-zinc-400 mt-2">Cadastre as especialidades dos serviços no painel administrativo para exibi-las aqui.</p>                 
                                 </div>               
                             )}                            
                         </div>           
@@ -94,9 +94,14 @@ export default function ModuleEspecialidade() {
                                         <button                      
                                             key={m.id}                      
                                             onClick={() => {
-                                                setValue("medico_profissional", m.nome);
-                                                setValue("tipo_servico", m.tipo || "Consulta"); // Define o tipo real advindo do banco
-                                            }}                      
+                                                const tipo = m.tipo || "Consulta";
+                                                setValue("tipo_servico", tipo);
+                                                setValue("medico_profissional", tipo === "Exame" ? "" : m.nome);
+                                                setValue("subtipo_exame", tipo === "Exame" ? m.nome : "");
+                                                setValue("modalidade", "");
+                                                setValue("data_agendamento", "");
+                                                setValue("horario_agendamento", "");
+                                            }}                     
                                             className={`p-5 border rounded-2xl flex items-center gap-4 text-left transition-all ${                       
                                                 formData.medico_profissional === m.nome                          
                                                 ? "border-zinc-900 bg-zinc-50 dark:border-white dark:bg-[#111111] shadow-md scale-[1.02]"                          

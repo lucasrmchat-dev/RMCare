@@ -40,6 +40,9 @@ const ServicoCard = ({ srv, onEdit }) => {
               Inativo
             </span>
           )}
+          {srv.agendamento_bloqueado_ate && (
+            <span className="inline-flex items-center px-3 py-1.5 bg-amber-50 text-amber-700 text-[10px] font-black uppercase tracking-widest rounded-lg">Pausado até {new Date(`${srv.agendamento_bloqueado_ate}T12:00:00`).toLocaleDateString("pt-BR")}</span>
+          )}
         </div>
         
         <h3 className="font-black text-2xl text-zinc-900 mb-3 leading-tight pr-10">{srv.nome}</h3>
@@ -92,6 +95,8 @@ const ServicoForm = ({ initialData, onSave, onCancel, loading, especialidadesLis
     preco: initialData?.preco || "",
     dias_bloqueio_padrao: initialData?.dias_bloqueio_padrao || "",
     tipo_contagem_dias: initialData?.tipo_contagem_dias || "corridos",
+    agendamento_bloqueado_ate: initialData?.agendamento_bloqueado_ate || "",
+    motivo_bloqueio_agenda: initialData?.motivo_bloqueio_agenda || "",
     ativo: initialData?.ativo !== false
   });
   
@@ -199,6 +204,15 @@ const ServicoForm = ({ initialData, onSave, onCancel, loading, especialidadesLis
                   label="Cadastro Ativo" 
                 />
               </div>
+            </div>
+          </section>
+
+          <section className="pt-8 border-t border-zinc-100">
+            <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-zinc-900 mb-6"><span className="w-6 h-6 rounded-md bg-amber-100 text-amber-700 flex items-center justify-center">3</span> Pausa temporária da agenda</h4>
+            <div className="grid md:grid-cols-2 gap-6 p-6 rounded-3xl bg-amber-50/60 border border-amber-100">
+              <TextInput label="Não aceitar agendamentos até" type="date" value={formData.agendamento_bloqueado_ate} onChange={(e) => setFormData({...formData, agendamento_bloqueado_ate:e.target.value})}/>
+              <TextInput label="Motivo exibido ao paciente" placeholder="Ex.: férias do especialista" value={formData.motivo_bloqueio_agenda} onChange={(e) => setFormData({...formData, motivo_bloqueio_agenda:e.target.value})}/>
+              <p className="md:col-span-2 text-xs text-amber-800">O perfil continua ativo e visível, mas o calendário só libera datas posteriores ao dia informado.</p>
             </div>
           </section>
 
@@ -358,6 +372,8 @@ export default function FinanceiroView({ servicos, showToast, fetchServicos }) {
         tipo_contagem_dias: formData.tipo_contagem_dias,
         preco: formData.preco ? parseFloat(formData.preco) : 0.00,
         dias_bloqueio_padrao: formData.dias_bloqueio_padrao ? parseInt(formData.dias_bloqueio_padrao, 10) : 0,
+        agendamento_bloqueado_ate: formData.agendamento_bloqueado_ate || null,
+        motivo_bloqueio_agenda: formData.motivo_bloqueio_agenda?.trim() || null,
       };
 
       if (!isEditing && formData.id && formData.id.trim() !== "") {

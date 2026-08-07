@@ -3,6 +3,7 @@ import { initMercadoPago } from '@mercadopago/sdk-react';
 import axios from "axios";
 import * as z from "zod";
 import { supabase } from "@/lib/supabase";
+import { getMessageSchedule } from "@/lib/appointmentRules";
 
 if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_MP_PUBLIC_KEY) {
   initMercadoPago(process.env.NEXT_PUBLIC_MP_PUBLIC_KEY, { locale: 'pt-BR' });
@@ -107,8 +108,9 @@ export const mapaMedicos = {
 };
 
 // O NOVO MOTOR QUE LÊ O JSON DO BANCO E DISPARA TUDO
-export const processarMensagensDinamicas = async (formData, empresaDados) => {
-  const { nome, telefone_whatsapp, data_agendamento, horario_agendamento, especialidade, medico_profissional } = formData;
+export const processarMensagensDinamicas = async (formData, empresaDados, agendamentoId = null) => {
+  const { nome, telefone_whatsapp, data_agendamento, horario_agendamento, especialidade, medico_profissional, subtipo_exame } = formData;
+  const servicoSelecionado = formData.tipo_servico === "Exame" ? subtipo_exame : medico_profissional;
   
   // Se não for um array (ou estiver vazio), encerra
   let regrasMensagens = empresaDados?.config_mensagens || [];
@@ -119,32 +121,40 @@ export const processarMensagensDinamicas = async (formData, empresaDados) => {
   
   const vars = { 
     nome: nome.trim(), 
-    servico: medico_profissional, 
+    servico: servicoSelecionado, 
     especialidade: especialidade || "",
     data: dataFormatada, 
     hora: horario_agendamento 
   };
 
   for (const regra of regrasMensagens) {
-    // Só envia se a regra for para "Todas" ou se for exatamente a especialidade escolhida
-    if (regra.especialidade !== "Todas" && regra.especialidade !== especialidade) continue;
+    const alvo = regra.alvo || (regra.especialidade === "Todas" ? "Todas" : `especialidade:${regra.especialidade}`);
+    const alvoValido = alvo === "Todas"
+      || alvo === `especialidade:${especialidade}`
+      || alvo === `servico:${servicoSelecionado}`
+      || alvo === `tipo:${formData.tipo_servico}`;
+    if (!alvoValido) continue;
 
     const textoFormatado = parseTemplate(regra.mensagem, vars);
 
     if (regra.gatilho === "imediato") {
       // Confirmação instantânea via webhook
       await dispararPushRmChat(telefone_whatsapp, vars.nome, textoFormatado);
-    } else if (regra.gatilho === "agendado") {
+    } else if (["agendado", "pos_atendimento"].includes(regra.gatilho)) {
       // Cria registro na fila_mensagens para N8N/Cron enviar depois
-      const dataEnvioProgramado = gerarData(data_agendamento, parseInt(regra.dias_antes), regra.hora_envio);
+      const dataEnvioProgramado = regra.gatilho === "pos_atendimento"
+        ? getMessageSchedule(regra, data_agendamento, horario_agendamento)
+        : gerarData(data_agendamento, parseInt(regra.dias_antes), regra.hora_envio);
       
       mensagensParaFila.push({
         empresa_id: empresaDados.id,
+        agendamento_id: agendamentoId,
         telefone_whatsapp,
         nome_paciente: vars.nome,
         mensagem: textoFormatado,
         data_hora_programada: dataEnvioProgramado,
-        status: "pendente"
+        status: "pendente",
+        gatilho: regra.gatilho
       });
     }
   }

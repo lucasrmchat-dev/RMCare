@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, X, Trash2 } from "lucide-react";
+import { Plus, X, Trash2, ClipboardCheck } from "lucide-react";
 import { fadeUp, staggerContainer, staggerItem, TextInput, CustomSelect, ButtonPrimary } from "../components/SharedUI";
 import { actionSalvarTriagem, actionDeletarTriagem } from "@/actions/adminData";
 
@@ -52,11 +52,12 @@ export default function TriagemView({ perguntas, servicos, fetchPerguntas, showT
     <motion.div key="triagem" {...fadeUp} className="p-6 md:p-10 mx-auto w-full max-w-5xl overflow-y-auto h-full custom-scrollbar">
       <div className="mb-10 flex flex-col sm:flex-row sm:items-end justify-between gap-6">
         <div>
-          <h2 className="text-3xl font-black text-zinc-900 tracking-tight">Motor de Triagem</h2>
-          <p className="text-sm text-zinc-500 mt-2 font-medium">Condicione exames com formulários clínicos. Respostas podem travar agendamentos.</p>
+          <div className="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-4"><ClipboardCheck size={21}/></div>
+          <h2 className="text-3xl font-semibold text-zinc-900 tracking-tight">Formulários clínicos</h2>
+          <p className="text-sm text-zinc-500 mt-2">Faça perguntas antes do agendamento e aplique uma espera automática conforme a resposta — por exemplo, 15 dias após uso de caneta emagrecedora.</p>
         </div>
         {!isAddingTriagem && (
-          <ButtonPrimary onClick={() => setIsAddingTriagem(true)} icon={Plus}>Nova Regra Clínica</ButtonPrimary>
+          <ButtonPrimary onClick={() => setIsAddingTriagem(true)} icon={Plus}>Adicionar pergunta</ButtonPrimary>
         )}
       </div>
 
@@ -64,13 +65,13 @@ export default function TriagemView({ perguntas, servicos, fetchPerguntas, showT
         {isAddingTriagem && (
           <motion.div initial={{ opacity: 0, height: 0, y: -10 }} animate={{ opacity: 1, height: "auto", y: 0 }} exit={{ opacity: 0, height: 0, y: -10 }} className="mb-10 bg-white border border-zinc-200/80 p-8 rounded-[2rem] shadow-[0_20px_40px_rgba(0,0,0,0.06)] overflow-hidden">
             <div className="flex justify-between items-center mb-8 border-b border-zinc-100 pb-6">
-              <h3 className="font-black text-xl text-zinc-900">Configurar Nova Diretriz</h3>
+              <h3 className="font-semibold text-xl text-zinc-900">Nova pergunta clínica</h3>
               <button onClick={() => setIsAddingTriagem(false)} className="w-10 h-10 rounded-full bg-zinc-50 flex items-center justify-center text-zinc-400 hover:text-red-500 hover:bg-red-50 transition-colors"><X size={18}/></button>
             </div>
             
             <div className="grid md:grid-cols-2 gap-6 mb-8">
-              <CustomSelect label="Exame/Consulta Afetada" value={novaTriagem.servico_id} onChange={val => setNovaTriagem({...novaTriagem, servico_id: val})} options={[{value:"", label:"Selecione o alvo..."}, ...servicos.map(s => ({value: s.id, label: s.nome}))]} />
-              <TextInput label="A Pergunta" placeholder="Ex: Toma Losartana?" value={novaTriagem.pergunta} onChange={e => setNovaTriagem({...novaTriagem, pergunta: e.target.value})} />
+              <CustomSelect label="Atendimento em que a pergunta aparece" value={novaTriagem.servico_id} onChange={val => setNovaTriagem({...novaTriagem, servico_id: val})} options={[{value:"", label:"Todos os atendimentos"}, ...servicos.map(s => ({value: s.id, label:`${s.tipo || "Atendimento"} · ${s.nome}`}))]} />
+              <TextInput label="Pergunta apresentada ao paciente" placeholder="Ex.: Usou caneta emagrecedora recentemente?" value={novaTriagem.pergunta} onChange={e => setNovaTriagem({...novaTriagem, pergunta: e.target.value})} />
             </div>
 
             <div className="bg-zinc-50/50 p-6 border border-zinc-200/60 rounded-3xl mb-8">
@@ -95,7 +96,7 @@ export default function TriagemView({ perguntas, servicos, fetchPerguntas, showT
             </div>
             
             <ButtonPrimary disabled={loading} onClick={salvarNovaTriagem} className="w-full py-5">
-              {loading ? "Salvando..." : "Registrar Regra"}
+              {loading ? "Salvando..." : "Salvar pergunta"}
             </ButtonPrimary>
           </motion.div>
         )}
