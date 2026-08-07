@@ -22,7 +22,6 @@ export async function getAdminLogado() {
   const cookieStore = await cookies();
   const authCookie = cookieStore.get("rmcare_auth");
 
-  // Se não achar o cookie, avisa o motivo exato.
   if (!authCookie || !authCookie.value) {
     throw new Error("Sessão expirada ou o navegador (Safari/IP) bloqueou o cookie de autenticação.");
   }
@@ -49,8 +48,21 @@ export async function getAdminLogado() {
 }
 
 /* ==========================================
-   FUNÇÕES DE AUTENTICAÇÃO
+   FUNÇÕES DE AUTENTICAÇÃO E CHAVES
    ========================================== */
+export async function actionSalvarChavesIntegracao(config_chaves) {
+  const admin = await getAdminLogado();
+  if (!admin.empresa_id) throw new Error("Clínica não vinculada a esta conta.");
+  
+  const { error } = await supabaseAdmin
+    .from("empresas")
+    .update({ config_chaves })
+    .eq("id", admin.empresa_id);
+
+  if (error) throw new Error(error.message);
+  return true;
+}
+
 export async function checkIdentifier(identificador) {
   const idClean = identificador.trim().toLowerCase();
 
@@ -114,7 +126,6 @@ export async function authenticateUser(payload) {
 
       if (error) return { success: false, error: "Falha ao registrar senha. Tente novamente." };
       
-      // Cookie do Paciente com permissão Lax para funcionar em IPs locais
       cookieStore.set("rmcare_auth_paciente", id, { 
         httpOnly: true, 
         secure: process.env.NODE_ENV === "production", 
@@ -149,7 +160,6 @@ export async function authenticateUser(payload) {
     const idClean = identificador.trim().toLowerCase();
     let isAuthorized = false;
 
-    // 1. Tenta a verificação em formato Antigo (Texto Puro) - Fallback
     const { data: plainAdmin } = await supabaseAdmin
       .from("administradores")
       .select("id")
@@ -160,7 +170,6 @@ export async function authenticateUser(payload) {
     if (plainAdmin) {
       isAuthorized = true;
     } else {
-      // 2. Tenta a verificação com Criptografia Forte via RPC
       const { data: hashAdmin } = await supabaseAdmin.rpc("verificar_senha_admin", {
         p_usuario: idClean,
         p_senha: password
@@ -169,12 +178,11 @@ export async function authenticateUser(payload) {
     }
 
     if (isAuthorized) {
-      // Cria a sessão com sameSite 'lax' para não ser bloqueado no localhost/IP
       cookieStore.set("rmcare_auth", idClean, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
-        maxAge: 60 * 60 * 24 * 7, // 7 dias de sessão
+        maxAge: 60 * 60 * 24 * 7,
         path: "/"
       });
       return { success: true, message: "Acesso autorizado!" };
@@ -250,7 +258,7 @@ export async function fetchAdminServicos() {
   let query = supabaseAdmin.from("servicos").select("*").order("tipo", { ascending: true });
   
   if (admin.role !== 'sistema') {
-    if (!admin.empresa_id) return []; // Se não tem empresa atrelada, retorna vazio para não vazar dados
+    if (!admin.empresa_id) return [];
     query = query.eq("empresa_id", admin.empresa_id);
   }
 
@@ -329,9 +337,9 @@ export async function actionCriarServico(payload) {
   const { data, error } = await supabaseAdmin.from("servicos").insert([{ 
     ...payload, 
     empresa_id: empresaId,
-    especialidade: payload.especialidade || null
-    ,agendamento_bloqueado_ate: payload.agendamento_bloqueado_ate || null
-    ,motivo_bloqueio_agenda: payload.motivo_bloqueio_agenda || null
+    especialidade: payload.especialidade || null,
+    agendamento_bloqueado_ate: payload.agendamento_bloqueado_ate || null,
+    motivo_bloqueio_agenda: payload.motivo_bloqueio_agenda || null
   }]).select().single();
   
   if (error) throw error;
@@ -389,9 +397,6 @@ export async function actionMigrarNomeBloqueios(nomeAntigoERP, nomeOficialSistem
   return true;
 }
 
-/* ==========================================
-   FUNÇÕES DE REGRAS (COM ISOLAMENTO)
-   ========================================== */
 export async function fetchAdminRegras() {
   const admin = await getAdminLogado();
 

@@ -2,11 +2,26 @@ alter table public.agendamentos
   add column if not exists cancelado_em timestamptz,
   add column if not exists cancelado_por text,
   add column if not exists motivo_cancelamento text,
-  add column if not exists remarcado_em timestamptz;
+  add column if not exists remarcado_em timestamptz,
+  add column if not exists medicalsys_id integer,
+  add column if not exists enviado_medicalsys boolean default false,
+  add column if not exists resposta_medicalsys jsonb;
 
 alter table public.servicos
   add column if not exists agendamento_bloqueado_ate date,
   add column if not exists motivo_bloqueio_agenda text;
+
+alter table public.bloqueios_horarios
+  add column if not exists empresa_id uuid,
+  add column if not exists nome_paciente text,
+  add column if not exists cpf_paciente text,
+  add column if not exists especialidade text,
+  add column if not exists telefone_paciente text,
+  add column if not exists situacao text,
+  add column if not exists observacoes text,
+  add column if not exists medicalsys_id integer,
+  add column if not exists horario_fim text,
+  add column if not exists meio_de_pagamento text;
 
 create index if not exists fila_mensagens_agendamento_idx on public.fila_mensagens(agendamento_id);
 create index if not exists agendamentos_disponibilidade_idx on public.agendamentos(empresa_id, data_agendamento, horario_agendamento, status_atendimento);

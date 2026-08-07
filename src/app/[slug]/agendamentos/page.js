@@ -9,11 +9,12 @@ import { supabase } from "@/lib/supabase";
 import { ArrowRight, CheckCircle, AlertTriangle, Activity, Pencil, ChevronLeft } from "lucide-react";
 
 import SidebarPremium from "@/components/SidebarPremium";
+import Navbar from "@/components/Navbar";
 import { AgendamentoContext } from "./context";
 import { MODULE_REGISTRY } from "./modules";
 import {
   schema, helpers, masks, calcularDataLimite, mapaMedicos, 
-  processarMensagensDinamicas 
+  processarMensagensDinamicas, enviarParaMedicalsysSeHabilitado
 } from "./utils";
 import { validateReturnEligibility } from "@/lib/appointmentRules";
 import { buildJourney, DEFAULT_JOURNEY, isDraftFresh } from "@/lib/journey";
@@ -25,6 +26,7 @@ export default function AgendamentoPremium() {
   return (
     <div className="flex min-h-[100dvh] w-full bg-[#FAFAFA] dark:bg-black text-zinc-900 dark:text-zinc-50 transition-colors duration-500 font-sans antialiased">
       <SidebarPremium isExpanded={isSidebarExpanded} setIsExpanded={setIsSidebarExpanded} />
+      <Navbar />
       <main className={`flex-1 relative flex flex-col items-center transition-[margin] duration-500 ease-in-out w-full min-h-[100dvh] overflow-hidden ${isSidebarExpanded ? "md:ml-[260px]" : "md:ml-[88px]"}`}>
         <Suspense fallback={<div className="min-h-[100dvh] flex items-center justify-center w-full"><motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }} className="w-8 h-8 border-[3px] border-zinc-900 dark:border-white border-t-transparent rounded-full" /></div>}>
           <AgendamentoOrquestrador />
@@ -149,7 +151,7 @@ export default function AgendamentoPremium() {
             setMinStepIndex(Math.max(0, jornada.indexOf("especialidade")));
           }
 
-          // Retoma uma jornada recente somente em acessos normais. Parâmetros de link inteligente têm prioridade.
+          // Retoma rascunho de no máximo 10 minutos
           if (!searchParams.toString() && typeof window !== "undefined") {
             try {
               const saved = JSON.parse(localStorage.getItem(`rmcare_jornada:${slug}`) || "null");
@@ -167,6 +169,8 @@ export default function AgendamentoPremium() {
                 setIslandMessage("Continuamos de onde você parou.");
                 setIslandState("success");
                 setTimeout(() => setIslandState("default"), 2400);
+              } else {
+                localStorage.removeItem(`rmcare_jornada:${slug}`);
               }
             } catch { localStorage.removeItem(`rmcare_jornada:${slug}`); }
           }
@@ -194,7 +198,6 @@ export default function AgendamentoPremium() {
     const valorEntrada = selectedSrv ? (selectedSrv.preco / 2) : 0;
     const perguntasAtuais = perguntasDB.filter(p => !p.servico_id || p.servico_id === selectedSrv?.id);
 
-    // A jornada é sempre recalculada pelo serviço selecionado. Assim a triagem nunca aparece sem perguntas aplicáveis.
     useEffect(() => {
       if (loadingConfig || !empresaDados) return;
       setModulosAtivos((previous) => {
@@ -278,7 +281,7 @@ export default function AgendamentoPremium() {
           ...f, 
           cpfUrl: hasCpf, 
           nomeUrl: !!nomeUrlRaw, 
-          sobrenomeUrl: !!nomeUrlRaw, // Alterado para não ser estrito
+          sobrenomeUrl: !!nomeUrlRaw, 
           telUrl: hasTel, 
           emailUrl: !!emailUrl, 
           nascUrl: !!nascUrl, 
@@ -311,7 +314,6 @@ export default function AgendamentoPremium() {
         const cpfValid = cpfUrl && cpfUrl.replace(/\D/g, "").length === 11;
         const telValid = limpaWpp.length >= 10;
         
-        // PULO INTELIGENTE: Removemos a obrigatoriedade de sobrenome para dar o pulo
         const canSkipIdentificacao = cpfValid && telValid && !!nomeUrlRaw;
         
         if (canSkipIdentificacao) {
@@ -473,6 +475,10 @@ export default function AgendamentoPremium() {
         }).select("id").single();
         
         if (errAgendamento) throw errAgendamento;
+
+        // Dispara envio para Medicalsys se estiver habilitado na empresa
+        await enviarParaMedicalsysSeHabilitado(formData, empresaDados, savedAppointment.id);
+
         return savedAppointment;
       } catch (error) {
         console.error("ERRO DETALHADO AO SALVAR NO SUPABASE:", error);
@@ -502,6 +508,19 @@ export default function AgendamentoPremium() {
         case "checkout":
         case "concluido": return true;
         default: return false; 
+      }
+    };
+
+    // Ação do Botão Voltar: Se voltar para 'especialidade', limpa para pedir especialidade primeiro
+    const handleGoBack = () => {
+      if (currentStepIndex > minStepIndex) {
+        const prevModule = modulosAtivos[currentStepIndex - 1];
+        if (prevModule === "especialidade") {
+          setValue("especialidade", "");
+          setValue("medico_profissional", "");
+          setValue("subtipo_exame", "");
+        }
+        setCurrentStepIndex(p => p - 1);
       }
     };
 
@@ -692,20 +711,23 @@ export default function AgendamentoPremium() {
       <AgendamentoContext.Provider value={contextValue}>
         <div className="fixed inset-0 bg-[radial-gradient(circle_at_70%_10%,rgba(159,193,49,.10),transparent_32%),linear-gradient(180deg,#fafafa,#f4f4f5)] dark:bg-[radial-gradient(circle_at_70%_10%,rgba(159,193,49,.08),transparent_30%),linear-gradient(180deg,#050505,#000)] -z-20 pointer-events-none" />
         
+        {/* DYNAMIC ISLAND HEADER */}
         <div className="absolute top-3 md:top-6 left-0 right-0 w-full z-[9999] px-4 flex justify-center pointer-events-none">
-          <motion.div layout className={`pointer-events-auto rounded-full px-5 py-2.5 max-w-sm flex transition-colors shadow-[0_8px_30px_rgb(0,0,0,0.12)] ${islandState === "error" ? "bg-red-500 text-white" : islandState === "success" ? "bg-[#9FC131] text-black font-medium" : "bg-black/90 dark:bg-white/90 backdrop-blur-xl text-white dark:text-black border border-transparent dark:border-black/10"}`}>
+          <motion.div layout className={`pointer-events-auto rounded-full px-4 sm:px-5 py-2 sm:py-2.5 max-w-md flex items-center justify-center transition-all shadow-[0_8px_30px_rgb(0,0,0,0.12)] ${
+            islandState === "error" ? "bg-red-500 text-white" : islandState === "success" ? "bg-[#9FC131] text-black font-medium" : islandState === "loading" ? "bg-zinc-900 text-white" : "bg-zinc-900/90 dark:bg-white/90 backdrop-blur-xl text-white dark:text-black border border-white/10 dark:border-black/10"
+          }`}>
             <AnimatePresence mode="wait">
-               {islandState === "error" && <motion.div key="e" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="flex items-center gap-2 text-xs"><AlertTriangle size={14} />{islandMessage}</motion.div>}
-               {islandState === "success" && <motion.div key="s" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="flex items-center gap-2 text-xs"><CheckCircle size={14} />{islandMessage}</motion.div>}
-               {islandState === "loading" && <motion.div key="l" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="flex items-center gap-3 text-xs"><Activity size={14} className="animate-spin opacity-80" />{islandMessage || "Processando"}</motion.div>}
+               {islandState === "error" && <motion.div key="e" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="flex items-center gap-2 text-xs font-semibold"><AlertTriangle size={14} />{islandMessage}</motion.div>}
+               {islandState === "success" && <motion.div key="s" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="flex items-center gap-2 text-xs font-semibold"><CheckCircle size={14} />{islandMessage}</motion.div>}
+               {islandState === "loading" && <motion.div key="l" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="flex items-center gap-2.5 text-xs font-semibold"><Activity size={14} className="animate-spin opacity-80" />{islandMessage || "Processando"}</motion.div>}
                {islandState === "default" && (
-                  <motion.div key="d" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="hidden sm:flex items-center gap-4">
-                    <div className="flex gap-1.5">
+                  <motion.div key="d" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="flex items-center gap-3 sm:gap-4">
+                    <div className="flex gap-1.5 items-center">
                       {modulosAtivos.filter(m => m !== "concluido").map((_, i) => (
                         <div key={i} className={`h-1.5 rounded-full transition-all ${currentStepIndex === i ? "w-4 bg-white dark:bg-black" : currentStepIndex > i ? "w-1.5 bg-white/40 dark:bg-black/40" : "w-1.5 bg-white/10 dark:bg-black/10"}`}/>
                       ))}
                     </div>
-                    <div className="text-[10px] tracking-widest text-zinc-400 dark:text-zinc-500 border-l border-zinc-700 dark:border-zinc-300 pl-4 uppercase">
+                    <div className="text-[10px] font-bold tracking-widest text-zinc-300 dark:text-zinc-600 border-l border-zinc-700 dark:border-zinc-300 pl-3 uppercase whitespace-nowrap">
                       {stepLabels[currentModuleKey] || currentModuleKey}
                     </div>
                   </motion.div>
@@ -714,25 +736,24 @@ export default function AgendamentoPremium() {
           </motion.div>
         </div>
 
-        <div className="w-full h-[100dvh] flex flex-col items-center justify-start md:justify-center p-0 md:p-8 md:pt-[90px] z-10 relative">
+        {/* CONTAINER DA JORNADA */}
+        <div className="w-full h-[100dvh] flex flex-col items-center justify-start md:justify-center p-0 md:p-8 md:pt-[90px] pb-24 md:pb-8 z-10 relative">
           <motion.div layout transition={{ type: "spring", stiffness: 420, damping: 36 }} className="w-full max-w-[860px] flex-1 md:flex-none md:h-[85vh] md:max-h-[780px] bg-[#fbfbfc] dark:bg-[#080808] md:rounded-[36px] border-0 md:border border-zinc-200/80 dark:border-zinc-800 flex flex-col overflow-hidden md:shadow-[0_30px_90px_rgba(0,0,0,0.10)] dark:md:shadow-[0_30px_90px_rgba(0,0,0,0.45)] relative">
             
+            {/* PAINEL DE AÇÕES DE PASSO (VOLTAR / CONTINUAR) - SEM TEXTO DUPLICADO */}
             {modulosAtivos[currentStepIndex] !== "concluido" && (
-              <div className="order-2 md:order-none flex-none grid grid-cols-3 items-center px-4 md:px-8 py-3.5 md:py-4 border-t md:border-t-0 md:border-b border-zinc-200/80 dark:border-zinc-800 bg-white/95 dark:bg-[#0A0A0A]/95 backdrop-blur-2xl z-20 pb-[max(.875rem,env(safe-area-inset-bottom))] md:pb-4">
+              <div className="order-2 md:order-none flex-none flex items-center justify-between px-4 md:px-8 py-3.5 md:py-4 border-t md:border-t-0 md:border-b border-zinc-200/80 dark:border-zinc-800 bg-white/95 dark:bg-[#0A0A0A]/95 backdrop-blur-2xl z-20">
                 <div className="flex justify-start">
                   {currentStepIndex > minStepIndex ? (
-                    <button onClick={() => setCurrentStepIndex(p => p - 1)} className="min-h-11 flex items-center gap-1 text-zinc-500 hover:text-zinc-900 dark:hover:text-white text-[13px] font-medium transition-colors">
+                    <button onClick={handleGoBack} className="min-h-11 flex items-center gap-1 text-zinc-500 hover:text-zinc-900 dark:hover:text-white text-[13px] font-semibold transition-colors">
                       <ChevronLeft size={18} /> Voltar
                     </button>
                   ) : <div />}
                 </div>
-                <div className="flex flex-col items-center justify-center whitespace-nowrap">
-                  <span className="text-[10px] font-semibold text-zinc-400">{currentStepIndex + 1} de {modulosAtivos.filter(m => m !== "concluido").length}</span>
-                  <span className="text-[11px] font-semibold text-zinc-700 dark:text-zinc-300 mt-0.5">{stepLabels[currentModuleKey]}</span>
-                </div>
+
                 <div className="flex justify-end">
                   {modulosAtivos[currentStepIndex] !== "checkout" && !(modulosAtivos[currentStepIndex] === "especialidade" && flags.exibirConfUri && !flags.confirmouUri) ? (
-                    <motion.button whileTap={{scale:.94}} onClick={nextStep} disabled={loading || !isModuleValid(modulosAtivos[currentStepIndex])} className={`min-h-11 font-semibold text-[13px] px-5 py-2.5 rounded-full flex items-center justify-center gap-1.5 transition-all duration-300 shadow-sm whitespace-nowrap ${isModuleValid(modulosAtivos[currentStepIndex]) ? "bg-zinc-900 hover:bg-black dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black shadow-zinc-900/15" : "bg-zinc-100 dark:bg-zinc-900 text-zinc-400 dark:text-zinc-600"}`}>
+                    <motion.button whileTap={{scale:.94}} onClick={nextStep} disabled={loading || !isModuleValid(modulosAtivos[currentStepIndex])} className={`min-h-11 font-semibold text-[13px] px-6 py-2.5 rounded-full flex items-center justify-center gap-1.5 transition-all duration-300 shadow-sm whitespace-nowrap ${isModuleValid(modulosAtivos[currentStepIndex]) ? "bg-zinc-900 hover:bg-black dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black shadow-zinc-900/15" : "bg-zinc-100 dark:bg-zinc-900 text-zinc-400 dark:text-zinc-600"}`}>
                       {loading ? "Processando" : (modulosAtivos[currentStepIndex] === "agenda" && (formData.modalidade === "Convênio" || formData.tipo_servico === "Retorno") ? "Finalizar" : "Continuar")}
                       {!loading && <ArrowRight size={14}/>}
                     </motion.button>
@@ -741,8 +762,8 @@ export default function AgendamentoPremium() {
               </div>
             )}
 
-            <div className="order-1 md:order-none flex-1 overflow-y-auto custom-scrollbar px-5 pt-16 pb-8 sm:p-7 md:p-12 md:pb-12 overscroll-contain">
-              <div className="md:hidden flex items-center justify-between mb-7"><div><span className="text-[11px] text-zinc-400 font-semibold">{empresaDados.nome}</span><p className="text-sm font-semibold">Agendamento</p></div><div className="flex gap-1">{modulosAtivos.filter(m => m !== "concluido").map((step, index) => <motion.span layout key={step} className={`h-1.5 rounded-full ${index === currentStepIndex ? "w-6 bg-zinc-900 dark:bg-white" : index < currentStepIndex ? "w-2 bg-[#9FC131]" : "w-2 bg-zinc-200 dark:bg-zinc-800"}`}/>)}</div></div>
+            {/* CORPO DO MÓDULO - SEM PONTOS DUPLICADOS */}
+            <div className="order-1 md:order-none flex-1 overflow-y-auto custom-scrollbar px-5 pt-12 pb-8 sm:p-7 md:p-12 md:pb-12 overscroll-contain">
               <AnimatePresence mode="wait" initial={false}>
                  {CurrentComponent ? <motion.div key={currentModuleKey} initial={{opacity:0,x:18,filter:"blur(5px)"}} animate={{opacity:1,x:0,filter:"blur(0px)"}} exit={{opacity:0,x:-14,filter:"blur(4px)"}} transition={{type:"spring",stiffness:360,damping:32}}><CurrentComponent /></motion.div> : <div>Módulo indisponível</div>}
               </AnimatePresence>

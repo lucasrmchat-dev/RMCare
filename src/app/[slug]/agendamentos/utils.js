@@ -23,7 +23,8 @@ export const parseTemplate = (template, variaveis) => {
 
 export const dispararPushRmChat = async (telefonePaciente, nomePaciente, textoPersonalizado) => {
   try {
-    let num = telefonePaciente.replace(/\D/g, "");
+    let num = (telefonePaciente || "").replace(/\D/g, "");
+    if (!num) return;
     if (num.length === 11 && num.charAt(2) === '9') {
       num = num.substring(0, 2) + num.substring(3); 
     }
@@ -96,7 +97,6 @@ export const calcularDataLimite = (dataBase, dias, tipoContagem) => {
   return d;
 };
 
-// Objeto recolocado para manter a compatibilidade com seus links antigos
 export const mapaMedicos = {
   "1": { tipo: "Consulta", nome: "Dra. Simone" },
   "2": { tipo: "Consulta", nome: "Dr. Brilhante" },
@@ -107,44 +107,48 @@ export const mapaMedicos = {
   "7": { tipo: "Exame", nome: "Colonoscopia" }
 };
 
-// O NOVO MOTOR QUE LÊ O JSON DO BANCO E DISPARA TUDO
-export const processarMensagensDinamicas = async (formData, empresaDados, agendamentoId = null) => {
-  const { nome, telefone_whatsapp, data_agendamento, horario_agendamento, especialidade, medico_profissional, subtipo_exame } = formData;
-  const servicoSelecionado = formData.tipo_servico === "Exame" ? subtipo_exame : medico_profissional;
+// O MOTOR COMPLETO QUE PROCESSA TODAS AS CATEGORIAS DE MENSAGEM NOS MOMENTOS EXATOS
+export const processarMensagensDinamicas = async (formData, empresaDados, agendamentoId = null, gatilhoFiltro = null) => {
+  const { nome, telefone_whatsapp, data_agendamento, horario_agendamento, especialidade, medico_profissional, subtipo_exame } = formData || {};
+  const servicoSelecionado = formData?.tipo_servico === "Exame" ? subtipo_exame : medico_profissional;
   
-  // Se não for um array (ou estiver vazio), encerra
   let regrasMensagens = empresaDados?.config_mensagens || [];
   if (!Array.isArray(regrasMensagens)) return;
 
   let mensagensParaFila = [];
-  const dataFormatada = data_agendamento.split("-").reverse().join("/");
+  const dataFormatada = data_agendamento ? data_agendamento.split("-").reverse().join("/") : "";
   
   const vars = { 
-    nome: nome.trim(), 
-    servico: servicoSelecionado, 
+    nome: (nome || "").trim(), 
+    servico: servicoSelecionado || "", 
     especialidade: especialidade || "",
     data: dataFormatada, 
-    hora: horario_agendamento 
+    hora: horario_agendamento || "" 
   };
 
   for (const regra of regrasMensagens) {
+    // Se foi especificado um gatilho único (ex: 'remarcado', 'cancelado', 'pagamento_aprovado'), filtra apenas ele
+    if (gatilhoFiltro && regra.gatilho !== gatilhoFiltro) continue;
+
     const alvo = regra.alvo || (regra.especialidade === "Todas" ? "Todas" : `especialidade:${regra.especialidade}`);
     const alvoValido = alvo === "Todas"
       || alvo === `especialidade:${especialidade}`
       || alvo === `servico:${servicoSelecionado}`
-      || alvo === `tipo:${formData.tipo_servico}`;
+      || alvo === `tipo:${formData?.tipo_servico}`;
     if (!alvoValido) continue;
 
     const textoFormatado = parseTemplate(regra.mensagem, vars);
 
-    if (regra.gatilho === "imediato") {
-      // Confirmação instantânea via webhook
-      await dispararPushRmChat(telefone_whatsapp, vars.nome, textoFormatado);
+    // DISPAROS IMEDIATOS (Na hora do agendamento, remarcado, cancelado, pagamento aprovado)
+    if (["imediato", "remarcado", "cancelado", "pagamento_aprovado", "antes_pagamento"].includes(regra.gatilho)) {
+      if (telefone_whatsapp) {
+        await dispararPushRmChat(telefone_whatsapp, vars.nome, textoFormatado);
+      }
     } else if (["agendado", "pos_atendimento"].includes(regra.gatilho)) {
-      // Cria registro na fila_mensagens para N8N/Cron enviar depois
+      // REGISTRO NA FILA DE AGENDAMENTOS FUTUROS
       const dataEnvioProgramado = regra.gatilho === "pos_atendimento"
         ? getMessageSchedule(regra, data_agendamento, horario_agendamento)
-        : gerarData(data_agendamento, parseInt(regra.dias_antes), regra.hora_envio);
+        : gerarData(data_agendamento, parseInt(regra.dias_antes || 1), regra.hora_envio);
       
       mensagensParaFila.push({
         empresa_id: empresaDados.id,
@@ -159,9 +163,37 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
     }
   }
 
-  // Insere todas as programadas de uma vez no banco
   if (mensagensParaFila.length > 0) {
     const { error } = await supabase.from('fila_mensagens').insert(mensagensParaFila);
     if (error) console.error("Erro ao inserir fila:", error);
+  }
+};
+
+// ENVIAR PARA MEDICALSYS SE HABILITADO
+export const enviarParaMedicalsysSeHabilitado = async (formData, empresaDados, agendamentoId = null) => {
+  try {
+    const nomePaciente = `${formData.nome || ""} ${formData.sobrenome || ""}`.trim();
+    const payload = {
+      appointmentId: agendamentoId,
+      empresaId: empresaDados?.id,
+      nomePaciente: nomePaciente || "Paciente Online",
+      telefoneCelular: formData.telefone_whatsapp || "",
+      data: formData.data_agendamento,
+      horarioInicio: formData.horario_agendamento,
+      medico: formData.medico_profissional || formData.subtipo_exame,
+      meioPagamento: formData.modalidade === "Convênio" ? "conv" : "espe"
+    };
+
+    const res = await fetch("/api/medicalsys/agendar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    const result = await res.json();
+    return result;
+  } catch (err) {
+    console.error("❌ Erro ao enviar para Medicalsys:", err);
+    return { success: false, error: err.message };
   }
 };

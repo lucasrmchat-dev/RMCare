@@ -9,7 +9,7 @@ export function buildJourney(config = {}, hasApplicableQuestions = false) {
   });
 }
 
+// Rascunho válido por no máximo 10 minutos (10 * 60 * 1000 ms)
 export function isDraftFresh(draft, now = Date.now()) {
-  return draft?.version === 1 && Number.isFinite(draft.savedAt) && now - draft.savedAt < 24 * 60 * 60 * 1000;
+  return draft?.version === 1 && Number.isFinite(draft.savedAt) && now - draft.savedAt < 10 * 60 * 1000;
 }
-
