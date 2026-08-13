@@ -200,7 +200,32 @@ export default function AgendamentoPremium() {
     
     const selectedSrv = getSelectedService();
     const valorEntrada = selectedSrv ? (selectedSrv.preco / 2) : 0;
-    const perguntasAtuais = perguntasDB.filter(p => !p.servico_id || p.servico_id === selectedSrv?.id);
+    
+    // Filtro de perguntas clínicas mapeadas por Especialidade ou Globais
+    const perguntasAtuais = (perguntasDB || []).filter((p) => {
+      if (!p.especialidade || p.especialidade === "Todas" || p.especialidade === "Geral") {
+        return true;
+      }
+
+      const espAlvo = p.especialidade.toLowerCase().trim();
+      const espForm = (formData?.especialidade || "").toLowerCase().trim();
+      const tipoForm = (formData?.tipo_servico || "").toLowerCase().trim();
+      const subTipoForm = (formData?.subtipo_exame || "").toLowerCase().trim();
+      const profForm = (formData?.medico_profissional || "").toLowerCase().trim();
+      const srvEsp = (selectedSrv?.especialidade || "").toLowerCase().trim();
+      const srvNome = (selectedSrv?.nome || "").toLowerCase().trim();
+
+      return (
+        espForm.includes(espAlvo) ||
+        espAlvo.includes(espForm) ||
+        tipoForm.includes(espAlvo) ||
+        subTipoForm.includes(espAlvo) ||
+        profForm.includes(espAlvo) ||
+        srvEsp.includes(espAlvo) ||
+        srvNome.includes(espAlvo) ||
+        (p.servico_id && p.servico_id === selectedSrv?.id)
+      );
+    });
 
     useEffect(() => {
       if (loadingConfig || !empresaDados) return;
@@ -506,7 +531,7 @@ export default function AgendamentoPremium() {
           if (["Consulta", "Retorno"].includes(formData.tipo_servico) && !formData.medico_profissional) return false;
           if (formData.tipo_servico === "Exame" && !formData.subtipo_exame) return false;
           return true;
-        case "triagem": return perguntasAtuais.every(p => respostasTriagem[p.id]);
+        case "triagem": return perguntasAtuais.filter(p => p.obrigatoria !== false).every(p => respostasTriagem[p.id]);
         case "modalidade": return !!formData.modalidade || formData.tipo_servico === "Retorno";
         case "agenda": return !!(formData.data_agendamento && formData.horario_agendamento);
         case "checkout":

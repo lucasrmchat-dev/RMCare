@@ -314,13 +314,18 @@ export async function actionCriarServico(payload) {
 export async function actionSalvarTriagem(novaTriagem) {
   const admin = await getAdminLogado(true);
 
+  const payload = { 
+    especialidade: (novaTriagem.especialidade && novaTriagem.especialidade !== "Todas") ? novaTriagem.especialidade.trim() : null,
+    obrigatoria: novaTriagem.obrigatoria !== false,
+    pergunta: novaTriagem.pergunta.trim(),
+    empresa_id: admin.empresa_id,
+    servico_id: novaTriagem.servico_id || null,
+    ativa: true
+  };
+
   const { data: perguntaSalva, error: err1 } = await supabaseAdmin
     .from("perguntas_triagem")
-    .insert({ 
-        servico_id: novaTriagem.servico_id || null, 
-        pergunta: novaTriagem.pergunta,
-        empresa_id: admin.empresa_id
-    })
+    .insert(payload)
     .select()
     .single();
 
@@ -329,8 +334,8 @@ export async function actionSalvarTriagem(novaTriagem) {
   const opcoesFormatadas = novaTriagem.opcoes.map(op => ({
     pergunta_id: perguntaSalva.id,
     texto_opcao: op.texto_opcao,
-    regra_bloqueio_dias: op.regra_bloqueio_dias,
-    tipo_contagem_dias: op.tipo_contagem_dias
+    regra_bloqueio_dias: Number(op.regra_bloqueio_dias || 0),
+    tipo_contagem_dias: op.tipo_contagem_dias || "corridos"
   }));
 
   const { error: err2 } = await supabaseAdmin.from("opcoes_triagem").insert(opcoesFormatadas);
