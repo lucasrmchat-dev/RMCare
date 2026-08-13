@@ -32,7 +32,7 @@ export async function GET(request) {
     // 2. Busca todas as empresas cadastradas para mapear a URL de RM Chat de cada uma
     const { data: todasEmpresas } = await supabaseAdmin
       .from('empresas')
-      .select('id, nome, config_chaves, rmchat_webhook_url');
+      .select('*');
 
     const mapaEmpresasChaves = new Map();
     let empresaFallbackId = null;
