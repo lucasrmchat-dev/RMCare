@@ -20,11 +20,11 @@ export async function checkIdentifier(identificador) {
 
   const { data: admin } = await supabaseAdmin
     .from("administradores")
-    .select("id, role")
+    .select("id, role, empresa_id")
     .eq("usuario", idClean)
     .maybeSingle();
 
-  if (admin) return { success: true, type: "admin", role: admin.role };
+  if (admin) return { success: true, type: "admin", role: admin.role, empresa_id: admin.empresa_id };
 
   const cleanCpf = idClean.replace(/\D/g, "");
   
@@ -113,36 +113,60 @@ export async function authenticateUser(payload) {
   if (type === "admin") {
     const idClean = identificador.trim().toLowerCase();
     let isAuthorized = false;
+    let adminRecord = null;
 
     // 1. Tenta a verificação em formato Antigo (Texto Puro) - Fallback para senhas antigas
     const { data: plainAdmin } = await supabaseAdmin
       .from("administradores")
-      .select("id")
+      .select("id, role, empresa_id, usuario")
       .eq("usuario", idClean)
       .eq("senha_hash", password)
       .maybeSingle();
 
     if (plainAdmin) {
       isAuthorized = true;
+      adminRecord = plainAdmin;
     } else {
       // 2. Tenta a verificação com Criptografia Forte via RPC
       const { data: hashAdmin } = await supabaseAdmin.rpc("verificar_senha_admin", {
         p_usuario: idClean,
         p_senha: password
       });
-      if (hashAdmin) isAuthorized = true;
+      if (hashAdmin) {
+        isAuthorized = true;
+        const { data: fetchAdmin } = await supabaseAdmin
+          .from("administradores")
+          .select("id, role, empresa_id, usuario")
+          .eq("usuario", idClean)
+          .maybeSingle();
+        adminRecord = fetchAdmin;
+      }
     }
 
-    if (isAuthorized) {
+    if (isAuthorized && adminRecord) {
       // Cria a sessão em Cookie para isolar o Tenant
-      cookieStore.set("rmagenda_auth", await createAdminSession(idClean), {
+      const sessionToken = await createAdminSession(idClean);
+      cookieStore.set("rmagenda_auth", sessionToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
         maxAge: ADMIN_SESSION_SECONDS,
         path: "/"
       });
-      return { success: true, message: "Acesso autorizado!" };
+      cookieStore.set("rmcare_auth", sessionToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: ADMIN_SESSION_SECONDS,
+        path: "/"
+      });
+
+      return {
+        success: true,
+        message: "Acesso autorizado!",
+        role: adminRecord.role,
+        empresa_id: adminRecord.empresa_id
+      };
     }
 
     return { success: false, error: "Senha administrativa inválida." };
@@ -153,9 +177,18 @@ export async function authenticateUser(payload) {
 
 export async function refreshAdminSession() {
   const cookieStore = await cookies();
-  const current = await verifyAdminSession(cookieStore.get("rmagenda_auth")?.value || cookieStore.get("rmcare_auth")?.value);
+  const currentToken = cookieStore.get("rmagenda_auth")?.value || cookieStore.get("rmcare_auth")?.value;
+  if (!currentToken) return { success: false };
+
+  const current = await verifyAdminSession(currentToken);
   if (!current) return { success: false };
-  cookieStore.set("rmagenda_auth", await createAdminSession(current.sub), {
+
+  const newToken = await createAdminSession(current.sub);
+  cookieStore.set("rmagenda_auth", newToken, {
+    httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax",
+    maxAge: ADMIN_SESSION_SECONDS, path: "/"
+  });
+  cookieStore.set("rmcare_auth", newToken, {
     httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax",
     maxAge: ADMIN_SESSION_SECONDS, path: "/"
   });
@@ -164,13 +197,33 @@ export async function refreshAdminSession() {
 
 export async function logoutAdmin() {
   const cookieStore = await cookies();
+  cookieStore.delete("rmagenda_auth");
   cookieStore.delete("rmcare_auth");
+  cookieStore.delete("rmagenda_auth_paciente");
+  cookieStore.delete("rmcare_auth_paciente");
   return { success: true };
+}
+
+export async function getSessionAdminInfo() {
+  const cookieStore = await cookies();
+  const currentToken = cookieStore.get("rmagenda_auth")?.value || cookieStore.get("rmcare_auth")?.value;
+  if (!currentToken) return null;
+
+  const current = await verifyAdminSession(currentToken);
+  if (!current || !current.sub) return null;
+
+  const { data: admin } = await supabaseAdmin
+    .from("administradores")
+    .select("id, role, empresa_id, usuario")
+    .eq("usuario", current.sub)
+    .maybeSingle();
+
+  return admin || null;
 }
 
 export async function updateAdminCredentials({ currentPassword, newUsername, newPassword }) {
   const cookieStore = await cookies();
-  const session = await verifyAdminSession(cookieStore.get("rmcare_auth")?.value);
+  const session = await verifyAdminSession(cookieStore.get("rmagenda_auth")?.value || cookieStore.get("rmcare_auth")?.value);
   if (!session) return { success: false, error: "Sessão expirada." };
   const username = newUsername.trim().toLowerCase();
   if (username.length < 3 || newPassword.length < 8) return { success: false, error: "Use login com 3+ caracteres e senha com 8+ caracteres." };
@@ -179,7 +232,11 @@ export async function updateAdminCredentials({ currentPassword, newUsername, new
   if (!hashedValid) return { success: false, error: "Senha atual inválida." };
   const { error } = await supabaseAdmin.rpc("alterar_credenciais_admin", { p_usuario_atual: session.sub, p_novo_usuario: username, p_nova_senha: newPassword });
   if (error) return { success: false, error: error.code === "23505" ? "Este login já está em uso." : error.message };
-  cookieStore.set("rmcare_auth", await createAdminSession(username), {
+  const newToken = await createAdminSession(username);
+  cookieStore.set("rmagenda_auth", newToken, {
+    httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: ADMIN_SESSION_SECONDS, path: "/"
+  });
+  cookieStore.set("rmcare_auth", newToken, {
     httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: ADMIN_SESSION_SECONDS, path: "/"
   });
   return { success: true };

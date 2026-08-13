@@ -27,6 +27,7 @@ import {
   fetchAdminPerguntas,
   fetchAdminRegras
 } from "@/actions/adminData"; 
+import { getSessionAdminInfo } from "@/actions/auth"; 
 import AgendaView from "./modules/AgendaView"; 
 import RestricoesView from "./modules/RestricoesView"; 
 import FinanceiroView from "./modules/FinanceiroView"; 
@@ -82,7 +83,30 @@ export default function EmpresaAdmin() {
         catch (error) { showToast("Erro ao carregar regras.", "error"); }     
     };     
 
-    useEffect(() => { fetchAllData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    useEffect(() => {
+      const checkAccessAndFetch = async () => {
+        try {
+          const info = await getSessionAdminInfo();
+          if (!info) {
+            window.location.replace("/login");
+            return;
+          }
+          if (info.role === "sistema") {
+            window.location.replace("/admin/sistema");
+            return;
+          }
+          if (!info.empresa_id) {
+            showToast("Acesso restrito: administrador sem clínica vinculada.", "error");
+            return;
+          }
+          fetchAllData();
+        } catch (e) {
+          console.error(e);
+          window.location.replace("/login");
+        }
+      };
+      checkAccessAndFetch();
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ESTRUTURA DO MENU COM SUB-ITENS (EXPANDÍVEL)
     const menuStructure = [

@@ -387,15 +387,135 @@ export default function PersonalizacaoView({ subTab = "jornada", setSubTab, show
                                 <CustomSelect label="Gatilho / Categoria da Mensagem" value={regra.gatilho} onChange={(v) => atualizarRegra(regra.id, 'gatilho', v)} options={gatilhoOptions} />
                               </div>
                               
-                              {["agendado", "pos_atendimento"].includes(regra.gatilho) ? (
+                              {regra.gatilho === "pos_atendimento" ? (
+                                <div className="col-span-2 space-y-4 p-4 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 rounded-2xl">
+                                  <CustomSelect
+                                    label="Momento de Referência do Envio"
+                                    value={regra.referencia_pos || "termino"}
+                                    onChange={(v) => atualizarRegra(regra.id, 'referencia_pos', v)}
+                                    options={[
+                                      { value: "termino", label: "A partir do Término do Atendimento / Exame (Considera Duração)" },
+                                      { value: "inicio", label: "A partir do Horário de Início Marcado" },
+                                      { value: "dias_depois", label: "Dias Depois em Horário Fixo (Ex.: 1 dia após às 08:00)" }
+                                    ]}
+                                  />
+
+                                  {regra.referencia_pos === "dias_depois" ? (
+                                    <div className="grid grid-cols-2 gap-3">
+                                      <div>
+                                        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1 mb-1.5 block">Quantidade de Dias</label>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          max="30"
+                                          value={regra.dias_depois || 1}
+                                          onChange={(e) => atualizarRegra(regra.id, 'dias_depois', e.target.value)}
+                                          className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-sm font-medium outline-none"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1 mb-1.5 block">Hora de Envio</label>
+                                        <input
+                                          type="time"
+                                          value={regra.hora_envio || "08:00"}
+                                          onChange={(e) => atualizarRegra(regra.id, 'hora_envio', e.target.value)}
+                                          className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-sm font-medium outline-none"
+                                        />
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="space-y-3">
+                                      <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                          <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1 mb-1.5 block">Tempo de Espera</label>
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            value={regra.offset_valor ?? 0}
+                                            onChange={(e) => atualizarRegra(regra.id, 'offset_valor', Number(e.target.value))}
+                                            className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-sm font-medium outline-none"
+                                          />
+                                        </div>
+                                        <div>
+                                          <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1 mb-1.5 block">Unidade de Tempo</label>
+                                          <select
+                                            value={regra.offset_unidade || "minutos"}
+                                            onChange={(e) => atualizarRegra(regra.id, 'offset_unidade', e.target.value)}
+                                            className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-sm font-medium outline-none text-zinc-800 dark:text-zinc-200"
+                                          >
+                                            <option value="minutos">Minutos</option>
+                                            <option value="horas">Horas</option>
+                                            <option value="segundos">Segundos</option>
+                                          </select>
+                                        </div>
+                                      </div>
+
+                                      {/* ATALHOS RÁPIDOS */}
+                                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                                        <span className="text-[10px] text-zinc-400 font-bold uppercase mr-1">Atalhos:</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            atualizarRegra(regra.id, 'referencia_pos', 'termino');
+                                            atualizarRegra(regra.id, 'offset_valor', 0);
+                                            atualizarRegra(regra.id, 'offset_unidade', 'minutos');
+                                          }}
+                                          className="px-2 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 text-[10px] font-bold rounded-lg hover:bg-zinc-100"
+                                        >
+                                          Ao terminar (0 min)
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            atualizarRegra(regra.id, 'referencia_pos', 'termino');
+                                            atualizarRegra(regra.id, 'offset_valor', 20);
+                                            atualizarRegra(regra.id, 'offset_unidade', 'minutos');
+                                          }}
+                                          className="px-2 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 text-[10px] font-bold rounded-lg hover:bg-zinc-100"
+                                        >
+                                          20 min após término
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            atualizarRegra(regra.id, 'referencia_pos', 'termino');
+                                            atualizarRegra(regra.id, 'offset_valor', 1);
+                                            atualizarRegra(regra.id, 'offset_unidade', 'horas');
+                                          }}
+                                          className="px-2 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 text-[10px] font-bold rounded-lg hover:bg-zinc-100"
+                                        >
+                                          1 hora após término
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            atualizarRegra(regra.id, 'referencia_pos', 'termino');
+                                            atualizarRegra(regra.id, 'offset_valor', 2);
+                                            atualizarRegra(regra.id, 'offset_unidade', 'horas');
+                                          }}
+                                          className="px-2 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 text-[10px] font-bold rounded-lg hover:bg-zinc-100"
+                                        >
+                                          2 horas após término
+                                        </button>
+                                      </div>
+
+                                      <p className="text-[11px] text-blue-700 dark:text-blue-300 font-medium">
+                                        {Number(regra.offset_valor ?? 0) === 0 && (regra.referencia_pos || "termino") === "termino"
+                                          ? "⚡ Envio no minuto exato em que a consulta/exame acabar."
+                                          : `⏱️ Envio programado para ${regra.offset_valor ?? 0} ${regra.offset_unidade || 'minutos'} após o ${(regra.referencia_pos || 'termino') === 'termino' ? 'término' : 'início'} do atendimento.`}
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : regra.gatilho === "agendado" ? (
                                 <>
                                   <div>
-                                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1 mb-1.5 block">{regra.gatilho === "pos_atendimento" ? "Dias Depois" : "Dias Antes"}</label>
-                                    <input type="number" min="0" max="30" value={regra.gatilho === "pos_atendimento" ? (regra.dias_depois || 0) : regra.dias_antes} onChange={(e) => atualizarRegra(regra.id, regra.gatilho === "pos_atendimento" ? 'dias_depois' : 'dias_antes', e.target.value)} className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-sm font-medium outline-none" />
+                                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1 mb-1.5 block">Dias Antes</label>
+                                    <input type="number" min="0" max="30" value={regra.dias_antes ?? 1} onChange={(e) => atualizarRegra(regra.id, 'dias_antes', e.target.value)} className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-sm font-medium outline-none" />
                                   </div>
                                   <div>
                                     <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1 mb-1.5 block">Hora de Envio</label>
-                                    <input type="time" value={regra.hora_envio} onChange={(e) => atualizarRegra(regra.id, 'hora_envio', e.target.value)} className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-sm font-medium outline-none" />
+                                    <input type="time" value={regra.hora_envio || "08:00"} onChange={(e) => atualizarRegra(regra.id, 'hora_envio', e.target.value)} className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-sm font-medium outline-none" />
                                   </div>
                                 </>
                               ) : (

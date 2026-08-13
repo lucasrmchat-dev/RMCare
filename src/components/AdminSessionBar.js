@@ -10,6 +10,7 @@ export default function AdminSessionBar() {
   const [remaining, setRemaining] = useState(SESSION_SECONDS);
   const [isDark, setIsDark] = useState(false);
   const lastRefresh = useRef(0);
+  const isLeavingRef = useRef(false);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -32,22 +33,35 @@ export default function AdminSessionBar() {
   };
 
   const leave = useCallback(async () => {
+    if (isLeavingRef.current) return;
+    isLeavingRef.current = true;
     try {
       await logoutAdmin();
     } catch (err) {
       console.error("Erro ao sair:", err);
     }
     if (typeof window !== "undefined") {
-      window.location.href = "/login";
+      document.cookie = "rmagenda_auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+      document.cookie = "rmcare_auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+      document.cookie = "rmagenda_auth_paciente=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+      document.cookie = "rmcare_auth_paciente=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+      localStorage.removeItem("rmagenda_last_slug");
+      window.location.replace("/login");
     }
   }, []);
 
   useEffect(() => {
     const tick = setInterval(() => setRemaining((value) => {
-      if (value <= 1) { clearInterval(tick); void leave(); return 0; }
+      if (value <= 1) { 
+        clearInterval(tick); 
+        void leave(); 
+        return 0; 
+      }
       return value - 1;
     }), 1000);
+
     const reset = async () => {
+      if (isLeavingRef.current) return;
       const now = Date.now();
       setRemaining(SESSION_SECONDS);
       if (now - lastRefresh.current < 30000) return;
@@ -55,9 +69,13 @@ export default function AdminSessionBar() {
       const result = await refreshAdminSession();
       if (!result.success) void leave();
     };
+
     const events = ["pointerdown", "keydown", "scroll"];
     events.forEach((event) => window.addEventListener(event, reset, { passive: true }));
-    return () => { clearInterval(tick); events.forEach((event) => window.removeEventListener(event, reset)); };
+    return () => { 
+      clearInterval(tick); 
+      events.forEach((event) => window.removeEventListener(event, reset)); 
+    };
   }, [leave]);
 
   const minutes = String(Math.floor(remaining / 60)).padStart(2, "0");
@@ -82,7 +100,7 @@ export default function AdminSessionBar() {
           Sessão {minutes}:{seconds}
         </span>
         
-        <button onClick={leave} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-900 dark:bg-white text-white dark:text-black text-xs font-bold hover:bg-black dark:hover:bg-zinc-200 transition-colors">
+        <button onClick={leave} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-900 dark:bg-white text-white dark:text-black text-xs font-bold hover:bg-black dark:hover:bg-zinc-200 transition-colors shadow-sm">
           <LogOut size={15} /> Sair
         </button>
       </div>
