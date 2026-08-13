@@ -125,7 +125,8 @@ export default function AgendaView({ subTab = "calendario", setSubTab, agendamen
         cpfPaciente: b.cpf_paciente || null,
         telefonePaciente: b.telefone_paciente || null,
         medicoProfissional: b.medico_profissional,
-        especialidade: b.especialidade || b.observacoes || "Geral",
+        especialidade: b.especialidade || "Geral",
+        convenio: b.convenio || null,
         statusAtendimento: b.situacao === "canc" ? "cancelado" : "agendado",
         pago: false,
         remarcado: false,
@@ -445,7 +446,8 @@ export default function AgendaView({ subTab = "calendario", setSubTab, agendamen
 
                                 <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-zinc-600 dark:text-zinc-400">
                                   <span><strong>Especialista:</strong> {item.medicoProfissional}</span>
-                                  {item.especialidade && <span><strong>Especialidade/Plano:</strong> {item.especialidade}</span>}
+                                  {item.especialidade && <span><strong>Especialidade:</strong> {item.especialidade}</span>}
+                                  {item.convenio && <span><strong>Convênio / Plano:</strong> {item.convenio}</span>}
                                   {item.telefonePaciente && (
                                     <span className="flex items-center gap-1"><Phone size={12} /> {item.telefonePaciente}</span>
                                   )}
@@ -613,7 +615,8 @@ export default function AgendaView({ subTab = "calendario", setSubTab, agendamen
 
                               <p className="text-xs text-zinc-500 mt-1 flex flex-wrap gap-3">
                                 <span><strong>Especialista:</strong> {item.medicoProfissional}</span>
-                                {item.especialidade && <span><strong>Especialidade/Plano:</strong> {item.especialidade}</span>}
+                                {item.especialidade && <span><strong>Especialidade:</strong> {item.especialidade}</span>}
+                                {item.convenio && <span><strong>Convênio / Plano:</strong> {item.convenio}</span>}
                                 {item.telefonePaciente && <span className="flex items-center gap-1"><Phone size={12} /> {item.telefonePaciente}</span>}
                               </p>
 

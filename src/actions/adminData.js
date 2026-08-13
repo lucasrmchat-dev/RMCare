@@ -514,3 +514,161 @@ export async function actionListarEmpresas() {
   if (error) throw error;
   return data || [];
 }
+
+/* ==========================================
+   FUNÇÕES DE VALIDAÇÃO DE MENSAGENS E RE-PROCESSAMENTO
+   ========================================== */
+export async function actionFetchMensagensRascunhoERP() {
+  const admin = await getAdminLogado();
+  let query = supabaseAdmin
+    .from("fila_mensagens")
+    .select("*")
+    .eq("status", "rascunho")
+    .eq("gatilho", "importado_erp")
+    .order("data_hora_programada", { ascending: true });
+
+  if (admin.role !== 'sistema') query = query.eq("empresa_id", admin.empresa_id);
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
+export async function actionAprovarMensagensRascunhoERP(ids) {
+  const admin = await getAdminLogado();
+  if (!ids || ids.length === 0) return true;
+
+  let query = supabaseAdmin
+    .from("fila_mensagens")
+    .update({ status: "pendente" })
+    .in("id", ids)
+    .eq("status", "rascunho");
+
+  if (admin.role !== 'sistema') query = query.eq("empresa_id", admin.empresa_id);
+
+  const { error } = await query;
+  if (error) throw error;
+  return true;
+}
+
+export async function actionDescartarMensagensRascunhoERP(ids) {
+  const admin = await getAdminLogado();
+  if (!ids || ids.length === 0) return true;
+
+  let query = supabaseAdmin
+    .from("fila_mensagens")
+    .delete()
+    .in("id", ids)
+    .eq("status", "rascunho");
+
+  if (admin.role !== 'sistema') query = query.eq("empresa_id", admin.empresa_id);
+
+  const { error } = await query;
+  if (error) throw error;
+  return true;
+}
+
+export async function actionReprocessarMapeamentoBanco() {
+  const admin = await getAdminLogado();
+  const { data: empresa } = await supabaseAdmin
+    .from("empresas")
+    .select("id")
+    .eq("id", admin.empresa_id)
+    .single();
+
+  if (!empresa) throw new Error("Empresa não encontrada.");
+
+  const { data: bloqueiosImportados, error: errFetchOld } = await supabaseAdmin
+    .from("bloqueios_horarios")
+    .select("*")
+    .eq("empresa_id", admin.empresa_id);
+
+  if (errFetchOld) throw errFetchOld;
+
+  let corrigidosCount = 0;
+  const regexPlano = /(unimed|bradesco|casssi|funasa|geap|sulamerica|hapvida|samp|particular|amil|ipam|ipem|plano|convenio)/i;
+
+  for (const item of (bloqueiosImportados || [])) {
+    let currentEsp = item.especialidade || "";
+    let currentObs = item.observacoes || "";
+    let currentConv = item.convenio || "";
+
+    let novoConv = currentConv;
+    let novaEsp = currentEsp;
+
+    if (!currentConv && regexPlano.test(currentEsp)) {
+      novoConv = currentEsp;
+      novaEsp = "Geral";
+      corrigidosCount++;
+    } else if (currentObs && currentObs.includes("Plano:") && !currentConv) {
+      const matchObs = currentObs.match(/Plano:\s*([^|]+)/i);
+      if (matchObs && matchObs[1]) {
+        novoConv = matchObs[1].trim();
+        corrigidosCount++;
+      }
+    }
+
+    if (novoConv !== currentConv || novaEsp !== currentEsp) {
+      await supabaseAdmin
+        .from("bloqueios_horarios")
+        .update({
+          convenio: novoConv || null,
+          especialidade: novaEsp || "Geral"
+        })
+        .eq("id", item.id);
+    }
+  }
+
+  return { success: true, count: corrigidosCount };
+}
+
+export async function actionSalvarChavesEmpresaMaster(empresaId, config_chaves) {
+  const admin = await getAdminLogado();
+  if (admin.role !== "sistema") throw new Error("Apenas administradores do sistema podem alterar chaves de empresas.");
+
+  const payload = {
+    config_chaves: config_chaves || {},
+    rmchat_webhook_url: config_chaves?.rmchat_webhook_url ? config_chaves.rmchat_webhook_url.trim() : null
+  };
+
+  const { error } = await supabaseAdmin
+    .from("empresas")
+    .update(payload)
+    .eq("id", empresaId);
+
+  if (error) {
+    const { error: errFallback } = await supabaseAdmin
+      .from("empresas")
+      .update({ config_chaves })
+      .eq("id", empresaId);
+    if (errFallback) throw errFallback;
+  }
+  return true;
+}
+
+export async function actionTestarPushRmChat(urlWebhook, telefone = "5583999999999", nome = "Teste RM Agenda") {
+  const admin = await getAdminLogado();
+  if (!urlWebhook || !urlWebhook.startsWith("http")) {
+    throw new Error("URL de Webhook inválida.");
+  }
+
+  const payload = {
+    name: nome,
+    number: telefone.replace(/\D/g, ""),
+    texto: `🔔 [Teste RM Agenda] Conexão com o RM Agenda estabelecida com sucesso para o servidor!`
+  };
+
+  const response = await fetch(urlWebhook, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    throw new Error(`Servidor RM Chat retornou status ${response.status}`);
+  }
+
+  return { success: true };
+}
+
+

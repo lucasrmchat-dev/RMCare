@@ -303,18 +303,19 @@ export default function PersonalizacaoView({ subTab = "jornada", setSubTab, show
                 <div className="p-6 bg-blue-50/60 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 rounded-3xl mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
                     <h4 className="font-bold text-zinc-900 dark:text-white text-base flex items-center gap-2">
-                      <Server size={18} className="text-blue-500" /> Agendamentos Importados do ERP Medicalsys
+                      <Server size={18} className="text-blue-500" /> Gerar Mensagens para Agendamentos do ERP Medicalsys
                     </h4>
                     <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 leading-relaxed max-w-xl">
-                      Se ativado, a sincronização de contatos do Medicalsys criará automaticamente mensagens de lembrete pendentes na fila do WhatsApp.
+                      Se ativado, a importação de agendamentos gerará rascunhos de mensagens para sua conferência. Nenhuma mensagem é enviada sem sua aprovação prévia na Central de Validação da aba Sincronização.
                     </p>
                   </div>
                   <ToggleSwitch
                     checked={Boolean(campos.enviar_mensagens_importados_erp)}
                     onChange={(v) => setCampos({ ...campos, enviar_mensagens_importados_erp: v })}
-                    label={campos.enviar_mensagens_importados_erp ? "Mensagens ERP Habilitadas" : "Mensagens ERP Pausadas"}
+                    label={campos.enviar_mensagens_importados_erp ? "Geração em Rascunho Ativada" : "Geração de Mensagens Pausada"}
                   />
                 </div>
+
 
                 {/* FILTROS DE MENSAGENS */}
                 <div className="p-6 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-3xl mb-8 space-y-4">

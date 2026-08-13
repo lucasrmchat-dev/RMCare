@@ -9,11 +9,92 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function POST(request) {
   try {
-    // 1. PROXY FIXIE
+    let requestBody = {};
+    try {
+      requestBody = await request.json();
+    } catch (e) {
+      requestBody = {};
+    }
+
+    const { mode = "import", reprocessar_existentes = false } = requestBody;
+
+    // 1. BUSCAR EMPRESA E CONFIGURAÇÕES DE MAPEAMENTO DE COLUNAS
+    const { data: empresa, error: erroEmpresa } = await supabase
+      .from("empresas")
+      .select("id, config_campos, config_mensagens, config_chaves")
+      .limit(1)
+      .single();
+
+    if (erroEmpresa || !empresa) {
+      throw new Error("Nenhuma empresa cadastrada no banco para vincular os agendamentos.");
+    }
+    const empresaId = empresa.id;
+    const configCampos = empresa.config_campos || {};
+    const enviarMensagensErp = Boolean(configCampos.enviar_mensagens_importados_erp);
+    const mapCols = configCampos.medicalsys_column_mapping || {
+      convenio: "coluna_convenio", // "coluna_convenio" (separada), "observacoes", "eliminar_coluna"
+      especialidade: "especialidade"
+    };
+
+    // MODO DE RE-PROCESSAMENTO / CORREÇÃO RETROATIVA DE BANCO DE DADOS
+    if (mode === "reprocess_mapping" || reprocessar_existentes) {
+      console.log(`[Re-processamento Medicalsys] Corrigindo registros antigos no banco para empresa ${empresaId}...`);
+
+      const { data: bloqueiosImportados, error: errFetchOld } = await supabase
+        .from("bloqueios_horarios")
+        .select("*")
+        .eq("empresa_id", empresaId);
+
+      if (errFetchOld) throw errFetchOld;
+
+      let corrigidosCount = 0;
+
+      for (const item of (bloqueiosImportados || [])) {
+        let currentEsp = item.especialidade || "";
+        let currentObs = item.observacoes || "";
+        let currentConv = item.convenio || "";
+
+        let novoConv = currentConv;
+        let novaEsp = currentEsp;
+        let novaObs = currentObs;
+
+        // Detecta se um convênio (ex: Unimed, Bradesco, Casssi, Funasa, Plano, Convênio) foi salvo erroneamente em especialidade
+        const regexPlano = /(unimed|bradesco|casssi|funasa|geap|sulamerica|hapvida|samp|particular|amil|ipam|ipem|plano|convenio)/i;
+
+        if (!currentConv && regexPlano.test(currentEsp)) {
+          novoConv = currentEsp;
+          novaEsp = "Geral";
+          corrigidosCount++;
+        } else if (currentObs && currentObs.includes("Plano:") && !currentConv) {
+          const matchObs = currentObs.match(/Plano:\s*([^|]+)/i);
+          if (matchObs && matchObs[1]) {
+            novoConv = matchObs[1].trim();
+            corrigidosCount++;
+          }
+        }
+
+        if (novoConv !== currentConv || novaEsp !== currentEsp) {
+          await supabase
+            .from("bloqueios_horarios")
+            .update({
+              convenio: novoConv || null,
+              especialidade: novaEsp || "Geral",
+              observacoes: novaObs || null
+            })
+            .eq("id", item.id);
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Re-processamento concluído com sucesso! ${corrigidosCount} registros retroativos foram corrigidos e tiveram o Convênio/Plano separado da Especialidade.`
+      });
+    }
+
+    // 2. PROXY FIXIE E REQUISIÇÃO DA API MEDICALSYS
     const proxyUrl = process.env.FIXIE_URL || "http://fixie:1c54Fc5I1jgmHG2@criterium.usefixie.com:80";
     const proxyAgent = new HttpsProxyAgent(proxyUrl);
 
-    // 2. CALCULAR DATAS DE BUSCA
     const hoje = new Date();
     const dataDeHoje = hoje.toISOString().slice(0, 10);
     const anoAtual = hoje.getFullYear();
@@ -26,10 +107,8 @@ export async function POST(request) {
 
     console.log(`[Importação Medicalsys] Buscando agendamentos de ${dataDeHoje} até ${dataFimDeAno}...`);
 
-    // 3. LOOP DE PAGINAÇÃO DA API MEDICALSYS
     while (urlAtual && limiteDePaginas < 50) {
       limiteDePaginas++;
-      console.log(`Página ${limiteDePaginas}...`);
 
       const response = await axios.get(urlAtual, {
         httpsAgent: proxyAgent,
@@ -58,25 +137,7 @@ export async function POST(request) {
       return NextResponse.json({ success: true, message: `Nenhum agendamento retornado pelo Medicalsys.` });
     }
 
-    // 4. BUSCAR EMPRESA E CONFIGURAÇÕES DE MAPEAMENTO DE COLUNAS
-    const { data: empresa, error: erroEmpresa } = await supabase
-      .from("empresas")
-      .select("id, config_campos, config_mensagens, config_chaves")
-      .limit(1)
-      .single();
-
-    if (erroEmpresa || !empresa) {
-      throw new Error("Nenhuma empresa cadastrada no banco para vincular os agendamentos.");
-    }
-    const empresaId = empresa.id;
-    const configCampos = empresa.config_campos || {};
-    const enviarMensagensErp = Boolean(configCampos.enviar_mensagens_importados_erp);
-    const mapCols = configCampos.medicalsys_column_mapping || {
-      convenio: "observacoes", // Se 'eliminar_coluna', descarta. Se 'observacoes', coloca em observações.
-      especialidade: "especialidade"
-    };
-
-    // 5. CARREGAR REGISTROS JÁ EXISTENTES EM BLOQUEIOS_HORARIOS
+    // 3. CARREGAR REGISTROS EXISTENTES
     const { data: bloqueiosExistentes, error: erroBusca } = await supabase
       .from("bloqueios_horarios")
       .select("*")
@@ -94,9 +155,9 @@ export async function POST(request) {
 
     const registrosNovos = [];
     let registrosAtualizados = 0;
-    const mensagensErpParaFila = [];
+    const rascunhosMensagensFila = [];
 
-    // 6. PROCESSAR CADA REGISTRO DO MEDICALSYS COM O MAPEAMENTO DE COLUNAS PERSONALIZADO
+    // 4. PROCESSAR REGISTROS GARANTINDO SEPARAÇÃO ENTRE CONVÊNIO E ESPECIALIDADE
     for (const item of todosAgendamentos) {
       if (item.momento < dataDeHoje) continue;
 
@@ -123,31 +184,43 @@ export async function POST(request) {
       let medicoNome = "Não informado";
       if (item.medico && typeof item.medico === "object" && item.medico.nome) {
         medicoNome = item.medico.nome;
-      } else if (Array.isArray(item.medico) && item.medico[1]?.nome) {
-        medicoNome = item.medico[1].nome;
+      } else if (Array.isArray(item.medico) && item.medico[0]?.nome) {
+        medicoNome = item.medico[0].nome;
       } else if (typeof item.medico === "string") {
         medicoNome = item.medico;
       }
 
-      // Mapeamento Dinâmico de Especialidade, Convênio e Observações
-      let rawEspecialidade = item.especialidade?.nome || item.medico?.especialidade?.nome || null;
-      let rawConvenio = item.convenio?.nome || (typeof item.convenio === "string" ? item.convenio : null);
-      let rawObservacoes = item.observacoes || null;
-
-      let finalEspecialidade = "Geral";
-      let finalObservacoes = rawObservacoes;
-
-      // Aplica regras de eliminação ou transferência de colunas configuradas pelo usuário
-      if (mapCols.especialidade === "eliminar_coluna") {
-        finalEspecialidade = "Geral";
-      } else if (rawEspecialidade) {
-        finalEspecialidade = rawEspecialidade;
+      // SEPARAÇÃO RIGOROSA ENTRE CONVÊNIO E ESPECIALIDADE / PROCEDIMENTO
+      let rawConvenio = null;
+      if (item.convenio && typeof item.convenio === "object" && item.convenio.nome) {
+        rawConvenio = item.convenio.nome.trim();
+      } else if (typeof item.convenio === "string" && item.convenio.trim()) {
+        rawConvenio = item.convenio.trim();
       }
 
-      if (mapCols.convenio === "especialidade" && rawConvenio) {
-        finalEspecialidade = rawConvenio;
-      } else if (mapCols.convenio === "observacoes" && rawConvenio) {
+      let rawEspecialidade = item.especialidade?.nome || item.medico?.especialidade?.nome || item.procedimento?.especialidade?.nome || null;
+      let rawObservacoes = item.observacoes || null;
+
+      let finalConvenio = rawConvenio;
+      let finalEspecialidade = rawEspecialidade || "Geral";
+      let finalObservacoes = rawObservacoes;
+
+      // Aplicação das regras de mapeamento do usuário
+      if (mapCols.convenio === "observacoes" && rawConvenio) {
         finalObservacoes = finalObservacoes ? `${finalObservacoes} | Plano: ${rawConvenio}` : `Plano: ${rawConvenio}`;
+      } else if (mapCols.convenio === "eliminar_coluna") {
+        finalConvenio = null;
+      }
+
+      if (mapCols.especialidade === "eliminar_coluna") {
+        finalEspecialidade = "Geral";
+      }
+
+      // TRAVA DE SEGURANÇA: NUNCA PERMITIR QUE UM CONVÊNIO (EX: UNIMED) SEJA REGISTRADO COMO ESPECIALIDADE
+      const regexPlanoInvalido = /(unimed|bradesco|casssi|funasa|geap|sulamerica|hapvida|samp|particular|amil|ipam|ipem)/i;
+      if (regexPlanoInvalido.test(finalEspecialidade)) {
+        if (!finalConvenio) finalConvenio = finalEspecialidade;
+        finalEspecialidade = "Geral";
       }
 
       let fone = item.tel_celular || item.paciente?.tel_celular || null;
@@ -161,6 +234,7 @@ export async function POST(request) {
         nome_paciente: nomePaciente,
         cpf_paciente: cpfPaciente,
         especialidade: finalEspecialidade,
+        convenio: finalConvenio,
         telefone_paciente: fone,
         situacao: item.situacao || "agen",
         observacoes: finalObservacoes,
@@ -181,19 +255,33 @@ export async function POST(request) {
         registrosNovos.push(payloadDado);
       }
 
+      // TRAVA DE SEGURANÇA PARA MENSAGENS:
+      // AS MENSAGENS SÃO GERADAS EM MODO 'rascunho' (AGUARDANDO VALIDAÇÃO DO GESTOR NO PAINEL).
+      // ELAS NUNCA SÃO ENVIADAS AUTOMATICAMENTE SEM CONFERÊNCIA PRÉVIA DO USUÁRIO.
       if (enviarMensagensErp && fone) {
         const dataFormatada = item.momento.split("-").reverse().join("/");
-        const msgTexto = `Olá ${nomePaciente}, confirmamos seu agendamento de ${finalEspecialidade} com ${medicoNome} no dia ${dataFormatada} às ${horaInicioFormatada}h.`;
-        
-        mensagensErpParaFila.push({
-          empresa_id: empresaId,
-          telefone_whatsapp: fone,
-          nome_paciente: nomePaciente,
-          mensagem: msgTexto,
-          data_hora_programada: `${item.momento}T${horaInicioFormatada}:00-03:00`,
-          status: "pendente",
-          gatilho: "importado_erp"
-        });
+        const msgTexto = `Olá ${nomePaciente}, confirmamos seu agendamento de ${finalEspecialidade} (${finalConvenio ? "Convenio: " + finalConvenio : "Particular"}) com ${medicoNome} no dia ${dataFormatada} às ${horaInicioFormatada}h.`;
+
+        // Verifica se já existe mensagem para este agendamento na fila
+        const { data: msgExistente } = await supabase
+          .from("fila_mensagens")
+          .select("id, status")
+          .eq("empresa_id", empresaId)
+          .eq("telefone_whatsapp", fone)
+          .eq("data_hora_programada", `${item.momento}T${horaInicioFormatada}:00-03:00`)
+          .maybeSingle();
+
+        if (!msgExistente) {
+          rascunhosMensagensFila.push({
+            empresa_id: empresaId,
+            telefone_whatsapp: fone,
+            nome_paciente: nomePaciente,
+            mensagem: msgTexto,
+            data_hora_programada: `${item.momento}T${horaInicioFormatada}:00-03:00`,
+            status: "rascunho", // ⚠️ STATUS RASCUNHO EXIGE VALIDAÇÃO ANTES DO DISPARO OBRIGATORIAMENTE
+            gatilho: "importado_erp"
+          });
+        }
       }
     }
 
@@ -202,20 +290,16 @@ export async function POST(request) {
       if (errInsert) throw errInsert;
     }
 
-    if (!enviarMensagensErp) {
-      await supabase
-        .from("fila_mensagens")
-        .update({ status: "pausado_erp" })
-        .eq("empresa_id", empresaId)
-        .eq("gatilho", "importado_erp")
-        .eq("status", "pendente");
-    } else if (mensagensErpParaFila.length > 0) {
-      await supabase.from("fila_mensagens").insert(mensagensErpParaFila);
+    if (rascunhosMensagensFila.length > 0) {
+      await supabase.from("fila_mensagens").insert(rascunhosMensagensFila);
     }
 
     return NextResponse.json({
       success: true,
-      message: `Sincronização concluída: ${registrosNovos.length} novos e ${registrosAtualizados} existentes atualizados com o novo mapeamento de colunas!`
+      novos: registrosNovos.length,
+      atualizados: registrosAtualizados,
+      mensagensRascunhoGeradas: rascunhosMensagensFila.length,
+      message: `Sincronização concluída com sucesso: ${registrosNovos.length} novos agendamentos criados e ${registrosAtualizados} atualizados. ${rascunhosMensagensFila.length > 0 ? `${rascunhosMensagensFila.length} mensagens foram geradas em RASCUNHO para sua validação prévia.` : ""}`
     });
   } catch (error) {
     console.error("[Importação Medicalsys Error]:", error);

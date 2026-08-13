@@ -9,19 +9,17 @@ if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_MP_PUBLIC_KEY) {
   initMercadoPago(process.env.NEXT_PUBLIC_MP_PUBLIC_KEY, { locale: 'pt-BR' });
 }
 
-export const URL_WEBHOOK_PUSH = "https://acessoapi.rmchat.com.br/w/875a4a21-8b19-42f1-97d7-d420f72f4310";
-
 // Substitui as variáveis {nome}, {servico}, {especialista}, {chave_pix}, etc.
 export const parseTemplate = (template, variaveis) => {
   if (!template) return "";
   let texto = template;
   for (const [key, value] of Object.entries(variaveis)) {
-    texto = texto.replace(new RegExp(`\\{${key}\\}`, 'g'), value || "");
+    texto = texto.replace(new RegExp(`\{${key}\}`, 'g'), value || "");
   }
   return texto;
 };
 
-export const dispararPushRmChat = async (telefonePaciente, nomePaciente, textoPersonalizado) => {
+export const dispararPushRmChat = async (telefonePaciente, nomePaciente, textoPersonalizado, customWebhookUrl = null) => {
   try {
     let num = (telefonePaciente || "").replace(/\D/g, "");
     if (!num) return;
@@ -29,8 +27,16 @@ export const dispararPushRmChat = async (telefonePaciente, nomePaciente, textoPe
       num = num.substring(0, 2) + num.substring(3); 
     }
     const numeroLimpo = "55" + num;
+    const urlDestino = customWebhookUrl ? customWebhookUrl.trim() : null;
+    
+    // Se a empresa não tiver um webhook configurado, não dispara
+    if (!urlDestino || !urlDestino.startsWith("http")) {
+      console.warn("⚠️ [Push RM Chat] Webhook não configurado para esta clínica. Disparo ignorado.");
+      return;
+    }
+
     const payload = { name: nomePaciente, number: numeroLimpo, texto: textoPersonalizado };
-    await axios.post(URL_WEBHOOK_PUSH, payload, { headers: { 'Content-Type': 'application/json' } });
+    await axios.post(urlDestino, payload, { headers: { 'Content-Type': 'application/json' }, timeout: 10000 });
   } catch (error) {
     console.error("❌ Falha RM Chat:", error);
   }
@@ -132,6 +138,8 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
     link_pagamento: extraData?.link_pagamento || ""
   };
 
+  const rmchatWebhookUrl = empresaDados?.rmchat_webhook_url || empresaDados?.config_chaves?.rmchat_webhook_url || empresaDados?.config_chaves?.url_rmchat || null;
+
   for (const regra of regrasMensagens) {
     if (gatilhoFiltro && regra.gatilho !== gatilhoFiltro) continue;
 
@@ -145,8 +153,8 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
     const textoFormatado = parseTemplate(regra.mensagem, vars);
 
     if (["imediato", "remarcado", "cancelado", "pagamento_aprovado", "antes_pagamento"].includes(regra.gatilho)) {
-      if (telefone_whatsapp) {
-        await dispararPushRmChat(telefone_whatsapp, vars.nome, textoFormatado);
+      if (telefone_whatsapp && rmchatWebhookUrl) {
+        await dispararPushRmChat(telefone_whatsapp, vars.nome, textoFormatado, rmchatWebhookUrl);
       }
     } else if (["agendado", "pos_atendimento"].includes(regra.gatilho)) {
       const dataEnvioProgramado = regra.gatilho === "pos_atendimento"
