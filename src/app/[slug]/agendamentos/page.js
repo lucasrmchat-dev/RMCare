@@ -369,33 +369,73 @@ export default function AgendamentoPremium() {
       }
     }, [searchParams, context.isSmartLink, servicosDB, perguntasDB, setValue, loadingConfig, modulosAtivos, empresaDados]);
 
-    const handleCpfLookup = async () => {
-      if (formData.cpf?.length !== 14) return;
+    const lastCheckedCpfRef = useRef("");
+
+    const handleCpfLookup = async (targetCpf) => {
+      const cleanCpfInput = (targetCpf || formData.cpf || "").trim();
+      if (cleanCpfInput.length !== 14) return;
+      
       setContext(c => ({ ...c, checkingUser: true }));
-      if (restoringDraftRef.current) {
-        restoringDraftRef.current = false;
-      } else if (!context.isSmartLink || flags.unlockedAll) {
-        ["nome", "sobrenome", "telefone_whatsapp", "email", "data_nascimento"].forEach(f => setValue(f, ""));
-      }
+      lastCheckedCpfRef.current = cleanCpfInput;
       
       try {
-        const { data } = await supabase.from("pacientes").select("*").eq("cpf", formData.cpf).eq("empresa_id", empresaDados.id).maybeSingle();
+        const { data } = await supabase
+          .from("pacientes")
+          .select("*")
+          .eq("cpf", cleanCpfInput)
+          .eq("empresa_id", empresaDados.id)
+          .maybeSingle();
+
         if (data) {
-          if (data.nome_completo) { const p = data.nome_completo.trim().split(" "); setValue("nome", p[0] || ""); setValue("sobrenome", p.slice(1).join(" ") || ""); }
+          if (data.nome_completo) {
+            const p = data.nome_completo.trim().split(" ");
+            setValue("nome", p[0] || "");
+            setValue("sobrenome", p.slice(1).join(" ") || "");
+          }
           setValue("telefone_whatsapp", data.telefone_whatsapp || "");
           setValue("email", data.email || "");
-          if (data.data_nascimento) setValue("data_nascimento", data.data_nascimento.split('-').reverse().join('/'));
+          if (data.data_nascimento) {
+            setValue("data_nascimento", data.data_nascimento.split("-").reverse().join("/"));
+          }
           
           setContext(c => ({ ...c, userFound: true }));
           showIsland("Bem-vindo de volta!", "success");
           setTimeout(() => setIslandState("default"), 2000);
-        } else setContext(c => ({ ...c, userFound: false }));
-      } finally { setTimeout(() => setContext(c => ({ ...c, checkingUser: false })), 500); }
+        } else {
+          setContext(c => ({ ...c, userFound: false }));
+          // Se o CPF não foi encontrado, limpa os campos para evitar dados de outro paciente
+          if (!context.isSmartLink || flags.unlockedAll) {
+            ["nome", "sobrenome", "telefone_whatsapp", "email", "data_nascimento"].forEach(f => setValue(f, ""));
+          }
+        }
+      } finally {
+        setTimeout(() => setContext(c => ({ ...c, checkingUser: false })), 400);
+      }
     };
 
+    // Monitora digitação, correção e limpeza do CPF
     useEffect(() => { 
-      if (formData.cpf?.length === 14 && !context.userFound && modulosAtivos[currentStepIndex] === "identificacao" && !context.checkingUser) handleCpfLookup(); 
-    }, [formData.cpf, currentStepIndex]);
+      if (modulosAtivos[currentStepIndex] !== "identificacao") return;
+
+      const currentCpf = (formData.cpf || "").trim();
+
+      // Se o usuário apagou o CPF ou o campo está incompleto
+      if (currentCpf.length < 14) {
+        if (lastCheckedCpfRef.current !== "") {
+          lastCheckedCpfRef.current = "";
+          setContext(c => ({ ...c, userFound: false }));
+          if (!context.isSmartLink || flags.unlockedAll) {
+            ["nome", "sobrenome", "telefone_whatsapp", "email", "data_nascimento"].forEach(f => setValue(f, ""));
+          }
+        }
+        return;
+      }
+
+      // Se completou 14 dígitos e é diferente do último consultado
+      if (currentCpf.length === 14 && currentCpf !== lastCheckedCpfRef.current && !context.checkingUser) {
+        handleCpfLookup(currentCpf);
+      }
+    }, [formData.cpf, currentStepIndex, modulosAtivos]);
 
     useEffect(() => {
       if (!formData.data_agendamento || !empresaDados) return;
@@ -709,12 +749,66 @@ export default function AgendamentoPremium() {
       );
     };
 
+    const handleNovoAgendamento = () => {
+      // 1. Zera todos os dados de jornada no localStorage
+      if (typeof window !== "undefined") {
+        if (slug) {
+          localStorage.removeItem(`rmagenda_jornada:${slug}`);
+          localStorage.removeItem(`rmcare_jornada:${slug}`);
+        }
+        Object.keys(localStorage).forEach((k) => {
+          if (k.startsWith("rmagenda_jornada") || k.startsWith("rmcare_jornada")) {
+            localStorage.removeItem(k);
+          }
+        });
+      }
+
+      // 2. Reseta todo o formulário para campos limpos do zero
+      reset({
+        cpf: "",
+        nome: "",
+        sobrenome: "",
+        telefone_whatsapp: "",
+        data_nascimento: "",
+        email: "",
+        tipo_servico: "",
+        especialidade: "",
+        medico_profissional: "",
+        subtipo_exame: "",
+        modalidade: "",
+        data_agendamento: "",
+        horario_agendamento: ""
+      });
+
+      // 3. Reseta estados da jornada
+      setRespostasTriagem({});
+      setBloqueioExtraCalculado(null);
+      setPixData(null);
+      setTimeLeft(0);
+      lastCheckedCpfRef.current = "";
+      setContext({ isSmartLink: false, personalizedName: "", dataUltimaConsulta: null, userFound: false, checkingUser: false });
+      setFlags({
+        cpfUrl: false, nomeUrl: false, sobrenomeUrl: false, telUrl: false, emailUrl: false, nascUrl: false,
+        unlockedAll: false, exibirConfUri: false, confirmouUri: false
+      });
+
+      // 4. Volta ao início absoluto da jornada
+      setCurrentStepIndex(0);
+      setMinStepIndex(0);
+      setIslandState("default");
+
+      // 5. Remove parâmetros da URL mantendo a rota limpa
+      if (typeof window !== "undefined") {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    };
+
     const contextValue = {
       register, watch, trigger, setValue, errors, reset, formData, slug, empresaDados, flags, setFlags, context, setContext,
       servicosDB, perguntasAtuais, respostasTriagem, setRespostasTriagem, bloqueioExtraCalculado, setBloqueioExtraCalculado,
       agenda, setAgenda, calendarMonth, setCalendarMonth, pixData, setPixData, timeLeft, setTimeLeft, valorEntrada,
       nextStep, isModuleValid, showIsland, modulosAtivos, currentStepIndex, setCurrentStepIndex, selectedSrv, timeSlotsRef, renderLockedOrInput, onSubmitMP, loading,
-      regrasGlobais 
+      regrasGlobais, handleNovoAgendamento
     };
 
     if (loadingConfig) return <div className="text-zinc-500 mt-20 flex flex-col items-center"><Activity className="animate-spin mb-4"/> Carregando sistema da clínica...</div>;

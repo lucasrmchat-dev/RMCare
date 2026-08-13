@@ -5,7 +5,8 @@ import { CreditCard, CheckCircle, RefreshCw, MessageCircle, CalendarPlus } from 
 import { useAgendamento } from "../context";
 
 export default function ModuleConcluido() {
-  const { formData, pixData, timeLeft, showIsland } = useAgendamento();
+  const { formData, pixData, timeLeft, showIsland, handleNovoAgendamento } = useAgendamento();
+
   return (
     <motion.div initial={{opacity:0, scale:0.95}} animate={{opacity:1, scale:1}} className="flex flex-col items-center justify-center text-center max-w-sm mx-auto py-8">
       <div className={`w-20 h-20 rounded-full ${pixData ? "bg-indigo-600" : "bg-zinc-900 dark:bg-white"} text-white ${!pixData && "dark:text-black"} flex items-center justify-center mb-6 shadow-xl`}>
@@ -55,7 +56,11 @@ export default function ModuleConcluido() {
             <MessageCircle size={18} />
             Falar no WhatsApp
           </button>
-          <button onClick={() => window.location.reload()} className="w-full py-4 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-900 text-zinc-900 dark:text-white rounded-full font-medium flex items-center justify-center gap-2 transition-colors">
+          <button 
+            type="button"
+            onClick={handleNovoAgendamento || (() => window.location.reload())} 
+            className="w-full py-4 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-900 text-zinc-900 dark:text-white rounded-full font-medium flex items-center justify-center gap-2 transition-colors"
+          >
             <CalendarPlus size={18} />
             Realizar Novo Agendamento
           </button>
