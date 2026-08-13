@@ -103,15 +103,7 @@ export const calcularDataLimite = (dataBase, dias, tipoContagem) => {
   return d;
 };
 
-export const mapaMedicos = {
-  "1": { tipo: "Consulta", nome: "Dra. Simone" },
-  "2": { tipo: "Consulta", nome: "Dr. Brilhante" },
-  "3": { tipo: "Consulta", nome: "Dr. Tiago Lima" },
-  "4": { tipo: "Consulta", nome: "Dr. Hugo Dyevy" },
-  "5": { tipo: "Consulta", nome: "Dra. Candice" },
-  "6": { tipo: "Exame", nome: "Endoscopia Digestiva Alta" },
-  "7": { tipo: "Exame", nome: "Colonoscopia" }
-};
+
 
 // O MOTOR COMPLETO QUE PROCESSA TODAS AS CATEGORIAS E DADOS ADICIONAIS (PIX, VALOR, ESPECIALISTA)
 export const processarMensagensDinamicas = async (formData, empresaDados, agendamentoId = null, gatilhoFiltro = null, extraData = null) => {

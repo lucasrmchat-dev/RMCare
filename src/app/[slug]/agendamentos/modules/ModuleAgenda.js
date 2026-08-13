@@ -10,44 +10,45 @@ export default function ModuleAgenda() {
     
     const getDiaSemana = (dataStr) => {       
         if (!dataStr) return null;       
-        const [y, m, d] = dataStr.split('-');       
+        const [y, m, d] = dataStr.split('-').map(Number);       
         return new Date(y, m - 1, d).getDay();     
     };     
     
     const diaSelecionado = getDiaSemana(formData.data_agendamento);     
     
-    // 1. Hierarquia de Regras: Médico Override Clínica     
-    const rMedico = regrasGlobais?.filter(r => r.servico_id === selectedSrv?.id && r.ativo !== false) || [];     
-    const rGeral = regrasGlobais?.filter(r => !r.servico_id && r.ativo !== false) || [];     
+    // 1. Hierarquia de Regras: Regras específicas do profissional selecionado (override das regras gerais)
+    const rMedico = (regrasGlobais || []).filter(r => r.servico_id && r.servico_id === selectedSrv?.id && r.ativo !== false);     
+    const rGeral = (regrasGlobais || []).filter(r => !r.servico_id && r.ativo !== false);     
     const regrasAplicaveis = rMedico.length > 0 ? rMedico : rGeral;          
     
     // 2. Filtro robusto de validação: cruza a regra com a especialidade e modalidade
     const isRuleValidForCurrentSelection = (r) => {
-        if (!r.tipos_permitidos || r.tipos_permitidos.length === 0) return true;
+        if (!r.tipos_permitidos || !Array.isArray(r.tipos_permitidos) || r.tipos_permitidos.length === 0) {
+            return true;
+        }
 
         const especialidadeStr = (formData.especialidade || "").toLowerCase().trim();
         const modalidadeStr = (formData.modalidade || "").toLowerCase().trim();
-        const tipoServicoStr = (formData.tipo_servico || "").toLowerCase().trim(); // "profissional" ou "exame"
+        const tipoServicoStr = (formData.tipo_servico || "").toLowerCase().trim();
 
         return r.tipos_permitidos.some(tpRaw => {
-            const tp = tpRaw.toLowerCase().trim();
+            const tp = String(tpRaw).toLowerCase().trim();
+            if (!tp || tp === "todos" || tp === "todas") return true;
             if (tp === tipoServicoStr) return true;
             
-            // 2.1 Igualdade exata ou cruza com a especialidade (ex: "Exame (Colonoscopia)" inclui "Colonoscopia")
-            if (tp === especialidadeStr) return true;
+            // Especialidade exata ou parcial
             if (especialidadeStr !== "") {
-                if (tp.includes(especialidadeStr)) return true;
-                if (especialidadeStr.includes(tp)) return true;
+                if (tp === especialidadeStr || tp.includes(especialidadeStr) || especialidadeStr.includes(tp)) return true;
             }
 
-            // 2.2 Regras de Modalidade Genérica (ex: "Consulta Convênio")
-            // Só libera se o serviço não for um Exame (pois exames têm suas próprias regras)
-            if (tipoServicoStr !== "exame") {
-                const currentConsultaStr = `consulta ${modalidadeStr}`.trim();
-                if (tp === currentConsultaStr) return true;
-                if (tipoServicoStr === "consulta" && modalidadeStr === "particular" && tp === "consulta particular inicial") return true;
-                if (tp === "consulta") return true;
+            // Modalidade (ex: Particular / Convênio)
+            if (modalidadeStr !== "") {
+                if (tp.includes(modalidadeStr)) return true;
             }
+
+            if (tipoServicoStr === "consulta" && tp.includes("consulta")) return true;
+            if (tipoServicoStr === "exame" && tp.includes("exame")) return true;
+            if (tipoServicoStr === "retorno" && tp.includes("retorno")) return true;
 
             return false;
         });
@@ -55,6 +56,7 @@ export default function ModuleAgenda() {
 
     // Filtramos apenas as regras que de fato servem para o que o paciente está agendando
     const regrasAplicaveisEValidas = regrasAplicaveis.filter(isRuleValidForCurrentSelection);
+    
     const aplicarBloqueioTemporario = (limite) => {
         if (!selectedSrv?.agendamento_bloqueado_ate) return limite;
         const bloqueadoAte = new Date(`${selectedSrv.agendamento_bloqueado_ate}T12:00:00`);
@@ -63,19 +65,33 @@ export default function ModuleAgenda() {
     };
     
     // 3. Regras estritas aplicáveis para o dia clicado     
-    const regrasDoDia = regrasAplicaveisEValidas.filter(r => r.dias_semana.includes(diaSelecionado));     
+    const regrasDoDia = regrasAplicaveisEValidas.filter(r => {
+        const diasArray = (r.dias_semana || []).map(d => parseInt(d, 10));
+        return diasArray.includes(diaSelecionado);
+    });     
     
     const isDiaPermitidoPelasRegras = (dataStr) => {       
         const diaWeek = getDiaSemana(dataStr);              
         
-        // Se há regras válidas para essa especialidade, libera apenas os dias dessas regras
+        // Se há regras específicas válidas para este profissional, libera ESTRITAMENTE os dias dele
         if (regrasAplicaveisEValidas.length > 0) {         
-            return regrasAplicaveisEValidas.some(r => r.dias_semana.includes(diaWeek));       
+            return regrasAplicaveisEValidas.some(r => {
+                const diasArray = (r.dias_semana || []).map(d => parseInt(d, 10));
+                return diasArray.includes(diaWeek);
+            });       
         }              
         
-        // Se o médico TEM regras, mas NENHUMA é para essa especialidade, bloqueia tudo
-        if (regrasAplicaveis.length > 0) {
+        // Se o médico TEM regras cadastradas no banco mas nenhuma serve para a especialidade atual, bloqueia o dia
+        if (rMedico.length > 0) {
             return false;
+        }
+
+        // Se o médico não tem regras específicas e existem regras gerais da clínica
+        if (rGeral.length > 0) {
+            return rGeral.some(r => {
+                const diasArray = (r.dias_semana || []).map(d => parseInt(d, 10));
+                return diasArray.includes(diaWeek);
+            });
         }
 
         // Fallback: Se a clínica estiver zerada sem nenhuma regra cadastrada
@@ -194,11 +210,35 @@ export default function ModuleAgenda() {
     
     return (         
         <motion.div initial="hidden" animate="show" exit="exit" variants={{hidden:{opacity:0},show:{opacity:1,transition:{staggerChildren:.08}},exit:{opacity:0,y:-8}}} className="max-w-4xl mx-auto">             
-            <motion.div variants={{hidden:{opacity:0,y:14},show:{opacity:1,y:0}}} className="mb-6 md:mb-8"><div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold mb-3"><CalendarIcon size={13}/> Escolha sua vaga</div><h2 className="text-3xl md:text-4xl font-semibold tracking-tight">Qual o melhor momento?</h2><p className="text-zinc-500 text-sm md:text-base mt-2">Selecione o dia e, em seguida, um horário disponível.</p>{selectedSrv?.agendamento_bloqueado_ate && <p className="mt-3 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">Agenda disponível após {new Date(`${selectedSrv.agendamento_bloqueado_ate}T12:00:00`).toLocaleDateString("pt-BR")}{selectedSrv.motivo_bloqueio_agenda ? ` · ${selectedSrv.motivo_bloqueio_agenda}` : ""}</p>}</motion.div>             
+            <motion.div variants={{hidden:{opacity:0,y:14},show:{opacity:1,y:0}}} className="mb-6 md:mb-8">
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold mb-3">
+                    <CalendarIcon size={13}/> Escolha sua vaga
+                </div>
+                <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">Qual o melhor momento?</h2>
+                <p className="text-zinc-500 text-sm md:text-base mt-2">Selecione o dia e, em seguida, um horário disponível.</p>
+                {selectedSrv?.agendamento_bloqueado_ate && (
+                    <p className="mt-3 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+                        Agenda disponível após {new Date(`${selectedSrv.agendamento_bloqueado_ate}T12:00:00`).toLocaleDateString("pt-BR")}{selectedSrv.motivo_bloqueio_agenda ? ` · ${selectedSrv.motivo_bloqueio_agenda}` : ""}
+                    </p>
+                )}
+            </motion.div>             
+
             <motion.div variants={{hidden:{opacity:0,y:18},show:{opacity:1,y:0}}} className="flex flex-col md:flex-row gap-5 md:gap-8">                                  
                 <div className="w-full md:w-1/2 rounded-[1.75rem] border border-zinc-200/80 dark:border-zinc-800 p-4 md:p-5 bg-white dark:bg-[#0d0d0d] shadow-sm">                     
-                    <div className="flex justify-between items-center mb-6"><button onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))} className="p-1.5"><ChevronLeft size={16}/></button><h3 className="font-medium text-sm capitalize">{calendarMonth.toLocaleString('pt-BR', { month: 'long', year: 'numeric' })}</h3><button onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))} className="p-1.5"><ChevronRight size={16}/></button></div>                     
-                    <div className="grid grid-cols-7 gap-1 text-center mb-2">{['D','S','T','Q','Q','S','S'].map((d,i)=><div key={i} className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">{d}</div>)}</div>                     
+                    <div className="flex justify-between items-center mb-6">
+                        <button onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))} className="p-1.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors">
+                            <ChevronLeft size={16}/>
+                        </button>
+                        <h3 className="font-medium text-sm capitalize">{calendarMonth.toLocaleString('pt-BR', { month: 'long', year: 'numeric' })}</h3>
+                        <button onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))} className="p-1.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors">
+                            <ChevronRight size={16}/>
+                        </button>
+                    </div>                     
+                    
+                    <div className="grid grid-cols-7 gap-1 text-center mb-2">
+                        {['D','S','T','Q','Q','S','S'].map((d,i)=><div key={i} className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">{d}</div>)}
+                    </div>                     
+                    
                     <div className="grid grid-cols-7 gap-1 md:gap-1.5">                         
                         {Array.from({ length: new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1).getDay() }).map((_, i) => <div key={`e-${i}`} className="aspect-square"/>)}                         
                         {Array.from({ length: new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate() }).map((_, i) => {                             
@@ -242,38 +282,44 @@ export default function ModuleAgenda() {
                         <div>                             
                             <div className="flex justify-between border-b border-zinc-200 dark:border-zinc-800 pb-4 mb-4 pt-4 md:pt-0">                                 
                                 <h4 className="font-medium text-sm flex items-center gap-2">                                   
-                                    <Clock3 size={16} className="text-blue-500"/> Horários disponíveis                                    
-                                    {ocupacaoSeqAtiva && <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-[10px] uppercase tracking-widest font-bold">Sequencial</span>}                                 
+                                    <Clock3 size={16} className="text-zinc-400" /> Horários disponíveis                                 
                                 </h4>                                 
-                                {agenda.buscando && <Activity size={16} className="text-zinc-400 animate-spin"/>}                             
-                            </div>                                                          
+                                <span className="text-xs text-zinc-400 font-medium">                                   
+                                    {new Date(formData.data_agendamento + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short' })}                                 
+                                </span>                             
+                            </div>                             
                             
-                            {slotsRender.length === 0 ? (                               
-                                <div className="text-center p-6 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-200 dark:border-zinc-800">                                 
-                                    <p className="text-sm text-zinc-500">Nenhum atendimento configurado ou disponível nesta data.</p>                               
+                            {agenda.buscando ? (                                 
+                                <div className="py-12 flex flex-col items-center justify-center text-zinc-400 text-xs">                                     
+                                    <Activity className="animate-spin mb-2" size={18} /> Buscando horários...                                 
                                 </div>                             
-                            ) : (                               
-                                <motion.div initial="hidden" animate="show" variants={{show:{transition:{staggerChildren:.035}}}} className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-3 gap-2 overflow-y-auto max-h-[300px] pr-1 custom-scrollbar">                                 
-                                    {slotsRender.map(slot => (                                   
-                                        <motion.button
-                                            variants={{hidden:{opacity:0,y:8},show:{opacity:1,y:0}}}
-                                            whileTap={!slot.off ? {scale:.92} : {}}
-                                            key={slot.h}                                       
-                                            disabled={slot.off}                                       
-                                            onClick={() => setValue("horario_agendamento", slot.h)}                                       
-                                            className={`py-3.5 rounded-2xl text-sm border transition-all ${slot.off ? "border-transparent text-zinc-300 dark:text-zinc-800 line-through cursor-not-allowed" : formData.horario_agendamento === slot.h ? "bg-zinc-900 border-zinc-900 text-white dark:bg-white dark:border-white dark:text-black font-bold shadow-md scale-[1.02]" : "border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600 font-medium text-zinc-800 dark:text-zinc-200"}`}                                   
-                                        >                                     
-                                            {slot.h}                                   
-                                        </motion.button>                                 
-                                    ))}                               
-                                </motion.div>                             
+                            ) : slotsRender.length === 0 ? (                                 
+                                <div className="py-12 text-center text-zinc-400 text-xs">                                     
+                                    Nenhum horário disponível para esta data.                             
+                                </div>                             
+                            ) : (                                 
+                                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-[300px] overflow-y-auto pr-1">                                     
+                                    {slotsRender.map(({ h, off }) => {                                         
+                                        const isSel = formData.horario_agendamento === h;                                         
+                                        return (                                             
+                                            <button                                                 
+                                                key={h}                                                 
+                                                disabled={off}                                                 
+                                                onClick={() => setValue("horario_agendamento", h)}                                                 
+                                                className={`py-3 px-2 rounded-xl text-xs font-semibold transition-all ${off ? "opacity-30 cursor-not-allowed bg-zinc-100 dark:bg-zinc-800/50 text-zinc-400 line-through" : isSel ? "bg-[#9FC131] text-black shadow-md font-bold scale-105" : "bg-zinc-50 dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 hover:border-zinc-400 text-zinc-800 dark:text-zinc-200"}`}                                             
+                                            >                                                 
+                                                {h}                                             
+                                            </button>                                         
+                                        );                                     
+                                    })}                                 
+                                </div>                             
                             )}                         
                         </div>                     
-                    ) : (
-                        <div className="h-full border border-dashed border-zinc-200 dark:border-zinc-800 rounded-3xl flex flex-col items-center justify-center text-zinc-500 min-h-[250px]">
-                            <CalendarIcon size={32} className="mb-4 opacity-40"/>
-                            <p className="text-sm">Selecione uma data</p>
-                        </div>
+                    ) : (                         
+                        <div className="h-full flex flex-col items-center justify-center text-center p-8 text-zinc-400">                             
+                            <CalendarIcon size={32} className="mb-3 opacity-30" />                             
+                            <p className="text-sm font-medium">Selecione uma data no calendário para visualizar os horários.</p>                         
+                        </div>                     
                     )}                 
                 </div>             
             </motion.div>         

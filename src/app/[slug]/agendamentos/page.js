@@ -13,7 +13,7 @@ import Navbar from "@/components/Navbar";
 import { AgendamentoContext } from "./context";
 import { MODULE_REGISTRY } from "./modules";
 import {
-  schema, helpers, masks, calcularDataLimite, mapaMedicos, 
+  schema, helpers, masks, calcularDataLimite, 
   processarMensagensDinamicas, enviarParaMedicalsysSeHabilitado
 } from "./utils";
 import { validateReturnEligibility } from "@/lib/appointmentRules";
@@ -273,12 +273,18 @@ export default function AgendamentoPremium() {
       const nascUrl = searchParams.get("nascimento");
       
       const espRaw = searchParams.get("especialidade");
-      const mapaEsp = {
-        "1": "Gastroenterologista", "2": "Cirurgião do Aparelho Digestivo", 
-        "3": "Cirurgia Geral", "4": "Psicologia", "5": "Endoscopia", 
-        "6": "Colonoscopia", "7": "Endoscopia + Colonoscopia"
-      };
-      const especialidadeUrl = mapaEsp[espRaw] || espRaw;
+      let especialidadeUrl = espRaw;
+      if (espRaw && /^\d+$/.test(espRaw)) {
+        const listaEsp = [...new Set(
+          servicosDB
+            .filter(s => s.especialidade)
+            .flatMap(s => s.especialidade.split(',').map(e => e.trim()))
+        )].sort();
+        const indexEsp = parseInt(espRaw, 10) - 1;
+        if (indexEsp >= 0 && indexEsp < listaEsp.length) {
+          especialidadeUrl = listaEsp[indexEsp];
+        }
+      }
       const hideFlag = searchParams.get("hide") === "true";
       
       if ((nomeUrlRaw !== null || cpfUrl !== null || medicoUrl !== null || wppUrl !== null) && !context.isSmartLink) {
@@ -323,21 +329,36 @@ export default function AgendamentoPremium() {
         
         let urlSrvId = null;
         if (hasMedico) {
-          const mapped = mapaMedicos[medicoUrl];
-          if (mapped) { 
-            setValue("tipo_servico", mapped.tipo); 
-            setValue(mapped.tipo === "Consulta" ? "medico_profissional" : "subtipo_exame", mapped.nome); 
-            const found = servicosDB.find(s => s.nome.toLowerCase().includes(mapped.nome.toLowerCase()));
-            if(found) urlSrvId = found.id;
-          } else if (servicosDB.length > 0) {
-            const srv = servicosDB.find(s => s.nome.toLowerCase().includes(medicoUrl.toLowerCase()));
-            if (srv) { 
-              setValue("tipo_servico", srv.tipo); 
-              setValue(srv.tipo === "Consulta" ? "medico_profissional" : "subtipo_exame", srv.nome);
-              urlSrvId = srv.id;
-            } else {
-              setValue("medico_profissional", medicoUrl);
+          // 1. Busca por ID exato nos serviços do banco
+          let foundSrv = servicosDB.find(s => s.id === medicoUrl);
+
+          // 2. Se for numérico (ex: "1", "2", "3"), busca pelo índice dos serviços cadastrados
+          if (!foundSrv && /^\d+$/.test(medicoUrl)) {
+            const index = parseInt(medicoUrl, 10) - 1;
+            if (index >= 0 && index < servicosDB.length) {
+              foundSrv = servicosDB[index];
             }
+          }
+
+          // 3. Busca por aproximação de nome nos serviços cadastrados
+          if (!foundSrv) {
+            const cleanUrlMedico = medicoUrl.toLowerCase().replace(/dra\.|dr\./g, "").trim();
+            foundSrv = servicosDB.find(s => {
+              const cleanDbNome = s.nome.toLowerCase().replace(/dra\.|dr\./g, "").trim();
+              return cleanDbNome.includes(cleanUrlMedico) || cleanUrlMedico.includes(cleanDbNome);
+            });
+          }
+
+          if (foundSrv) {
+            const tipo = foundSrv.tipo || "Consulta";
+            setValue("tipo_servico", tipo);
+            setValue(tipo === "Exame" ? "subtipo_exame" : "medico_profissional", foundSrv.nome);
+            if (foundSrv.especialidade) {
+              setValue("especialidade", foundSrv.especialidade.split(',')[0].trim());
+            }
+            urlSrvId = foundSrv.id;
+          } else {
+            setValue("medico_profissional", medicoUrl);
           }
         }
         
