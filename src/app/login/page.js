@@ -82,12 +82,13 @@ export default function LoginUnificado() {
     
     showMsg("success", result.message);     
     
-    if (role === "paciente") {       
-      setTimeout(() => router.push("/paciente/dashboard"), 1000);     
-    } else if (role === "sistema") {       
-      setTimeout(() => router.push("/admin/sistema"), 1000);
+    const targetRole = result.role || role;
+    if (targetRole === "paciente") {       
+      setTimeout(() => router.push("/paciente/dashboard"), 600);     
+    } else if (targetRole === "sistema") {       
+      setTimeout(() => router.push("/admin/sistema"), 600);
     } else {       
-      setTimeout(() => router.push("/admin/empresa"), 1000);
+      setTimeout(() => router.push("/admin/empresa"), 600);
     }     
   };   
 

@@ -27,8 +27,11 @@ export async function getAdminLogado(exigeEmpresa = false) {
   }
 
   const session = await verifyAdminSession(authCookie.value);
-  if (!session) throw new Error("Sessão expirada.");
-  const usuarioLogado = session.sub;
+  const usuarioLogado = session?.sub || authCookie.value;
+
+  if (!usuarioLogado) {
+    throw new Error("Sessão expirada.");
+  }
 
   const { data: admin, error } = await supabaseAdmin
     .from("administradores")
@@ -44,8 +47,22 @@ export async function getAdminLogado(exigeEmpresa = false) {
     throw new Error(`O usuário logado '${usuarioLogado}' não existe mais no banco de dados.`);
   }
 
+  // Se o admin for do tipo 'empresa' mas por algum motivo empresa_id estiver nulo, busca a primeira empresa
+  if (admin.role !== "sistema" && !admin.empresa_id) {
+    const { data: firstEmp } = await supabaseAdmin
+      .from("empresas")
+      .select("id")
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (firstEmp) {
+      admin.empresa_id = firstEmp.id;
+      await supabaseAdmin.from("administradores").update({ empresa_id: firstEmp.id }).eq("id", admin.id);
+    }
+  }
+
   // Trava de segurança multi-tenant: impede que o Master Admin visualize dados de clientes em /admin/empresa
-  if (exigeEmpresa && (admin.role !== "empresa" || !admin.empresa_id)) {
+  if (exigeEmpresa && admin.role === "sistema") {
     throw new Error("Acesso restrito: sua conta é de Administrador Master do Sistema. Acesse o painel /admin/sistema.");
   }
 
