@@ -115,6 +115,8 @@ export default function AgendamentoPremium() {
             setValue("modalidade", urlModalidade);
             if (hideFlag) jornada = jornada.filter(m => m !== "modalidade");
           } else if (conf.ocultar_modalidade) {
+            setValue("modalidade", conf.modalidade_padrao || "Convênio");
+          } else {
             setValue("modalidade", conf.modalidade_padrao || "Particular");
           }
 
@@ -528,13 +530,17 @@ export default function AgendamentoPremium() {
           consultaInicialId = eligibility.initialAppointment.id;
         }
 
+        const confCampos = empresaDados?.config_campos || {};
+        const modalidadeEfetiva = formData.modalidade 
+          || (confCampos.ocultar_modalidade ? (confCampos.modalidade_padrao || "Convênio") : (confCampos.modalidade_padrao || "Particular"));
+
         const { data: savedAppointment, error: errAgendamento } = await supabase.from("agendamentos").insert({
           paciente_id: pacienteId, 
           empresa_id: empresaDados.id, 
           tipo_servico: formData.tipo_servico, 
           subtipo_exame: formData.subtipo_exame || null,
           medico_profissional: formData.medico_profissional || "A definir", 
-          modalidade: formData.modalidade || "Não se aplica",
+          modalidade: modalidadeEfetiva, 
           data_agendamento: formData.data_agendamento, 
           horario_agendamento: formData.horario_agendamento, 
           status_pagamento_antecipado: pago, 
@@ -546,7 +552,7 @@ export default function AgendamentoPremium() {
         if (errAgendamento) throw errAgendamento;
 
         // Dispara envio para Medicalsys se estiver habilitado na empresa
-        await enviarParaMedicalsysSeHabilitado(formData, empresaDados, savedAppointment.id);
+        await enviarParaMedicalsysSeHabilitado({ ...formData, modalidade: modalidadeEfetiva }, empresaDados, savedAppointment.id);
 
         return savedAppointment;
       } catch (error) {
@@ -635,11 +641,17 @@ export default function AgendamentoPremium() {
             if (currentStepRef.current !== currentStepIndex) return showIsland("Confirmação cancelada para você corrigir os dados.");
           }
           
+          const confCampos = empresaDados?.config_campos || {};
+          const modalidadeEfetiva = formData.modalidade 
+            || (confCampos.ocultar_modalidade ? (confCampos.modalidade_padrao || "Convênio") : (confCampos.modalidade_padrao || "Particular"));
+          const isConvenio = modalidadeEfetiva === "Convênio" || modalidadeEfetiva.toLowerCase().includes("conv");
+          const isRetorno = formData.tipo_servico === "Retorno";
           const temCheckout = modulosAtivos.includes("checkout") && modulosAtivos.indexOf("checkout") > currentStepIndex;
-          if (formData.tipo_servico === "Retorno" || formData.modalidade === "Convênio" || !temCheckout) {
+
+          if (isRetorno || isConvenio || !temCheckout || confCampos.ocultar_checkout) {
             const saved = await salvarNoBanco(false);
             if (saved) { 
-              await processarMensagensDinamicas(formData, empresaDados, saved.id);
+              await processarMensagensDinamicas({ ...formData, modalidade: modalidadeEfetiva }, empresaDados, saved.id);
               showIsland("Agendamento Finalizado", "success");
               
               const idxConcluido = modulosAtivos.indexOf("concluido");

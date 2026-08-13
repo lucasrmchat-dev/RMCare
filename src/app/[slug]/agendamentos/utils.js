@@ -184,6 +184,11 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
 export const enviarParaMedicalsysSeHabilitado = async (formData, empresaDados, agendamentoId = null) => {
   try {
     const nomePaciente = `${formData.nome || ""} ${formData.sobrenome || ""}`.trim();
+    const confCampos = empresaDados?.config_campos || {};
+    const modalidadeEfetiva = formData.modalidade 
+      || (confCampos.ocultar_modalidade ? (confCampos.modalidade_padrao || "Convênio") : (confCampos.modalidade_padrao || "Particular"));
+    const isConvenio = modalidadeEfetiva === "Convênio" || modalidadeEfetiva?.toLowerCase().includes("conv");
+
     const payload = {
       appointmentId: agendamentoId,
       empresaId: empresaDados?.id,
@@ -192,7 +197,7 @@ export const enviarParaMedicalsysSeHabilitado = async (formData, empresaDados, a
       data: formData.data_agendamento,
       horarioInicio: formData.horario_agendamento,
       medico: formData.medico_profissional || formData.subtipo_exame,
-      meioPagamento: formData.modalidade === "Convênio" ? "conv" : "espe"
+      meioPagamento: isConvenio ? "conv" : "espe"
     };
 
     const res = await fetch("/api/medicalsys/agendar", {

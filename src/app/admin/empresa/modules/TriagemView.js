@@ -70,7 +70,12 @@ export default function TriagemView({ perguntas = [], servicos = [], fetchPergun
     setLoading(true);
     
     try {
-      await actionSalvarTriagem(novaTriagem);
+      const res = await actionSalvarTriagem(novaTriagem);
+      if (res && res.success === false) {
+        showToast(res.error || "Erro ao salvar pergunta.", "error");
+        setLoading(false);
+        return;
+      }
       showToast("Pergunta clínica cadastrada com sucesso!"); 
       setIsAddingTriagem(false); 
       setNovaTriagem({ especialidade: "Todas", obrigatoria: true, pergunta: "", opcoes: [] }); 

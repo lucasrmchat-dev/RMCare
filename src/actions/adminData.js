@@ -312,35 +312,70 @@ export async function actionCriarServico(payload) {
 }
 
 export async function actionSalvarTriagem(novaTriagem) {
-  const admin = await getAdminLogado(true);
+  try {
+    const admin = await getAdminLogado(true);
 
-  const payload = { 
-    especialidade: (novaTriagem.especialidade && novaTriagem.especialidade !== "Todas") ? novaTriagem.especialidade.trim() : null,
-    obrigatoria: novaTriagem.obrigatoria !== false,
-    pergunta: novaTriagem.pergunta.trim(),
-    empresa_id: admin.empresa_id,
-    servico_id: novaTriagem.servico_id || null,
-    ativa: true
-  };
+    if (!novaTriagem.pergunta || !novaTriagem.pergunta.trim()) {
+      return { success: false, error: "A pergunta não pode estar vazia." };
+    }
 
-  const { data: perguntaSalva, error: err1 } = await supabaseAdmin
-    .from("perguntas_triagem")
-    .insert(payload)
-    .select()
-    .single();
+    if (!novaTriagem.opcoes || novaTriagem.opcoes.length === 0) {
+      return { success: false, error: "Adicione pelo menos uma opção de resposta." };
+    }
 
-  if (err1) throw err1;
+    const payload = { 
+      especialidade: (novaTriagem.especialidade && novaTriagem.especialidade !== "Todas") ? novaTriagem.especialidade.trim() : null,
+      obrigatoria: novaTriagem.obrigatoria !== false,
+      pergunta: novaTriagem.pergunta.trim(),
+      empresa_id: admin.empresa_id,
+      servico_id: novaTriagem.servico_id || null,
+      ativa: true
+    };
 
-  const opcoesFormatadas = novaTriagem.opcoes.map(op => ({
-    pergunta_id: perguntaSalva.id,
-    texto_opcao: op.texto_opcao,
-    regra_bloqueio_dias: Number(op.regra_bloqueio_dias || 0),
-    tipo_contagem_dias: op.tipo_contagem_dias || "corridos"
-  }));
+    let { data: perguntaSalva, error: err1 } = await supabaseAdmin
+      .from("perguntas_triagem")
+      .insert(payload)
+      .select()
+      .single();
 
-  const { error: err2 } = await supabaseAdmin.from("opcoes_triagem").insert(opcoesFormatadas);
-  if (err2) throw err2;
-  return true;
+    // Fallback se as colunas especialidade ou obrigatoria ainda não existirem no Supabase
+    if (err1 && (err1.message?.includes("column") || err1.code === "42703")) {
+      const fallbackPayload = {
+        pergunta: novaTriagem.pergunta.trim(),
+        empresa_id: admin.empresa_id,
+        servico_id: novaTriagem.servico_id || null,
+        ativa: true
+      };
+      const retry = await supabaseAdmin
+        .from("perguntas_triagem")
+        .insert(fallbackPayload)
+        .select()
+        .single();
+      perguntaSalva = retry.data;
+      err1 = retry.error;
+    }
+
+    if (err1) {
+      return { success: false, error: `Erro no banco ao salvar pergunta: ${err1.message}` };
+    }
+
+    const opcoesFormatadas = (novaTriagem.opcoes || []).map(op => ({
+      pergunta_id: perguntaSalva.id,
+      texto_opcao: op.texto_opcao ? op.texto_opcao.trim() : "",
+      regra_bloqueio_dias: parseInt(op.regra_bloqueio_dias || 0, 10),
+      tipo_contagem_dias: op.tipo_contagem_dias || "corridos"
+    }));
+
+    const { error: err2 } = await supabaseAdmin.from("opcoes_triagem").insert(opcoesFormatadas);
+    if (err2) {
+      return { success: false, error: `Erro ao salvar opções da pergunta: ${err2.message}` };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Erro em actionSalvarTriagem:", error);
+    return { success: false, error: error.message || "Falha ao registrar pergunta clínica." };
+  }
 }
 
 export async function actionDeletarTriagem(id) {
