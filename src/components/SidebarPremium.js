@@ -82,6 +82,7 @@ export default function SidebarPremium({ isExpanded, setIsExpanded }) {
   const [isDark, setIsDark] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [empresaNome, setEmpresaNome] = useState("RM AGENDA");
+  const [empresaLogo, setEmpresaLogo] = useState(null);
   const [lastSlug, setLastSlug] = useState("");
   
   const params = useParams();
@@ -98,19 +99,16 @@ export default function SidebarPremium({ isExpanded, setIsExpanded }) {
       setIsDark(false); document.documentElement.classList.remove('dark');
     }
 
-    if (currentSlug) {
-      setLastSlug(currentSlug);
-      supabase.from('empresas').select('nome').eq('slug', currentSlug).single().then(({data}) => {
-        if (data) setEmpresaNome(data.nome);
+    const targetSlug = currentSlug || localStorage.getItem('rmagenda_last_slug') || localStorage.getItem('rmcare_last_slug');
+    if (targetSlug) {
+      setLastSlug(targetSlug);
+      supabase.from('empresas').select('nome, logo_url, config_campos').eq('slug', targetSlug).maybeSingle().then(({ data }) => {
+        if (data) {
+          if (data.nome) setEmpresaNome(data.nome);
+          const logo = data.logo_url || data.config_campos?.logo_url;
+          if (logo) setEmpresaLogo(logo);
+        }
       });
-    } else {
-      const savedSlug = localStorage.getItem('rmagenda_last_slug') || localStorage.getItem('rmcare_last_slug');
-      if (savedSlug) {
-        setLastSlug(savedSlug);
-        supabase.from('empresas').select('nome').eq('slug', savedSlug).single().then(({data}) => {
-          if (data) setEmpresaNome(data.nome);
-        });
-      }
     }
   }, [currentSlug]);
 
@@ -155,10 +153,16 @@ export default function SidebarPremium({ isExpanded, setIsExpanded }) {
       <div className="mt-10 mb-10 flex items-center h-12 w-full">
         <Link href="/" className="flex items-center group w-full outline-none">
           <div className="w-[88px] flex justify-center shrink-0">
-            <div className="relative w-10 h-10 bg-zinc-900 dark:bg-white rounded-2xl flex items-center justify-center shadow-[0_4px_16px_rgba(0,0,0,0.1)] dark:shadow-[0_4px_16px_rgba(255,255,255,0.1)] transition-transform duration-500 group-hover:scale-105 group-hover:rotate-3">
-              <Activity className="text-white dark:text-zinc-900" size={20} strokeWidth={2.5} />
-              <div className="absolute top-1 right-1 w-2 h-2 bg-[#9FC131] rounded-full shadow-[0_0_8px_rgba(159,193,49,0.8)]" />
-            </div>
+            {empresaLogo ? (
+              <div className="w-10 h-10 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-1 flex items-center justify-center shadow-sm overflow-hidden">
+                <img src={empresaLogo} alt={empresaNome} className="max-h-full max-w-full object-contain" />
+              </div>
+            ) : (
+              <div className="relative w-10 h-10 bg-zinc-900 dark:bg-white rounded-2xl flex items-center justify-center shadow-[0_4px_16px_rgba(0,0,0,0.1)] dark:shadow-[0_4px_16px_rgba(255,255,255,0.1)] transition-transform duration-500 group-hover:scale-105 group-hover:rotate-3">
+                <Activity className="text-white dark:text-zinc-900" size={20} strokeWidth={2.5} />
+                <div className="absolute top-1 right-1 w-2 h-2 bg-[#9FC131] rounded-full shadow-[0_0_8px_rgba(159,193,49,0.8)]" />
+              </div>
+            )}
           </div>
           
           <AnimatePresence>

@@ -1,96 +1,77 @@
-"use client";
-import { initMercadoPago } from '@mercadopago/sdk-react';
-import axios from "axios";
-import * as z from "zod";
-import { supabase } from "@/lib/supabase";
 import { getMessageSchedule } from "@/lib/appointmentRules";
-
-if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_MP_PUBLIC_KEY) {
-  initMercadoPago(process.env.NEXT_PUBLIC_MP_PUBLIC_KEY, { locale: 'pt-BR' });
-}
-
-// Substitui as variáveis {nome}, {servico}, {especialista}, {chave_pix}, etc.
-export const parseTemplate = (template, variaveis) => {
-  if (!template) return "";
-  let texto = template;
-  for (const [key, value] of Object.entries(variaveis)) {
-    texto = texto.replace(new RegExp(`\{${key}\}`, 'g'), value || "");
-  }
-  return texto;
-};
-
-export const dispararPushRmChat = async (telefonePaciente, nomePaciente, textoPersonalizado, customWebhookUrl = null) => {
-  try {
-    let num = (telefonePaciente || "").replace(/\D/g, "");
-    if (!num) return;
-    if (num.length === 11 && num.charAt(2) === '9') {
-      num = num.substring(0, 2) + num.substring(3); 
-    }
-    const numeroLimpo = "55" + num;
-    const urlDestino = customWebhookUrl ? customWebhookUrl.trim() : null;
-    
-    // Se a empresa não tiver um webhook configurado, não dispara
-    if (!urlDestino || !urlDestino.startsWith("http")) {
-      console.warn("⚠️ [Push RM Chat] Webhook não configurado para esta clínica. Disparo ignorado.");
-      return;
-    }
-
-    const payload = { name: nomePaciente, number: numeroLimpo, texto: textoPersonalizado };
-    await axios.post(urlDestino, payload, { headers: { 'Content-Type': 'application/json' }, timeout: 10000 });
-  } catch (error) {
-    console.error("❌ Falha RM Chat:", error);
-  }
-};
-
-export const HORARIOS_BASE = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"];
-
-export const masks = {
-  cpf: (v) => v.replace(/\D/g, "").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})/, "$1-$2").replace(/(-\d{2})\d+?$/, "$1"),
-  phone: (v) => v.replace(/\D/g, "").replace(/(\d{2})(\d)/, "($1) $2").replace(/(\d{5})(\d)/, "$1-$2").replace(/(-\d{4})\d+?$/, "$1"),
-  date: (v) => v.replace(/\D/g, "").replace(/(\d{2})(\d)/, "$1/$2").replace(/(\d{2})(\d)/, "$1/$2").replace(/(\/\d{4})\d+?$/, "$1")
-};
+import { supabase } from "@/lib/supabase";
 
 export const helpers = {
-  isValidDate: (str) => {
-    const reg = /^(0[1-9]|[12][0-9]|3[01])\/(0[1-9]|1[012])\/(19|20)\d\d$/;
-    if (!reg.test(str)) return false;
-    const [d, m, y] = str.split('/').map(Number);
-    const date = new Date(y, m - 1, d);
-    return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
+  getToday: () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   },
-  toDBDate: (str) => str ? str.split('/').reverse().join('-') : null,
-  getToday: () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+  isValidDate: (dateStr) => {
+    if (!dateStr || dateStr.length !== 10) return false;
+    const [d, m, y] = dateStr.split('/').map(Number);
+    if (!d || !m || !y) return false;
+    const date = new Date(y, m - 1, d);
+    return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d && y > 1900 && y <= new Date().getFullYear();
+  }
 };
 
-export const schema = z.object({
-  cpf: z.string().optional(),
-  nome: z.string().min(2, "Informe seu nome"),
-  sobrenome: z.string().optional(),
-  telefone_whatsapp: z.string().optional(),
-  data_nascimento: z.string().optional(),
-  email: z.string().optional(),
-  tipo_servico: z.string().optional(),
-  especialidade: z.string().optional(),
-  medico_profissional: z.string().optional(),
-  subtipo_exame: z.string().optional(),
-  modalidade: z.string().optional(),
-  data_agendamento: z.string().optional(),
-  horario_agendamento: z.string().optional(),
-});
+export const masks = {
+  cpf: (v = "") => v.replace(/\D/g, "").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2").substring(0, 14),
+  phone: (v = "") => v.replace(/\D/g, "").replace(/(\d{2})(\d)/, "($1) $2").replace(/(\d{5})(\d)/, "$1-$2").substring(0, 15),
+  date: (v = "") => v.replace(/\D/g, "").replace(/(\d{2})(\d)/, "$1/$2").replace(/(\d{2})(\d)/, "$1/$2").substring(0, 10),
+  cardExpiry: (v = "") => v.replace(/\D/g, "").replace(/(\d{2})(\d)/, "$1/$2").substring(0, 5)
+};
 
-export const gerarData = (dataBase, diasSubtrair, horaEspecifica) => {
-  const d = new Date(`${dataBase}T12:00:00-03:00`); 
-  d.setDate(d.getDate() - diasSubtrair);
-  if (horaEspecifica) {
-    const [h, m] = horaEspecifica.split(':');
-    d.setHours(parseInt(h, 10), parseInt(m, 10), 0, 0);
+export const schema = {
+  cpf: (v) => v.replace(/\D/g, "").length === 11,
+  nome: (v) => (v || "").trim().length >= 2,
+  sobrenome: (v) => (v || "").trim().length >= 2,
+  telefone_whatsapp: (v) => v.replace(/\D/g, "").length >= 10,
+  email: (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
+  data_nascimento: (v) => helpers.isValidDate(v)
+};
+
+export const parseTemplate = (tpl, data) => {
+  if (!tpl) return "";
+  return tpl.replace(/{(\w+)}/g, (_, k) => data[k] !== undefined ? data[k] : `{${k}}`);
+};
+
+// DISPARO DE PUSH PARA O SERVIDOR RM CHAT
+export const dispararPushRmChat = async (telefone, nome, mensagem, urlWebhook) => {
+  try {
+    if (!urlWebhook) {
+      console.warn("⚠️ Webhook RM Chat não configurado.");
+      return false;
+    }
+
+    const payload = {
+      name: nome,
+      number: telefone.replace(/\D/g, ""),
+      texto: mensagem
+    };
+
+    const res = await fetch(urlWebhook, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    return res.ok;
+  } catch (err) {
+    console.error("❌ Falha no disparo Push RM Chat:", err);
+    return false;
   }
-  if (d.getTime() < Date.now()) return new Date(Date.now() + 60000).toISOString(); 
+};
+
+export const gerarData = (dataBase, dias, hora) => {
+  const d = new Date(`${dataBase}T${hora || "08:00"}:00-03:00`);
+  d.setDate(d.getDate() - dias);
   return d.toISOString();
 };
 
-export const calcularDataLimite = (dataBase, dias, tipoContagem) => {
-  let d = new Date(dataBase);
+export const calcularDataLimite = (dataInicio, dias, tipoContagem) => {
+  let d = new Date(dataInicio);
+  d.setHours(0, 0, 0, 0);
   let diasAdicionados = 0;
   while (diasAdicionados < dias) {
     d.setDate(d.getDate() + 1);
@@ -103,18 +84,31 @@ export const calcularDataLimite = (dataBase, dias, tipoContagem) => {
   return d;
 };
 
+// HELPER PARA CALCULAR IDADE A PARTIR DA DATA DE NASCIMENTO
+export const calcularIdade = (dataNasc) => {
+  if (!dataNasc) return null;
+  let d, m, y;
+  if (dataNasc.includes("/")) [d, m, y] = dataNasc.split("/").map(Number);
+  else if (dataNasc.includes("-")) [y, m, d] = dataNasc.split("-").map(Number);
+  if (!y || !m || !d || isNaN(y) || isNaN(m) || isNaN(d)) return null;
+  const hoje = new Date();
+  let idade = hoje.getFullYear() - y;
+  const mesAtual = hoje.getMonth() + 1;
+  if (mesAtual < m || (mesAtual === m && hoje.getDate() < d)) idade--;
+  return idade;
+};
 
-
-// O MOTOR COMPLETO QUE PROCESSA TODAS AS CATEGORIAS E DADOS ADICIONAIS (PIX, VALOR, ESPECIALISTA)
+// O MOTOR COMPLETO QUE PROCESSA TODAS AS CATEGORIAS, IDADE, NICHOS E DADOS DINÂMICOS
 export const processarMensagensDinamicas = async (formData, empresaDados, agendamentoId = null, gatilhoFiltro = null, extraData = null) => {
-  const { nome, telefone_whatsapp, data_agendamento, horario_agendamento, especialidade, medico_profissional, subtipo_exame } = formData || {};
-  const servicoSelecionado = formData?.tipo_servico === "Exame" ? subtipo_exame : medico_profissional;
+  const { nome, telefone_whatsapp, data_agendamento, horario_agendamento, especialidade, medico_profissional, subtipo_exame, data_nascimento, tipo_servico } = formData || {};
+  const servicoSelecionado = tipo_servico === "Exame" ? subtipo_exame : medico_profissional;
   
   let regrasMensagens = empresaDados?.config_mensagens || [];
   if (!Array.isArray(regrasMensagens)) return;
 
   let mensagensParaFila = [];
   const dataFormatada = data_agendamento ? data_agendamento.split("-").reverse().join("/") : "";
+  const idadePaciente = calcularIdade(data_nascimento);
   
   // DADOS E VARIÁVEIS SUPORTADAS EM TODOS OS MODELOS
   const vars = { 
@@ -122,6 +116,8 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
     servico: servicoSelecionado || "", 
     especialista: servicoSelecionado || medico_profissional || "",
     especialidade: especialidade || "",
+    tipo_servico: tipo_servico || "Consulta",
+    idade: idadePaciente !== null ? String(idadePaciente) : "",
     data: dataFormatada, 
     hora: horario_agendamento || "",
     valor: extraData?.valor ? `R$ ${Number(extraData.valor).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "",
@@ -135,12 +131,46 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
   for (const regra of regrasMensagens) {
     if (gatilhoFiltro && regra.gatilho !== gatilhoFiltro) continue;
 
+    // 1. FILTRO DE ALVO / NICHO (Tipo de Atendimento, Especialidade ou Profissional)
     const alvo = regra.alvo || (regra.especialidade === "Todas" ? "Todas" : `especialidade:${regra.especialidade}`);
-    const alvoValido = alvo === "Todas"
-      || alvo === `especialidade:${especialidade}`
-      || alvo === `servico:${servicoSelecionado}`
-      || alvo === `tipo:${formData?.tipo_servico}`;
+    let alvoValido = false;
+
+    if (!alvo || alvo === "Todas" || alvo === "todos") {
+      alvoValido = true;
+    } else if (alvo === `tipo:${tipo_servico}`) {
+      alvoValido = true;
+    } else if (alvo === `especialidade:${especialidade}`) {
+      alvoValido = true;
+    } else if (alvo === `servico:${servicoSelecionado}` || alvo === `servico:${medico_profissional}`) {
+      alvoValido = true;
+    } else if (alvo.startsWith("especialidade:") && especialidade) {
+      const targetEsp = alvo.replace("especialidade:", "").toLowerCase().trim();
+      const currEsp = especialidade.toLowerCase().trim();
+      if (currEsp.includes(targetEsp) || targetEsp.includes(currEsp)) {
+        alvoValido = true;
+      }
+    }
+
     if (!alvoValido) continue;
+
+    // 2. FILTRO DE FAIXA ETÁRIA / IDADE DO PACIENTE
+    if (regra.filtro_idade_tipo && regra.filtro_idade_tipo !== "todas") {
+      if (idadePaciente === null) {
+        // Se a regra exige idade mas o paciente não preencheu nascimento, pula por segurança
+        continue;
+      }
+      if (regra.filtro_idade_tipo === "maior_que" && Number(regra.idade_minima) > 0) {
+        if (idadePaciente < Number(regra.idade_minima)) continue;
+      }
+      if (regra.filtro_idade_tipo === "menor_que" && Number(regra.idade_maxima) > 0) {
+        if (idadePaciente > Number(regra.idade_maxima)) continue;
+      }
+      if (regra.filtro_idade_tipo === "faixa") {
+        const min = Number(regra.idade_minima || 0);
+        const max = Number(regra.idade_maxima || 999);
+        if (idadePaciente < min || idadePaciente > max) continue;
+      }
+    }
 
     const textoFormatado = parseTemplate(regra.mensagem, vars);
 

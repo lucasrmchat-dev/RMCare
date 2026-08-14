@@ -1,6 +1,6 @@
 "use client"; 
 
-import { useState, useEffect } from "react"; 
+import { useState, useEffect, useMemo } from "react"; 
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion"; 
 import {
   CalendarDays,
@@ -30,7 +30,7 @@ import {
 import { getSessionAdminInfo } from "@/actions/auth"; 
 import AgendaView from "./modules/AgendaView"; 
 import RestricoesView from "./modules/RestricoesView"; 
-import FinanceiroView from "./modules/FinanceiroView"; 
+import EquipeView from "./modules/EquipeView"; 
 import TriagemView from "./modules/TriagemView"; 
 import PersonalizacaoView from "./modules/PersonalizacaoView"; 
 import AccountView from "./modules/AccountView";
@@ -43,6 +43,7 @@ export default function EmpresaAdmin() {
     const [expandedMenu, setExpandedMenu] = useState("agenda");
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);     
 
+    const [loggedAdmin, setLoggedAdmin] = useState(null);
     const [bloqueios, setBloqueios] = useState([]);     
     const [agendamentos, setAgendamentos] = useState([]);     
     const [servicos, setServicos] = useState([]);     
@@ -99,6 +100,7 @@ export default function EmpresaAdmin() {
             showToast("Acesso restrito: administrador sem clínica vinculada.", "error");
             return;
           }
+          setLoggedAdmin(info);
           fetchAllData();
         } catch (e) {
           console.error(e);
@@ -108,8 +110,8 @@ export default function EmpresaAdmin() {
       checkAccessAndFetch();
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // ESTRUTURA DO MENU COM SUB-ITENS (EXPANDÍVEL)
-    const menuStructure = [
+    // ESTRUTURA DO MENU COMPLETO
+    const baseMenuStructure = useMemo(() => [
       {
         id: "agenda",
         label: "Agenda de pacientes",
@@ -143,19 +145,20 @@ export default function EmpresaAdmin() {
         label: "Mensagens e jornada",
         icon: Zap,
         subItems: [
-          { id: "jornada", label: "Dados do Paciente" },
+          { id: "jornada", label: "Dados e Logotipo" },
           { id: "modalidades", label: "Formas de Atendimento" },
           { id: "mensagens", label: "Mensagens Automáticas" }
         ]
       },
       {
         id: "equipe",
-        label: "Serviços e profissionais",
+        label: "Corpo Clínico & Especialistas",
         icon: Users,
         subItems: [
-          { id: "corpo", label: "Corpo Clínico" },
+          { id: "corpo", label: "Lista de Especialistas" },
+          { id: "formulario", label: "Cadastrar Especialista" },
           { id: "especialidades", label: "Especialidades" },
-          { id: "pausas", label: "Pausas por Especialista" }
+          { id: "pausas", label: "Pausas na Agenda" }
         ]
       },
       {
@@ -165,10 +168,26 @@ export default function EmpresaAdmin() {
       },
       {
         id: "conta",
-        label: "Acesso e segurança",
-        icon: KeyRound
+        label: "Acesso e Usuários",
+        icon: KeyRound,
+        subItems: [
+          { id: "credenciais", label: "Minhas Credenciais" },
+          { id: "usuarios", label: "Usuários & Permissões" }
+        ]
       }
-    ];
+    ], []);
+
+    // FILTRO DINÂMICO DE ACESSO POR PERMISSÕES
+    const menuStructure = useMemo(() => {
+      if (!loggedAdmin) return baseMenuStructure;
+      if (loggedAdmin.is_owner || loggedAdmin.role === "sistema") return baseMenuStructure;
+
+      const userPerms = loggedAdmin.permissoes || ["agenda"];
+      return baseMenuStructure.filter((item) => {
+        if (item.id === "conta") return true; // Sempre pode ver suas próprias credenciais
+        return userPerms.includes(item.id);
+      });
+    }, [loggedAdmin, baseMenuStructure]);
 
     const handleMainMenuClick = (item) => {
       setActiveView(item.id);
@@ -188,7 +207,7 @@ export default function EmpresaAdmin() {
       setIsMobileMenuOpen(false);
     };
 
-    const servicosOptions = (servicos || []).map(s => ({ value: s.id, label: s.nome }));     
+    const servicosOptions = (servicos || []).map((s) => ({ value: s.id, label: s.nome }));     
 
     return (         
         <div className="h-screen w-screen bg-[#F4F4F5] dark:bg-black flex flex-col font-sans overflow-hidden text-zinc-900 dark:text-white selection:bg-zinc-900 selection:text-white">             
@@ -282,11 +301,11 @@ export default function EmpresaAdmin() {
 
                 <main className="flex-1 flex flex-col relative overflow-hidden bg-[#F4F4F5] dark:bg-black md:rounded-tl-[2rem] border-t border-l border-zinc-200/50 dark:border-zinc-800 shadow-[-10px_-10px_30px_rgba(0,0,0,0.02)]">                     
                     <AnimatePresence mode="wait">                         
-                        {activeView === "agenda" && ( <AgendaView subTab={activeSubView} setSubTab={setActiveSubView} agendamentos={agendamentos} bloqueios={bloqueios} servicos={servicos} fetchAgendamentos={fetchAgendamentos} showToast={showToast} /> )}                         
-                        {activeView === "conta" && ( <AccountView showToast={showToast} /> )}
+                        {activeView === "agenda" && ( <AgendaView subTab={activeSubView} setSubTab={setActiveSubView} agendamentos={agendamentos} bloqueios={bloqueios} servicos={servicos} fetchAgendamentos={fetchAgendamentos} showToast={showToast} permissoes={loggedAdmin?.permissoes} isOwner={loggedAdmin?.is_owner} /> )}                         
+                        {activeView === "conta" && ( <AccountView subTab={activeSubView} setSubTab={setActiveSubView} showToast={showToast} loggedAdmin={loggedAdmin} /> )}
                         {activeView === "politicas" && ( <PoliciesView showToast={showToast} /> )}
                         {activeView === "bloqueios" && ( <RestricoesView subTab={activeSubView} setSubTab={setActiveSubView} regras={regras} fetchRegras={fetchRegras} servicosOptions={servicosOptions} servicos={servicos} showToast={showToast} /> )}                         
-                        {activeView === "equipe" && ( <FinanceiroView subTab={activeSubView} setSubTab={setActiveSubView} servicos={servicos} showToast={showToast} fetchServicos={fetchServicos} /> )}                         
+                        {activeView === "equipe" && ( <EquipeView subTab={activeSubView} setSubTab={setActiveSubView} servicos={servicos} showToast={showToast} fetchServicos={fetchServicos} /> )}                         
                         {activeView === "triagem" && ( <TriagemView perguntas={perguntas} servicos={servicos} fetchPerguntas={fetchPerguntas} showToast={showToast} /> )}                         
                         {activeView === "personalizacao" && ( <PersonalizacaoView subTab={activeSubView} setSubTab={setActiveSubView} showToast={showToast} servicos={servicos} /> )}                         
                         {activeView === "integracoes" && ( <SyncView bloqueios={bloqueios} servicos={servicos} fetchBloqueios={fetchBloqueios} fetchServicos={fetchServicos} showToast={showToast} /> )}

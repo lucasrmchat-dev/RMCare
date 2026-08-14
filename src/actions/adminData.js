@@ -276,21 +276,37 @@ export async function actionDeletarBloqueio(id) {
 export async function actionAtualizarServico(id, srvData) {
   const admin = await getAdminLogado(true);
 
-  const { error } = await supabaseAdmin
+  const payload = {
+    nome: srvData.nome,
+    codigo_uri: srvData.codigo_uri || null,
+    numero_especialista: srvData.numero_especialista || null,
+    tipo: srvData.tipo,
+    ativo: srvData.ativo,
+    preco: Number(srvData.preco),
+    dias_bloqueio_padrao: Number(srvData.dias_bloqueio_padrao),
+    tipo_contagem_dias: srvData.tipo_contagem_dias,
+    especialidade: srvData.especialidade,
+    agendamento_bloqueado_ate: srvData.agendamento_bloqueado_ate || null,
+    motivo_bloqueio_agenda: srvData.motivo_bloqueio_agenda || null
+  };
+
+  let { error } = await supabaseAdmin
     .from("servicos")
-    .update({
-      nome: srvData.nome,
-      tipo: srvData.tipo,
-      ativo: srvData.ativo,
-      preco: Number(srvData.preco),
-      dias_bloqueio_padrao: Number(srvData.dias_bloqueio_padrao),
-      tipo_contagem_dias: srvData.tipo_contagem_dias,
-      especialidade: srvData.especialidade,
-      agendamento_bloqueado_ate: srvData.agendamento_bloqueado_ate || null,
-      motivo_bloqueio_agenda: srvData.motivo_bloqueio_agenda || null
-    })
+    .update(payload)
     .eq("id", id)
     .eq("empresa_id", admin.empresa_id);
+
+  // Fallback se as colunas codigo_uri ou numero_especialista ainda não existirem
+  if (error && (error.code === "42703" || error.message?.includes("column"))) {
+    delete payload.codigo_uri;
+    delete payload.numero_especialista;
+    const retry = await supabaseAdmin
+      .from("servicos")
+      .update(payload)
+      .eq("id", id)
+      .eq("empresa_id", admin.empresa_id);
+    error = retry.error;
+  }
 
   if (error) throw error;
   return true;
@@ -299,16 +315,150 @@ export async function actionAtualizarServico(id, srvData) {
 export async function actionCriarServico(payload) {
   const admin = await getAdminLogado(true);
 
-  const { data, error } = await supabaseAdmin.from("servicos").insert([{ 
+  const insertData = { 
     ...payload, 
     empresa_id: admin.empresa_id,
+    codigo_uri: payload.codigo_uri || null,
+    numero_especialista: payload.numero_especialista || null,
     especialidade: payload.especialidade || null,
     agendamento_bloqueado_ate: payload.agendamento_bloqueado_ate || null,
     motivo_bloqueio_agenda: payload.motivo_bloqueio_agenda || null
-  }]).select().single();
+  };
+
+  let { data, error } = await supabaseAdmin
+    .from("servicos")
+    .insert([insertData])
+    .select()
+    .single();
+  
+  // Fallback se colunas novas ainda não existirem
+  if (error && (error.code === "42703" || error.message?.includes("column"))) {
+    delete insertData.codigo_uri;
+    delete insertData.numero_especialista;
+    const retry = await supabaseAdmin
+      .from("servicos")
+      .insert([insertData])
+      .select()
+      .single();
+    data = retry.data;
+    error = retry.error;
+  }
   
   if (error) throw error;
   return data;
+}
+
+/* ==========================================
+   GESTÃO DE USUÁRIOS E NÍVEIS DE PERMISSÕES
+   ========================================== */
+export async function actionListarUsuariosEmpresa() {
+  const admin = await getAdminLogado(true);
+  const { data, error } = await supabaseAdmin
+    .from("administradores")
+    .select("id, usuario, nome, role, permissoes, is_owner, created_at")
+    .eq("empresa_id", admin.empresa_id)
+    .order("created_at", { ascending: true });
+
+  if (error) throw error;
+  return data || [];
+}
+
+export async function actionCriarUsuarioEmpresa({ usuario, senha, nome, permissoes }) {
+  const admin = await getAdminLogado(true);
+  const cleanUser = usuario.trim().toLowerCase();
+  if (cleanUser.length < 3 || senha.length < 6) {
+    throw new Error("Usuário deve ter 3+ caracteres e senha 6+ caracteres.");
+  }
+
+  const defaultPerms = permissoes || [
+    "agenda",
+    "bloqueios",
+    "politicas",
+    "triagem",
+    "personalizacao",
+    "equipe",
+    "integracoes"
+  ];
+
+  let { data, error } = await supabaseAdmin
+    .from("administradores")
+    .insert({
+      usuario: cleanUser,
+      senha_hash: senha,
+      nome: nome?.trim() || null,
+      role: "empresa",
+      empresa_id: admin.empresa_id,
+      permissoes: defaultPerms,
+      is_owner: false
+    })
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === "23505") throw new Error("Este nome de usuário já está em uso.");
+    // Fallback se as colunas novas ainda não existirem
+    const { data: retryData, error: retryErr } = await supabaseAdmin
+      .from("administradores")
+      .insert({
+        usuario: cleanUser,
+        senha_hash: senha,
+        role: "empresa",
+        empresa_id: admin.empresa_id
+      })
+      .select()
+      .single();
+    if (retryErr) throw new Error(retryErr.message);
+    return retryData;
+  }
+  return data;
+}
+
+export async function actionAtualizarUsuarioEmpresa(id, { nome, permissoes, senha }) {
+  const admin = await getAdminLogado(true);
+  const updatePayload = {};
+  if (nome !== undefined) updatePayload.nome = nome?.trim() || null;
+  if (permissoes !== undefined) updatePayload.permissoes = permissoes;
+  if (senha && senha.trim().length >= 6) updatePayload.senha_hash = senha.trim();
+
+  const { error } = await supabaseAdmin
+    .from("administradores")
+    .update(updatePayload)
+    .eq("id", id)
+    .eq("empresa_id", admin.empresa_id);
+
+  if (error) throw new Error(error.message);
+  return true;
+}
+
+export async function actionDeletarUsuarioEmpresa(id) {
+  const admin = await getAdminLogado(true);
+  if (admin.id === id) throw new Error("Você não pode excluir sua própria conta.");
+
+  const { error } = await supabaseAdmin
+    .from("administradores")
+    .delete()
+    .eq("id", id)
+    .eq("empresa_id", admin.empresa_id)
+    .eq("is_owner", false);
+
+  if (error) throw new Error(error.message);
+  return true;
+}
+
+export async function actionSalvarLogoEmpresa(logo_url) {
+  const admin = await getAdminLogado(true);
+  
+  let { error } = await supabaseAdmin
+    .from("empresas")
+    .update({ logo_url: logo_url || null })
+    .eq("id", admin.empresa_id);
+
+  if (error) {
+    const { data: emp } = await supabaseAdmin.from("empresas").select("config_campos").eq("id", admin.empresa_id).single();
+    const newConfig = { ...(emp?.config_campos || {}), logo_url: logo_url || null };
+    await supabaseAdmin.from("empresas").update({ config_campos: newConfig }).eq("id", admin.empresa_id);
+  }
+  return true;
 }
 
 export async function actionSalvarTriagem(novaTriagem) {

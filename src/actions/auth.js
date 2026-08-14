@@ -214,7 +214,7 @@ export async function getSessionAdminInfo() {
 
   const { data: admin } = await supabaseAdmin
     .from("administradores")
-    .select("id, role, empresa_id, usuario")
+    .select("id, role, empresa_id, usuario, nome, permissoes, is_owner")
     .eq("usuario", current.sub)
     .maybeSingle();
 
