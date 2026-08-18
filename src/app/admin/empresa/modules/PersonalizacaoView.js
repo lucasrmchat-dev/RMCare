@@ -1102,6 +1102,28 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                                   />
                                 </div>
                               )}
+
+                              {regra.gatilho === "pos_atendimento" && (
+                                <div className="grid grid-cols-2 gap-2">
+                                  <TextInput
+                                    type="number"
+                                    label="Dias Após Atendimento"
+                                    value={regra.dias_depois ?? regra.dias_antes ?? 1}
+                                    onChange={(e) => {
+                                      atualizarRegra(regra.id, "dias_depois", e.target.value);
+                                      atualizarRegra(regra.id, "dias_antes", e.target.value);
+                                    }}
+                                  />
+                                  <TextInput
+                                    type="time"
+                                    label="Hora Envio"
+                                    value={regra.hora_envio || "08:00"}
+                                    onChange={(e) =>
+                                      atualizarRegra(regra.id, "hora_envio", e.target.value)
+                                    }
+                                  />
+                                </div>
+                              )}
                             </div>
                           </div>
 

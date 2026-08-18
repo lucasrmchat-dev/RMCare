@@ -54,15 +54,15 @@ export const parseTemplate = (tpl, data) => {
   return tpl.replace(/{(\w+)}/g, (_, k) => data[k] !== undefined ? data[k] : `{${k}}`);
 };
 
-// DISPARO DE PUSH PARA O SERVIDOR RM CHAT
+// DISPARO DE PUSH PARA O SERVIDOR RM CHAT / WHATSAPP
 export const dispararPushRmChat = async (telefone, nome, mensagem, urlWebhook) => {
   try {
     if (!urlWebhook) {
-      console.warn("⚠️ Webhook RM Chat não configurado.");
+      console.warn("⚠️ Webhook WhatsApp / RM Chat não configurado.");
       return false;
     }
 
-    let tel = (telefone || "").replace(/\D/g, "");
+    let tel = String(telefone || "").replace(/\D/g, "");
     if (!tel) return false;
     if (!tel.startsWith("55") && (tel.length === 10 || tel.length === 11)) {
       tel = `55${tel}`;
@@ -71,8 +71,10 @@ export const dispararPushRmChat = async (telefone, nome, mensagem, urlWebhook) =
     const payload = {
       name: nome || "Paciente",
       number: tel,
+      phone: tel,
       texto: mensagem,
-      message: mensagem
+      message: mensagem,
+      text: mensagem
     };
 
     const res = await fetch(urlWebhook, {
@@ -83,7 +85,7 @@ export const dispararPushRmChat = async (telefone, nome, mensagem, urlWebhook) =
 
     return res.ok;
   } catch (err) {
-    console.error("❌ Falha no disparo Push RM Chat:", err);
+    console.error("❌ Falha no disparo Push WhatsApp:", err);
     return false;
   }
 };
@@ -91,6 +93,13 @@ export const dispararPushRmChat = async (telefone, nome, mensagem, urlWebhook) =
 export const gerarData = (dataBase, dias, hora) => {
   const d = new Date(`${dataBase}T${hora || "08:00"}:00-03:00`);
   d.setDate(d.getDate() - dias);
+  return d.toISOString();
+};
+
+export const gerarDataPosAtendimento = (dataBase, dias, hora) => {
+  const d = new Date(`${dataBase}T${hora || "08:00"}:00-03:00`);
+  const diasSoma = parseInt(dias || 1, 10);
+  d.setDate(d.getDate() + diasSoma);
   return d.toISOString();
 };
 
@@ -122,6 +131,38 @@ export const calcularIdade = (dataNasc) => {
   if (mesAtual < m || (mesAtual === m && hoje.getDate() < d)) idade--;
   return idade;
 };
+
+// MOTOR DE CLASSIFICAÇÃO INTELIGENTE DE CATEGORIA (EXAMES VS CONSULTAS)
+export const classificarAtendimento = (formData, empresaDados) => {
+  const esp = (formData?.especialidade || "").trim();
+  const sub = (formData?.subtipo_exame || "").trim();
+  const prof = (formData?.medico_profissional || "").trim();
+  const tipo = (formData?.tipo_servico || "").trim();
+  const textoCompleto = `${esp} ${sub} ${prof} ${tipo}`.toLowerCase();
+
+  // 1. Mapeamento explícito em especialidades_categorizadas
+  const categorizadas = empresaDados?.config_campos?.especialidades_categorizadas || [];
+  if (Array.isArray(categorizadas)) {
+    const matchEsp = categorizadas.find(
+      (c) =>
+        (c.nome && (esp.toLowerCase() === c.nome.toLowerCase() || textoCompleto.includes(c.nome.toLowerCase())))
+    );
+    if (matchEsp?.categoria) return matchEsp.categoria.trim();
+  }
+
+  // 2. Se o tipo de serviço for Exame
+  if (tipo === "Exame") return "Exames";
+  if (tipo === "Consulta" || tipo === "Retorno") return "Consultas";
+
+  // 3. Reconhecimento por procedimentos clássicos de exames
+  const isExame = /(exame|endoscopia|colonoscopia|ultrassom|tomografia|ressonancia|raio-x|biopsia|ecocardiograma|eletrocardiograma|laboratorio|sangue|urina|preventivo)/i.test(textoCompleto);
+  if (isExame) return "Exames";
+
+  return "Consultas";
+};
+
+// CONTROLE DE IDEMPOTÊNCIA PARA EVITAR DUPLICAÇÃO DE MENSAGENS EM SESSÃO
+const mensagensProcessadasCache = new Set();
 
 // O MOTOR COMPLETO QUE PROCESSA TODAS AS CATEGORIAS, IDADE, ENFERMIDADES, NICHOS E DADOS DINÂMICOS
 export const processarMensagensDinamicas = async (formData, empresaDados, agendamentoId = null, gatilhoFiltro = null, extraData = null) => {
@@ -158,30 +199,27 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
     }
   }
 
-  const servicoSelecionado = subtipo_exame || nomeProfissional;
+  const servicoSelecionado = subtipo_exame || especialidade || nomeProfissional;
   
   let regrasMensagens = empresaDados?.config_mensagens || [];
-  if (!Array.isArray(regrasMensagens)) return;
+  if (!Array.isArray(regrasMensagens) || regrasMensagens.length === 0) return;
 
   let mensagensParaFila = [];
   const dataFormatada = data_agendamento ? data_agendamento.split("-").reverse().join("/") : "";
   const idadePaciente = calcularIdade(data_nascimento);
 
-  // Identificar categoria da especialidade
-  const catalogoEspecialidades = empresaDados?.config_campos?.especialidades_categorizadas || [];
-  const espCadastrada = Array.isArray(catalogoEspecialidades)
-    ? catalogoEspecialidades.find((e) => (e.nome || "").toLowerCase().trim() === (especialidade || "").toLowerCase().trim())
-    : null;
-  const categoriaEspecialidade = espCadastrada?.categoria || tipo_servico || "Geral";
-  
+  // Classificação precisa da categoria (Exames vs Consultas vs Personalizada)
+  const categoriaEfetiva = classificarAtendimento(formData, empresaDados);
+  const isExame = categoriaEfetiva.toLowerCase().startsWith("exame") || /(exame|endoscopia|colonoscopia|ultrassom|biopsia)/i.test(`${especialidade} ${subtipo_exame} ${tipo_servico}`);
+
   // DADOS E VARIÁVEIS SUPORTADAS EM TODOS OS MODELOS
   const vars = { 
     nome: (nome || "").trim(), 
     servico: servicoSelecionado || "", 
     especialista: nomeProfissional || servicoSelecionado || "",
-    especialidade: especialidade || "",
-    categoria: categoriaEspecialidade,
-    tipo_servico: tipo_servico || categoriaEspecialidade || "Consulta",
+    especialidade: especialidade || (isExame ? (subtipo_exame || "Exame") : "Consulta"),
+    categoria: categoriaEfetiva,
+    tipo_servico: tipo_servico || (isExame ? "Exame" : "Consulta"),
     enfermidade: (Array.isArray(formData?.enfermidades) && formData.enfermidades.length > 0) ? formData.enfermidades.join(", ") : "",
     idade: idadePaciente !== null ? String(idadePaciente) : "",
     data: dataFormatada, 
@@ -192,34 +230,64 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
     link_pagamento: extraData?.link_pagamento || ""
   };
 
-  const rmchatWebhookUrl = empresaDados?.rmchat_webhook_url || empresaDados?.config_chaves?.rmchat_webhook_url || empresaDados?.config_chaves?.url_rmchat || null;
+  // Resolução da URL de Webhook do WhatsApp / RM Chat em todas as chaves possíveis
+  const rmchatWebhookUrl =
+    empresaDados?.rmchat_webhook_url ||
+    empresaDados?.config_chaves?.rmchat_webhook_url ||
+    empresaDados?.config_chaves?.url_rmchat ||
+    empresaDados?.config_chaves?.webhook_url ||
+    empresaDados?.config_campos?.rmchat_webhook_url ||
+    empresaDados?.config_campos?.url_rmchat ||
+    empresaDados?.config_campos?.whatsapp_webhook_url ||
+    null;
 
   for (const regra of regrasMensagens) {
     if (gatilhoFiltro && regra.gatilho !== gatilhoFiltro) continue;
 
+    // Chave única de deduplicação para garantir que a mesma regra não execute 2x no agendamento
+    const dedupKey = `${agendamentoId || telefone_whatsapp}_${regra.id}_${regra.gatilho}_${data_agendamento}_${horario_agendamento}`;
+    if (mensagensProcessadasCache.has(dedupKey)) {
+      continue;
+    }
+
     // 1. FILTRO DE ALVO / NICHO (Categoria Dinâmica, Especialidade ou Profissional)
-    const alvo = regra.alvo || (regra.especialidade === "Todas" ? "Todas" : `especialidade:${regra.especialidade}`);
+    const alvo = (regra.alvo || (regra.especialidade === "Todas" ? "Todas" : `especialidade:${regra.especialidade}`)).trim();
     let alvoValido = false;
 
     if (!alvo || alvo === "Todas" || alvo === "todos") {
       alvoValido = true;
     } else if (alvo.startsWith("categoria:")) {
       const targetCat = alvo.replace("categoria:", "").toLowerCase().trim();
-      const currCat = (categoriaEspecialidade || "").toLowerCase().trim();
-      const currTipo = (tipo_servico || "").toLowerCase().trim();
-      if (currCat === targetCat || currTipo === targetCat || currCat.includes(targetCat) || targetCat.includes(currCat)) {
+      const currCat = categoriaEfetiva.toLowerCase().trim();
+
+      if (targetCat === currCat || currCat.includes(targetCat) || targetCat.includes(currCat)) {
+        alvoValido = true;
+      } else if ((targetCat === "exames" || targetCat === "exame") && isExame) {
+        alvoValido = true;
+      } else if ((targetCat === "consultas" || targetCat === "consulta") && !isExame) {
         alvoValido = true;
       }
-    } else if (alvo === `tipo:${tipo_servico}`) {
-      alvoValido = true;
-    } else if (alvo === `especialidade:${especialidade}`) {
-      alvoValido = true;
-    } else if (alvo === `servico:${servicoSelecionado}` || alvo === `servico:${nomeProfissional}` || alvo === `servico:${medico_profissional}`) {
-      alvoValido = true;
-    } else if (alvo.startsWith("especialidade:") && especialidade) {
+    } else if (alvo.startsWith("tipo:")) {
+      const targetTipo = alvo.replace("tipo:", "").toLowerCase().trim();
+      if ((tipo_servico || "").toLowerCase().trim() === targetTipo) {
+        alvoValido = true;
+      } else if ((targetTipo === "exame" || targetTipo === "exames") && isExame) {
+        alvoValido = true;
+      } else if ((targetTipo === "consulta" || targetTipo === "consultas") && !isExame) {
+        alvoValido = true;
+      }
+    } else if (alvo.startsWith("especialidade:")) {
       const targetEsp = alvo.replace("especialidade:", "").toLowerCase().trim();
-      const currEsp = especialidade.toLowerCase().trim();
-      if (currEsp.includes(targetEsp) || targetEsp.includes(currEsp)) {
+      const currEsp = (especialidade || "").toLowerCase().trim();
+      const currSub = (subtipo_exame || "").toLowerCase().trim();
+      if (currEsp.includes(targetEsp) || targetEsp.includes(currEsp) || currSub.includes(targetEsp) || targetEsp.includes(currSub)) {
+        alvoValido = true;
+      }
+    } else if (alvo.startsWith("servico:")) {
+      const targetSrv = alvo.replace("servico:", "").toLowerCase().trim();
+      const currProf = (nomeProfissional || medico_profissional || "").toLowerCase().trim();
+      const currSub = (subtipo_exame || "").toLowerCase().trim();
+      if (currProf.includes(targetSrv) || targetSrv.includes(currProf) || currSub.includes(targetSrv) || targetSrv.includes(currSub)) {
         alvoValido = true;
       }
     }
@@ -284,12 +352,14 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
 
     if (["imediato", "remarcado", "cancelado", "pagamento_aprovado", "antes_pagamento"].includes(regra.gatilho)) {
       if (telefone_whatsapp && rmchatWebhookUrl) {
+        mensagensProcessadasCache.add(dedupKey);
         await dispararPushRmChat(telefone_whatsapp, vars.nome, textoFormatado, rmchatWebhookUrl);
       }
     } else if (["agendado", "pos_atendimento"].includes(regra.gatilho)) {
+      mensagensProcessadasCache.add(dedupKey);
       const dataEnvioProgramado = regra.gatilho === "pos_atendimento"
-        ? getMessageSchedule(regra, data_agendamento, horario_agendamento)
-        : gerarData(data_agendamento, parseInt(regra.dias_antes || 1), regra.hora_envio);
+        ? gerarDataPosAtendimento(data_agendamento, parseInt(regra.dias_depois || regra.dias_antes || 1, 10), regra.hora_envio)
+        : gerarData(data_agendamento, parseInt(regra.dias_antes || 1, 10), regra.hora_envio);
       
       mensagensParaFila.push({
         empresa_id: empresaDados.id,
@@ -305,8 +375,12 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
   }
 
   if (mensagensParaFila.length > 0) {
-    const { error } = await supabase.from('fila_mensagens').insert(mensagensParaFila);
-    if (error) console.error("Erro ao inserir fila:", error);
+    try {
+      const { error } = await supabase.from('fila_mensagens').insert(mensagensParaFila);
+      if (error) console.error("Erro ao inserir fila de mensagens:", error);
+    } catch (e) {
+      console.warn("Aviso ao salvar fila_mensagens:", e);
+    }
   }
 };
 

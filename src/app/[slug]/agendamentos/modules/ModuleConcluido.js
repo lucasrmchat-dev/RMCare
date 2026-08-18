@@ -11,7 +11,10 @@ import {
   Copy,
   Sparkles,
   Calendar,
-  User
+  User,
+  Stethoscope,
+  Shield,
+  Clock
 } from "lucide-react";
 import { useAgendamento } from "../context";
 import { playDopamineSound, triggerConfetti, triggerHaptic } from "@/lib/dopamine";
@@ -40,17 +43,26 @@ export default function ModuleConcluido() {
     showIsland("Código Pix copiado!", "success");
   };
 
-  const wppNumero = empresaDados?.config_campos?.whatsapp_suporte || "5583999999999";
+  const wppNumero =
+    empresaDados?.config_campos?.whatsapp_suporte ||
+    empresaDados?.telefone ||
+    "5583999999999";
   const dataFormatada = formData.data_agendamento
     ? formData.data_agendamento.split("-").reverse().join("/")
     : "";
+
+  const procedimentoNome =
+    formData.especialidade ||
+    (formData.tipo_servico === "Exame" ? formData.subtipo_exame : "Consulta Geral");
+  const profissionalNome =
+    formData.medico_profissional || formData.subtipo_exame || "A definir";
 
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ type: "spring", stiffness: 420, damping: 30 }}
-      className="flex flex-col items-center justify-center text-center max-w-md mx-auto py-6"
+      className="flex flex-col items-center justify-center text-center max-w-lg mx-auto py-6"
     >
       <motion.div
         initial={{ scale: 0, rotate: -20 }}
@@ -85,14 +97,13 @@ export default function ModuleConcluido() {
         {pixData ? "Finalize seu pagamento Pix" : "Agendamento Confirmado!"}
       </h2>
 
-      <p className="text-zinc-500 dark:text-zinc-400 mt-2.5 text-xs sm:text-sm leading-relaxed max-w-sm">
+      <p className="text-zinc-500 dark:text-zinc-400 mt-2.5 text-xs sm:text-sm leading-relaxed max-w-md">
         {pixData
-          ? `Sua vaga para ${
-              formData.tipo_servico === "Exame" ? formData.subtipo_exame : formData.medico_profissional
-            } no dia ${dataFormatada} às ${formData.horario_agendamento}h está pré-reservada.`
+          ? `Sua vaga para ${procedimentoNome} com ${profissionalNome} no dia ${dataFormatada} às ${formData.horario_agendamento}h está pré-reservada.`
           : `Tudo pronto! Seu atendimento para o dia ${dataFormatada} às ${formData.horario_agendamento}h foi confirmado com sucesso.`}
       </p>
 
+      {/* PIX QR CODE & COPY */}
       {pixData && (
         <div className="mt-6 p-6 rounded-3xl border border-zinc-200/80 dark:border-white/10 w-full text-center bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl shadow-sm space-y-4">
           <h3 className="text-[11px] font-extrabold uppercase text-zinc-400 tracking-widest">
@@ -141,22 +152,54 @@ export default function ModuleConcluido() {
         </div>
       )}
 
-      <div className="mt-6 p-5 sm:p-6 rounded-3xl border border-zinc-200/80 dark:border-white/10 w-full text-left bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl shadow-sm space-y-3">
+      {/* RESUMO COMPLETO DO ATENDIMENTO COM ESPECIALIDADE E PROFISSIONAL */}
+      <div className="mt-6 p-5 sm:p-6 rounded-3xl border border-zinc-200/80 dark:border-white/10 w-full text-left bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl shadow-sm space-y-3.5">
         <div className="flex justify-between items-center text-xs">
           <span className="text-zinc-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
-            <User size={13} /> Paciente
+            <User size={14} className="text-blue-500" /> Paciente
           </span>
-          <span className="font-bold text-zinc-900 dark:text-white">{formData.nome} {formData.sobrenome}</span>
+          <span className="font-bold text-zinc-950 dark:text-white text-sm">
+            {formData.nome} {formData.sobrenome}
+          </span>
         </div>
 
         <div className="flex justify-between items-center text-xs border-t border-zinc-100 dark:border-white/5 pt-3">
           <span className="text-zinc-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
-            <Calendar size={13} /> Data & Horário
+            <Stethoscope size={14} className="text-emerald-500" /> Procedimento / Especialidade
+          </span>
+          <span className="font-bold text-zinc-900 dark:text-white">
+            {procedimentoNome}
+          </span>
+        </div>
+
+        <div className="flex justify-between items-center text-xs border-t border-zinc-100 dark:border-white/5 pt-3">
+          <span className="text-zinc-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+            <User size={14} className="text-purple-500" /> Profissional
+          </span>
+          <span className="font-bold text-zinc-900 dark:text-white">
+            {profissionalNome}
+          </span>
+        </div>
+
+        <div className="flex justify-between items-center text-xs border-t border-zinc-100 dark:border-white/5 pt-3">
+          <span className="text-zinc-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+            <Calendar size={14} className="text-[#86a621] dark:text-[#9FC131]" /> Data & Horário
           </span>
           <span className="font-bold text-zinc-900 dark:text-white">
             {dataFormatada} às {formData.horario_agendamento}h
           </span>
         </div>
+
+        {formData.modalidade && (
+          <div className="flex justify-between items-center text-xs border-t border-zinc-100 dark:border-white/5 pt-3">
+            <span className="text-zinc-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+              <Shield size={14} className="text-amber-500" /> Modalidade
+            </span>
+            <span className="font-bold text-zinc-900 dark:text-white">
+              {formData.modalidade}
+            </span>
+          </div>
+        )}
 
         <div className="flex justify-between items-center text-xs border-t border-zinc-100 dark:border-white/5 pt-3">
           <span className="text-zinc-400 font-bold uppercase tracking-wider">Status</span>
@@ -166,13 +209,14 @@ export default function ModuleConcluido() {
         </div>
       </div>
 
+      {/* BOTÕES DE AÇÃO */}
       <div className="mt-6 flex flex-col gap-3 w-full">
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.97 }}
           onClick={() => {
             playDopamineSound("click");
-            window.open(`https://wa.me/${wppNumero}`, "_blank");
+            window.open(`https://wa.me/${wppNumero.replace(/\D/g, "")}`, "_blank");
           }}
           className="w-full min-h-[50px] py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-600/20"
         >
