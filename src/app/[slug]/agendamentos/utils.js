@@ -66,10 +66,9 @@ export const dispararPushRmChat = async (telefone, nome, mensagem, urlWebhook, c
       urlWebhook: urlWebhook || null
     };
 
-    console.log("📡 [DISPARO WHATSAPP] Solicitando envio de mensagem...", {
+    console.log("📡 [DISPARO WHATSAPP] Solicitando envio...", {
       paciente: nome,
-      telefone: telefone,
-      urlWebhook: urlWebhook ? "(URL fornecida)" : "(Será obtida do banco)"
+      telefone: telefone
     });
 
     const res = await fetch("/api/disparar-webhook", {
@@ -81,14 +80,14 @@ export const dispararPushRmChat = async (telefone, nome, mensagem, urlWebhook, c
     const result = await res.json();
 
     if (!res.ok || !result.success) {
-      console.error("❌ [DISPARO WHATSAPP ERRO] Falha no envio da mensagem:", {
+      console.error("❌ [DISPARO WHATSAPP ERRO] Falha no envio:", {
         statusHttp: res.status,
         detalhes: result
       });
       return false;
     }
 
-    console.log("✅ [DISPARO WHATSAPP SUCESSO] Mensagem entregue com sucesso!", result);
+    console.log("✅ [DISPARO WHATSAPP SUCESSO] Mensagem entregue!", result);
     return true;
   } catch (err) {
     console.error("❌ [DISPARO WHATSAPP ERRO CRÍTICO]:", err);
@@ -138,106 +137,143 @@ export const calcularIdade = (dataNasc) => {
   return idade;
 };
 
-// MOTOR DE CLASSIFICAÇÃO INTELIGENTE DE CATEGORIA (EXAMES VS CONSULTAS)
+// MOTOR DE CLASSIFICAÇÃO INTELIGENTE E ESTRITA DE CATEGORIA (EXAMES VS CONSULTAS)
 export const classificarAtendimento = (formData, empresaDados) => {
   const esp = (formData?.especialidade || "").trim();
   const sub = (formData?.subtipo_exame || "").trim();
   const prof = (formData?.medico_profissional || "").trim();
   const tipo = (formData?.tipo_servico || "").trim();
-  const textoCompleto = `${esp} ${sub} ${prof} ${tipo}`.toLowerCase();
 
-  // 1. Mapeamento explícito em especialidades_categorizadas
+  // 1. Mapeamento explícito cadastrado no Painel da Clínica (especialidades_categorizadas)
   const categorizadas = empresaDados?.config_campos?.especialidades_categorizadas || [];
-  if (Array.isArray(categorizadas)) {
-    const matchEsp = categorizadas.find(
-      (c) =>
-        c.nome && (esp.toLowerCase() === c.nome.toLowerCase() || textoCompleto.includes(c.nome.toLowerCase()))
-    );
-    if (matchEsp?.categoria) return matchEsp.categoria.trim();
+  if (Array.isArray(categorizadas) && categorizadas.length > 0) {
+    const matchEsp = categorizadas.find((c) => {
+      if (!c.nome) return false;
+      const cNome = c.nome.toLowerCase().trim();
+      return (
+        (esp && esp.toLowerCase().trim() === cNome) ||
+        (sub && sub.toLowerCase().trim() === cNome) ||
+        (prof && prof.toLowerCase().trim() === cNome)
+      );
+    });
+    if (matchEsp?.categoria) {
+      const catNorm = matchEsp.categoria.toLowerCase().trim();
+      return catNorm.includes("exame") ? "Exames" : "Consultas";
+    }
   }
 
-  // 2. Se o tipo de serviço for Exame
-  if (tipo === "Exame") return "Exames";
+  // 2. Se o tipo de serviço for explicitamente Consulta ou Retorno
   if (tipo === "Consulta" || tipo === "Retorno") return "Consultas";
+  if (tipo === "Exame") return "Exames";
 
-  // 3. Reconhecimento por procedimentos clássicos de exames
-  const isExame = /(exame|endoscopia|colonoscopia|ultrassom|tomografia|ressonancia|raio-x|biopsia|ecocardiograma|eletrocardiograma|laboratorio|sangue|urina|preventivo)/i.test(textoCompleto);
-  if (isExame) return "Exames";
+  // 3. Reconhecimento estrito por especialidade de consulta clássica
+  const isConsultaClassica = /(nutri|psico|gastro|cirurgi|cardio|pediatra|clinico|endocrino|ortoped|dermato|ginecolog|oftalmo|urolog|neurolog)/i.test(esp);
+  if (isConsultaClassica) return "Consultas";
+
+  // 4. Reconhecimento por procedimentos clássicos de exames
+  const isExameClassico = /(exame|endoscopia|colonoscopia|ultrassom|tomografia|ressonancia|raio-x|biopsia|ecocardiograma|eletrocardiograma|laboratorio|sangue|urina|preventivo)/i.test(`${esp} ${sub}`);
+  if (isExameClassico) return "Exames";
 
   return "Consultas";
 };
 
-// CONTROLE DE IDEMPOTÊNCIA PARA EVITAR DUPLICAÇÃO DE MENSAGENS EM SESSÃO
-const mensagensProcessadasCache = new Set();
+// CONTROLE DE IDEMPOTÊNCIA COM TIMESTAMP PARA EVITAR DUPLICAÇÃO DE MENSAGENS
+const mensagensProcessadasHistorico = new Map();
 
-// O MOTOR COMPLETO QUE PROCESSA TODAS AS CATEGORIAS, IDADE, ENFERMIDADES, NICHOS E DADOS DINÂMICOS
+// MOTOR COMPLETO DE PROCESSAMENTO E DISPARO DE MENSAGENS WHATSAPP
 export const processarMensagensDinamicas = async (formData, empresaDados, agendamentoId = null, gatilhoFiltro = null, extraData = null) => {
   console.group("🚀 [PROCESSAR MENSAGENS WHATSAPP]");
-  console.log("📌 Dados brutos recebidos:", { formData, empresaId: empresaDados?.id, agendamentoId, gatilhoFiltro });
+  console.log("📌 Dados do Agendamento:", { formData, agendamentoId, gatilhoFiltro });
 
-  const { nome, telefone_whatsapp, data_agendamento, horario_agendamento, especialidade, medico_profissional, subtipo_exame, data_nascimento, tipo_servico } = formData || {};
-  
-  // Resolução inteligente do nome do especialista / profissional
-  let nomeProfissional = medico_profissional || subtipo_exame || "";
-  
-  if (nomeProfissional && (/^\d+$/.test(nomeProfissional) || nomeProfissional.length < 3)) {
-    try {
-      if (empresaDados?.id) {
-        const { data: srvs } = await supabase
-          .from("servicos")
-          .select("id, nome, codigo_uri, numero_especialista, especialidade")
-          .eq("empresa_id", empresaDados.id);
+  const {
+    nome,
+    telefone_whatsapp,
+    data_agendamento,
+    horario_agendamento,
+    especialidade,
+    medico_profissional,
+    subtipo_exame,
+    data_nascimento,
+    tipo_servico
+  } = formData || {};
 
-        if (srvs && srvs.length > 0) {
-          const srvMatch = srvs.find(
-            (s) =>
-              String(s.codigo_uri) === String(nomeProfissional) ||
-              String(s.numero_especialista) === String(nomeProfissional) ||
-              s.id === nomeProfissional
-          );
-          if (srvMatch) {
-            nomeProfissional = srvMatch.nome;
-          } else if (especialidade) {
-            const srvEsp = srvs.find((s) => (s.especialidade || "").toLowerCase().includes(especialidade.toLowerCase()));
-            if (srvEsp) nomeProfissional = srvEsp.nome;
-          }
+  // 1. CLASSIFICAÇÃO DA CATEGORIA (Exames vs Consultas)
+  const categoriaEfetiva = classificarAtendimento(formData, empresaDados);
+  const isExame = categoriaEfetiva === "Exames";
+
+  // 2. RESOLUÇÃO COMPLETA DO NOME DO PROFISSIONAL (CONSULTANDO SERVIÇOS DO BANCO SE FOR ID/NÚMERO)
+  let nomeProfissionalOficial = medico_profissional || "";
+
+  try {
+    if (empresaDados?.id) {
+      const { data: servicosClinica } = await supabase
+        .from("servicos")
+        .select("id, nome, codigo_uri, numero_especialista, especialidade, tipo")
+        .eq("empresa_id", empresaDados.id);
+
+      if (Array.isArray(servicosClinica) && servicosClinica.length > 0) {
+        // A. Busca por ID exato, código URI ou número de especialista
+        let srvEncontrado = servicosClinica.find(
+          (s) =>
+            (nomeProfissionalOficial && (s.id === nomeProfissionalOficial || String(s.codigo_uri) === String(nomeProfissionalOficial) || String(s.numero_especialista) === String(nomeProfissionalOficial))) ||
+            (subtipo_exame && (s.id === subtipo_exame || String(s.codigo_uri) === String(subtipo_exame) || String(s.numero_especialista) === String(subtipo_exame)))
+        );
+
+        // B. Se não achou e o nome recebido for número ou vazio, busca pelo nome da especialidade
+        if (!srvEncontrado && especialidade) {
+          srvEncontrado = servicosClinica.find((s) => {
+            const espSrv = (s.especialidade || "").toLowerCase();
+            const espAlvo = especialidade.toLowerCase().trim();
+            return espSrv.includes(espAlvo) || espAlvo.includes(espSrv);
+          });
+        }
+
+        // C. Se ainda não achou e for nome aproximado
+        if (!srvEncontrado && nomeProfissionalOficial && !/^\d+$/.test(nomeProfissionalOficial)) {
+          const cleanInput = nomeProfissionalOficial.toLowerCase().replace(/dra\.|dr\./g, "").trim();
+          srvEncontrado = servicosClinica.find((s) => {
+            const cleanSrv = (s.nome || "").toLowerCase().replace(/dra\.|dr\./g, "").trim();
+            return cleanSrv.includes(cleanInput) || cleanInput.includes(cleanSrv);
+          });
+        }
+
+        if (srvEncontrado?.nome) {
+          nomeProfissionalOficial = srvEncontrado.nome;
         }
       }
-    } catch (e) {
-      console.warn("Aviso ao resolver nome do profissional para mensagens:", e);
     }
+  } catch (errResolve) {
+    console.warn("Aviso ao resolver nome do profissional:", errResolve);
   }
 
-  const servicoSelecionado = subtipo_exame || especialidade || nomeProfissional;
-  
-  let regrasMensagens = empresaDados?.config_mensagens || [];
-  if (!Array.isArray(regrasMensagens) || regrasMensagens.length === 0) {
-    console.warn("⚠️ Nenhuma regra de automação configurada no perfil desta clínica.");
-    console.groupEnd();
-    return;
+  // Se o profissional ainda for um número puro (ex: "8"), limpa para não exibir número feio
+  if (/^\d+$/.test(nomeProfissionalOficial)) {
+    nomeProfissionalOficial = "";
   }
 
-  let mensagensParaFila = [];
+  // 3. DEFINIÇÃO DAS VARIÁVEIS DO TEMPLATE
   const dataFormatada = data_agendamento ? data_agendamento.split("-").reverse().join("/") : "";
   const idadePaciente = calcularIdade(data_nascimento);
 
-  // Classificação precisa da categoria (Exames vs Consultas vs Personalizada)
-  const categoriaEfetiva = classificarAtendimento(formData, empresaDados);
-  const isExame = categoriaEfetiva.toLowerCase().startsWith("exame") || /(exame|endoscopia|colonoscopia|ultrassom|biopsia)/i.test(`${especialidade} ${subtipo_exame} ${tipo_servico}`);
+  // Para consultas: {servico} e {especialista} devem conter o nome do profissional (ou especialidade se não tiver profissional)
+  // Para exames: {servico} deve ser o exame (ex: Colonoscopia) e {especialista} o médico
+  const nomeExameFormatado = subtipo_exame || especialidade || "Exame";
+  const nomeEspecialistaFormatado = nomeProfissionalOficial || (isExame ? "Corpo Clínico" : (especialidade || "Especialista Clínico"));
+  const servicoFormatado = isExame ? nomeExameFormatado : nomeEspecialistaFormatado;
 
-  console.log("🏷️ Categoria classificada:", categoriaEfetiva, "| É exame?", isExame);
-
-  // DADOS E VARIÁVEIS SUPORTADAS EM TODOS OS MODELOS
-  const vars = { 
-    nome: (nome || "").trim(), 
-    servico: servicoSelecionado || "", 
-    especialista: nomeProfissional || servicoSelecionado || "",
-    especialidade: especialidade || (isExame ? (subtipo_exame || "Exame") : "Consulta"),
+  const vars = {
+    nome: (nome || "").trim(),
+    servico: servicoFormatado,
+    especialista: nomeEspecialistaFormatado,
+    medico: nomeEspecialistaFormatado,
+    profissional: nomeEspecialistaFormatado,
+    especialidade: especialidade || (isExame ? nomeExameFormatado : "Consulta"),
+    subtipo_exame: isExame ? nomeExameFormatado : "",
     categoria: categoriaEfetiva,
-    tipo_servico: tipo_servico || (isExame ? "Exame" : "Consulta"),
+    tipo_servico: isExame ? "Exame" : "Consulta",
     enfermidade: (Array.isArray(formData?.enfermidades) && formData.enfermidades.length > 0) ? formData.enfermidades.join(", ") : "",
     idade: idadePaciente !== null ? String(idadePaciente) : "",
-    data: dataFormatada, 
+    data: dataFormatada,
     hora: horario_agendamento || "",
     valor: extraData?.valor ? `R$ ${Number(extraData.valor).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "",
     chave_pix: extraData?.chave_pix || extraData?.qr_code || "",
@@ -245,7 +281,22 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
     link_pagamento: extraData?.link_pagamento || ""
   };
 
-  // Resolução da URL de Webhook do WhatsApp / RM Chat em todas as chaves possíveis
+  console.log("🏷️ Classificação Final:", {
+    categoriaEfetiva,
+    isExame,
+    profissional: vars.especialista,
+    servico: vars.servico,
+    especialidade: vars.especialidade
+  });
+
+  // 4. REGRAS DE MENSAGENS CONFIGURADAS
+  const regrasMensagens = empresaDados?.config_mensagens || [];
+  if (!Array.isArray(regrasMensagens) || regrasMensagens.length === 0) {
+    console.warn("⚠️ Nenhuma regra de mensagem cadastrada.");
+    console.groupEnd();
+    return;
+  }
+
   const rmchatWebhookUrl =
     empresaDados?.rmchat_webhook_url ||
     empresaDados?.config_chaves?.rmchat_webhook_url ||
@@ -256,155 +307,127 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
     empresaDados?.config_campos?.whatsapp_webhook_url ||
     null;
 
-  console.log(`📋 Avaliando ${regrasMensagens.length} regra(s) de mensagem...`);
+  let mensagensParaFila = [];
 
   for (const [idx, regra] of regrasMensagens.entries()) {
-    console.log(`🔍 [Regra #${idx + 1}] Gatilho: "${regra.gatilho}" | Alvo: "${regra.alvo || regra.especialidade}"`);
-
-    if (gatilhoFiltro && regra.gatilho !== gatilhoFiltro) {
-      console.log(`⏩ [Regra #${idx + 1}] Ignorada por filtro de gatilho (${regra.gatilho} !== ${gatilhoFiltro})`);
-      continue;
-    }
-
-    // Chave única de deduplicação para garantir que a mesma regra não execute 2x no agendamento
-    const dedupKey = `${agendamentoId || telefone_whatsapp}_${regra.id}_${regra.gatilho}_${data_agendamento}_${horario_agendamento}`;
-    if (mensagensProcessadasCache.has(dedupKey)) {
-      console.log(`⏩ [Regra #${idx + 1}] Ignorada por deduplicação (já enviada nesta sessão)`);
-      continue;
-    }
-
-    // 1. FILTRO DE ALVO / NICHO (Categoria Dinâmica, Especialidade ou Profissional)
     const alvo = (regra.alvo || (regra.especialidade === "Todas" ? "Todas" : `especialidade:${regra.especialidade}`)).trim();
+    console.log(`🔍 [Regra #${idx + 1}] Gatilho: "${regra.gatilho}" | Alvo: "${alvo}"`);
+
+    // Filtro de gatilho específico
+    if (gatilhoFiltro && regra.gatilho !== gatilhoFiltro) {
+      console.log(`⏩ [Regra #${idx + 1}] Ignorada por gatilho (${regra.gatilho} !== ${gatilhoFiltro})`);
+      continue;
+    }
+
+    // 5. TRAVA DE DEDUPLICAÇÃO TEMPORAL (60 segundos)
+    const dedupKey = `${agendamentoId || telefone_whatsapp}_${regra.id || idx}_${regra.gatilho}_${data_agendamento}_${horario_agendamento}`;
+    const ultimoEnvio = mensagensProcessadasHistorico.get(dedupKey);
+    const agoraMs = Date.now();
+
+    if (ultimoEnvio && (agoraMs - ultimoEnvio < 60000)) {
+      console.log(`⏩ [Regra #${idx + 1}] Ignorada por deduplicação (já disparada nos últimos 60s)`);
+      continue;
+    }
+
+    // 6. VALIDAÇÃO ESTRITA DE ALVO (SEM VAZAMENTO ENTRE EXAMES E CONSULTAS)
     let alvoValido = false;
 
     if (!alvo || alvo === "Todas" || alvo === "todos") {
+      // Se for regra global "Todas", não envia mensagens que contenham preparo de exame (PICOPREP, etc.) para consultas!
+      const msgLower = (regra.mensagem || "").toLowerCase();
+      const contemPreparoExame = /(picoprep|laxante|lavagem|colonoscopia|endoscopia|jejum absoluto|laudo de exame)/i.test(msgLower);
+      if (contemPreparoExame && !isExame) {
+        console.log(`⛔ [Regra #${idx + 1}] BLOQUEADA: Regra com preparo de exame não pode ser enviada para consulta.`);
+        continue;
+      }
       alvoValido = true;
     } else if (alvo.startsWith("categoria:")) {
       const targetCat = alvo.replace("categoria:", "").toLowerCase().trim();
-      const currCat = categoriaEfetiva.toLowerCase().trim();
+      const isTargetExame = targetCat.includes("exame");
+      const isTargetConsulta = targetCat.includes("consulta");
 
-      if (targetCat === currCat || currCat.includes(targetCat) || targetCat.includes(currCat)) {
+      if (isTargetExame && isExame) {
         alvoValido = true;
-      } else if ((targetCat === "exames" || targetCat === "exame") && isExame) {
+      } else if (isTargetConsulta && !isExame) {
         alvoValido = true;
-      } else if ((targetCat === "consultas" || targetCat === "consulta") && !isExame) {
-        alvoValido = true;
+      } else {
+        console.log(`⛔ [Regra #${idx + 1}] BLOQUEADA POR CATEGORIA: Regra é "${targetCat}", mas atendimento é "${categoriaEfetiva}".`);
+        continue;
       }
     } else if (alvo.startsWith("tipo:")) {
       const targetTipo = alvo.replace("tipo:", "").toLowerCase().trim();
-      if ((tipo_servico || "").toLowerCase().trim() === targetTipo) {
-        alvoValido = true;
-      } else if ((targetTipo === "exame" || targetTipo === "exames") && isExame) {
-        alvoValido = true;
-      } else if ((targetTipo === "consulta" || targetTipo === "consultas") && !isExame) {
-        alvoValido = true;
-      }
+      if (targetTipo.includes("exame") && isExame) alvoValido = true;
+      else if (targetTipo.includes("consulta") && !isExame) alvoValido = true;
+      else continue;
     } else if (alvo.startsWith("especialidade:")) {
       const targetEsp = alvo.replace("especialidade:", "").toLowerCase().trim();
       const currEsp = (especialidade || "").toLowerCase().trim();
       const currSub = (subtipo_exame || "").toLowerCase().trim();
-      if (currEsp.includes(targetEsp) || targetEsp.includes(currEsp) || currSub.includes(targetEsp) || targetEsp.includes(currSub)) {
+
+      // Casamento estrito de especialidade
+      if (currEsp && (currEsp === targetEsp || currEsp.includes(targetEsp) || targetEsp.includes(currEsp))) {
         alvoValido = true;
+      } else if (isExame && currSub && (currSub === targetEsp || currSub.includes(targetEsp) || targetEsp.includes(currSub))) {
+        alvoValido = true;
+      } else {
+        console.log(`⛔ [Regra #${idx + 1}] BLOQUEADA POR ESPECIALIDADE: Esperada="${targetEsp}", Atual="${currEsp}".`);
+        continue;
       }
     } else if (alvo.startsWith("servico:")) {
       const targetSrv = alvo.replace("servico:", "").toLowerCase().trim();
-      const currProf = (nomeProfissional || medico_profissional || "").toLowerCase().trim();
+      const currProf = (nomeProfissionalOficial || "").toLowerCase().trim();
       const currSub = (subtipo_exame || "").toLowerCase().trim();
-      if (currProf.includes(targetSrv) || targetSrv.includes(currProf) || currSub.includes(targetSrv) || targetSrv.includes(currSub)) {
+
+      if (currProf && (currProf.includes(targetSrv) || targetSrv.includes(currProf))) {
         alvoValido = true;
+      } else if (isExame && currSub && (currSub.includes(targetSrv) || targetSrv.includes(currSub))) {
+        alvoValido = true;
+      } else {
+        console.log(`⛔ [Regra #${idx + 1}] BLOQUEADA POR SERVIÇO: Esperado="${targetSrv}", Prof="${currProf}".`);
+        continue;
       }
     }
 
     if (!alvoValido) {
-      console.log(`⏩ [Regra #${idx + 1}] Alvo não corresponde: Alvo="${alvo}", Categoria="${categoriaEfetiva}", Esp="${especialidade}"`);
       continue;
     }
 
-    // 2. FILTRO DE FAIXA ETÁRIA / IDADE DO PACIENTE
+    // 7. FILTROS DE IDADE E ENFERMIDADE
     if (regra.filtro_idade_tipo && regra.filtro_idade_tipo !== "todas") {
-      if (idadePaciente === null) {
-        console.log(`⏩ [Regra #${idx + 1}] Ignorada por filtro de idade (idade não calculada)`);
-        continue;
-      }
-      if (regra.filtro_idade_tipo === "maior_que" && Number(regra.idade_minima) > 0) {
-        if (idadePaciente < Number(regra.idade_minima)) {
-          console.log(`⏩ [Regra #${idx + 1}] Ignorada: idade ${idadePaciente} < min ${regra.idade_minima}`);
-          continue;
-        }
-      }
-      if (regra.filtro_idade_tipo === "menor_que" && Number(regra.idade_maxima) > 0) {
-        if (idadePaciente > Number(regra.idade_maxima)) {
-          console.log(`⏩ [Regra #${idx + 1}] Ignorada: idade ${idadePaciente} > max ${regra.idade_maxima}`);
-          continue;
-        }
-      }
+      if (idadePaciente === null) continue;
+      if (regra.filtro_idade_tipo === "maior_que" && Number(regra.idade_minima) > 0 && idadePaciente < Number(regra.idade_minima)) continue;
+      if (regra.filtro_idade_tipo === "menor_que" && Number(regra.idade_maxima) > 0 && idadePaciente > Number(regra.idade_maxima)) continue;
       if (regra.filtro_idade_tipo === "faixa") {
         const min = Number(regra.idade_minima || 0);
         const max = Number(regra.idade_maxima || 999);
-        if (idadePaciente < min || idadePaciente > max) {
-          console.log(`⏩ [Regra #${idx + 1}] Ignorada: idade ${idadePaciente} fora da faixa [${min}, ${max}]`);
-          continue;
-        }
+        if (idadePaciente < min || idadePaciente > max) continue;
       }
     }
 
-    // 3. FILTRO DE ENFERMIDADE ESPECÍFICA (SE MARCADA NA REGRA)
     if (regra.filtrar_enfermidade && regra.enfermidade_alvo) {
       const targetEnf = regra.enfermidade_alvo.toLowerCase().trim();
-      let pacienteEnfermidades = [];
-
-      if (Array.isArray(formData?.enfermidades)) {
-        pacienteEnfermidades = formData.enfermidades;
-      } else if (empresaDados?.config_campos?.pacientes_enfermidades && (formData?.cpf || agendamentoId)) {
-        const mapEnf = empresaDados.config_campos.pacientes_enfermidades;
-        pacienteEnfermidades = mapEnf[agendamentoId] || mapEnf[formData?.cpf] || [];
-      }
-
-      if (pacienteEnfermidades.length === 0 && formData?.cpf) {
-        try {
-          const { data: pacDB } = await supabase
-            .from("pacientes")
-            .select("enfermidades")
-            .eq("cpf", formData.cpf)
-            .maybeSingle();
-          if (Array.isArray(pacDB?.enfermidades)) {
-            pacienteEnfermidades = pacDB.enfermidades;
-          }
-        } catch (e) {
-          // ignore
-        }
-      }
-
-      const matchEnfermidade = pacienteEnfermidades.some(
-        (enf) => (enf || "").toLowerCase().trim() === targetEnf
-      );
-
-      if (!matchEnfermidade) {
-        console.log(`⏩ [Regra #${idx + 1}] Ignorada por enfermidade: esperava "${targetEnf}"`);
-        continue;
-      }
+      let pacienteEnfermidades = Array.isArray(formData?.enfermidades) ? formData.enfermidades : [];
+      const matchEnf = pacienteEnfermidades.some((e) => (e || "").toLowerCase().trim() === targetEnf);
+      if (!matchEnf) continue;
     }
 
+    // 8. FORMATAÇÃO E DISPARO
     const textoFormatado = parseTemplate(regra.mensagem, vars);
-    console.log(`✨ [Regra #${idx + 1}] Mensagem pronta para disparo:`, textoFormatado);
+    console.log(`✨ [Regra #${idx + 1}] Mensagem aprovada para disparo:`, textoFormatado);
+
+    mensagensProcessadasHistorico.set(dedupKey, Date.now());
 
     if (["imediato", "remarcado", "cancelado", "pagamento_aprovado", "antes_pagamento"].includes(regra.gatilho)) {
       if (telefone_whatsapp) {
-        mensagensProcessadasCache.add(dedupKey);
         await dispararPushRmChat(telefone_whatsapp, vars.nome, textoFormatado, rmchatWebhookUrl, {
           empresaId: empresaDados?.id,
           slug: empresaDados?.slug
         });
-      } else {
-        console.warn(`⚠️ Telefone do paciente não informado para o disparo.`);
       }
     } else if (["agendado", "pos_atendimento"].includes(regra.gatilho)) {
-      mensagensProcessadasCache.add(dedupKey);
       const dataEnvioProgramado = regra.gatilho === "pos_atendimento"
         ? gerarDataPosAtendimento(data_agendamento, parseInt(regra.dias_depois || regra.dias_antes || 1, 10), regra.hora_envio)
         : gerarData(data_agendamento, parseInt(regra.dias_antes || 1, 10), regra.hora_envio);
-      
-      console.log(`📅 [Regra #${idx + 1}] Enfileirando mensagem para envio programado em:`, dataEnvioProgramado);
 
       mensagensParaFila.push({
         empresa_id: empresaDados.id,
@@ -419,10 +442,11 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
     }
   }
 
+  // 9. INSERÇÃO NA FILA DE MENSAGENS PROGRAMADAS COM DEDUPLICAÇÃO
   if (mensagensParaFila.length > 0) {
     try {
-      const { error } = await supabase.from('fila_mensagens').insert(mensagensParaFila);
-      if (error) console.error("Erro ao inserir fila de mensagens:", error);
+      const { error } = await supabase.from("fila_mensagens").insert(mensagensParaFila);
+      if (error) console.error("Erro ao inserir na fila_mensagens:", error);
       else console.log(`✅ ${mensagensParaFila.length} mensagem(ns) enfileirada(s) com sucesso.`);
     } catch (e) {
       console.warn("Aviso ao salvar fila_mensagens:", e);
