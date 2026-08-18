@@ -54,38 +54,44 @@ export const parseTemplate = (tpl, data) => {
   return tpl.replace(/{(\w+)}/g, (_, k) => data[k] !== undefined ? data[k] : `{${k}}`);
 };
 
-// DISPARO DE PUSH PARA O SERVIDOR RM CHAT / WHATSAPP
-export const dispararPushRmChat = async (telefone, nome, mensagem, urlWebhook) => {
+// DISPARO DE PUSH PARA O SERVIDOR RM CHAT / WHATSAPP (VIA ROTA SEGURA NO BACKEND)
+export const dispararPushRmChat = async (telefone, nome, mensagem, urlWebhook, contextData = {}) => {
   try {
-    if (!urlWebhook) {
-      console.warn("⚠️ Webhook WhatsApp / RM Chat não configurado.");
-      return false;
-    }
-
-    let tel = String(telefone || "").replace(/\D/g, "");
-    if (!tel) return false;
-    if (!tel.startsWith("55") && (tel.length === 10 || tel.length === 11)) {
-      tel = `55${tel}`;
-    }
-
     const payload = {
-      name: nome || "Paciente",
-      number: tel,
-      phone: tel,
-      texto: mensagem,
-      message: mensagem,
-      text: mensagem
+      empresaId: contextData.empresaId || null,
+      slug: contextData.slug || null,
+      telefone: telefone,
+      nome: nome,
+      mensagem: mensagem,
+      urlWebhook: urlWebhook || null
     };
 
-    const res = await fetch(urlWebhook, {
+    console.log("📡 [DISPARO WHATSAPP] Solicitando envio de mensagem...", {
+      paciente: nome,
+      telefone: telefone,
+      urlWebhook: urlWebhook ? "(URL fornecida)" : "(Será obtida do banco)"
+    });
+
+    const res = await fetch("/api/disparar-webhook", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
 
-    return res.ok;
+    const result = await res.json();
+
+    if (!res.ok || !result.success) {
+      console.error("❌ [DISPARO WHATSAPP ERRO] Falha no envio da mensagem:", {
+        statusHttp: res.status,
+        detalhes: result
+      });
+      return false;
+    }
+
+    console.log("✅ [DISPARO WHATSAPP SUCESSO] Mensagem entregue com sucesso!", result);
+    return true;
   } catch (err) {
-    console.error("❌ Falha no disparo Push WhatsApp:", err);
+    console.error("❌ [DISPARO WHATSAPP ERRO CRÍTICO]:", err);
     return false;
   }
 };
@@ -145,7 +151,7 @@ export const classificarAtendimento = (formData, empresaDados) => {
   if (Array.isArray(categorizadas)) {
     const matchEsp = categorizadas.find(
       (c) =>
-        (c.nome && (esp.toLowerCase() === c.nome.toLowerCase() || textoCompleto.includes(c.nome.toLowerCase())))
+        c.nome && (esp.toLowerCase() === c.nome.toLowerCase() || textoCompleto.includes(c.nome.toLowerCase()))
     );
     if (matchEsp?.categoria) return matchEsp.categoria.trim();
   }
@@ -166,6 +172,9 @@ const mensagensProcessadasCache = new Set();
 
 // O MOTOR COMPLETO QUE PROCESSA TODAS AS CATEGORIAS, IDADE, ENFERMIDADES, NICHOS E DADOS DINÂMICOS
 export const processarMensagensDinamicas = async (formData, empresaDados, agendamentoId = null, gatilhoFiltro = null, extraData = null) => {
+  console.group("🚀 [PROCESSAR MENSAGENS WHATSAPP]");
+  console.log("📌 Dados brutos recebidos:", { formData, empresaId: empresaDados?.id, agendamentoId, gatilhoFiltro });
+
   const { nome, telefone_whatsapp, data_agendamento, horario_agendamento, especialidade, medico_profissional, subtipo_exame, data_nascimento, tipo_servico } = formData || {};
   
   // Resolução inteligente do nome do especialista / profissional
@@ -202,7 +211,11 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
   const servicoSelecionado = subtipo_exame || especialidade || nomeProfissional;
   
   let regrasMensagens = empresaDados?.config_mensagens || [];
-  if (!Array.isArray(regrasMensagens) || regrasMensagens.length === 0) return;
+  if (!Array.isArray(regrasMensagens) || regrasMensagens.length === 0) {
+    console.warn("⚠️ Nenhuma regra de automação configurada no perfil desta clínica.");
+    console.groupEnd();
+    return;
+  }
 
   let mensagensParaFila = [];
   const dataFormatada = data_agendamento ? data_agendamento.split("-").reverse().join("/") : "";
@@ -211,6 +224,8 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
   // Classificação precisa da categoria (Exames vs Consultas vs Personalizada)
   const categoriaEfetiva = classificarAtendimento(formData, empresaDados);
   const isExame = categoriaEfetiva.toLowerCase().startsWith("exame") || /(exame|endoscopia|colonoscopia|ultrassom|biopsia)/i.test(`${especialidade} ${subtipo_exame} ${tipo_servico}`);
+
+  console.log("🏷️ Categoria classificada:", categoriaEfetiva, "| É exame?", isExame);
 
   // DADOS E VARIÁVEIS SUPORTADAS EM TODOS OS MODELOS
   const vars = { 
@@ -241,12 +256,20 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
     empresaDados?.config_campos?.whatsapp_webhook_url ||
     null;
 
-  for (const regra of regrasMensagens) {
-    if (gatilhoFiltro && regra.gatilho !== gatilhoFiltro) continue;
+  console.log(`📋 Avaliando ${regrasMensagens.length} regra(s) de mensagem...`);
+
+  for (const [idx, regra] of regrasMensagens.entries()) {
+    console.log(`🔍 [Regra #${idx + 1}] Gatilho: "${regra.gatilho}" | Alvo: "${regra.alvo || regra.especialidade}"`);
+
+    if (gatilhoFiltro && regra.gatilho !== gatilhoFiltro) {
+      console.log(`⏩ [Regra #${idx + 1}] Ignorada por filtro de gatilho (${regra.gatilho} !== ${gatilhoFiltro})`);
+      continue;
+    }
 
     // Chave única de deduplicação para garantir que a mesma regra não execute 2x no agendamento
     const dedupKey = `${agendamentoId || telefone_whatsapp}_${regra.id}_${regra.gatilho}_${data_agendamento}_${horario_agendamento}`;
     if (mensagensProcessadasCache.has(dedupKey)) {
+      console.log(`⏩ [Regra #${idx + 1}] Ignorada por deduplicação (já enviada nesta sessão)`);
       continue;
     }
 
@@ -292,23 +315,36 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
       }
     }
 
-    if (!alvoValido) continue;
+    if (!alvoValido) {
+      console.log(`⏩ [Regra #${idx + 1}] Alvo não corresponde: Alvo="${alvo}", Categoria="${categoriaEfetiva}", Esp="${especialidade}"`);
+      continue;
+    }
 
     // 2. FILTRO DE FAIXA ETÁRIA / IDADE DO PACIENTE
     if (regra.filtro_idade_tipo && regra.filtro_idade_tipo !== "todas") {
       if (idadePaciente === null) {
+        console.log(`⏩ [Regra #${idx + 1}] Ignorada por filtro de idade (idade não calculada)`);
         continue;
       }
       if (regra.filtro_idade_tipo === "maior_que" && Number(regra.idade_minima) > 0) {
-        if (idadePaciente < Number(regra.idade_minima)) continue;
+        if (idadePaciente < Number(regra.idade_minima)) {
+          console.log(`⏩ [Regra #${idx + 1}] Ignorada: idade ${idadePaciente} < min ${regra.idade_minima}`);
+          continue;
+        }
       }
       if (regra.filtro_idade_tipo === "menor_que" && Number(regra.idade_maxima) > 0) {
-        if (idadePaciente > Number(regra.idade_maxima)) continue;
+        if (idadePaciente > Number(regra.idade_maxima)) {
+          console.log(`⏩ [Regra #${idx + 1}] Ignorada: idade ${idadePaciente} > max ${regra.idade_maxima}`);
+          continue;
+        }
       }
       if (regra.filtro_idade_tipo === "faixa") {
         const min = Number(regra.idade_minima || 0);
         const max = Number(regra.idade_maxima || 999);
-        if (idadePaciente < min || idadePaciente > max) continue;
+        if (idadePaciente < min || idadePaciente > max) {
+          console.log(`⏩ [Regra #${idx + 1}] Ignorada: idade ${idadePaciente} fora da faixa [${min}, ${max}]`);
+          continue;
+        }
       }
     }
 
@@ -344,16 +380,23 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
       );
 
       if (!matchEnfermidade) {
+        console.log(`⏩ [Regra #${idx + 1}] Ignorada por enfermidade: esperava "${targetEnf}"`);
         continue;
       }
     }
 
     const textoFormatado = parseTemplate(regra.mensagem, vars);
+    console.log(`✨ [Regra #${idx + 1}] Mensagem pronta para disparo:`, textoFormatado);
 
     if (["imediato", "remarcado", "cancelado", "pagamento_aprovado", "antes_pagamento"].includes(regra.gatilho)) {
-      if (telefone_whatsapp && rmchatWebhookUrl) {
+      if (telefone_whatsapp) {
         mensagensProcessadasCache.add(dedupKey);
-        await dispararPushRmChat(telefone_whatsapp, vars.nome, textoFormatado, rmchatWebhookUrl);
+        await dispararPushRmChat(telefone_whatsapp, vars.nome, textoFormatado, rmchatWebhookUrl, {
+          empresaId: empresaDados?.id,
+          slug: empresaDados?.slug
+        });
+      } else {
+        console.warn(`⚠️ Telefone do paciente não informado para o disparo.`);
       }
     } else if (["agendado", "pos_atendimento"].includes(regra.gatilho)) {
       mensagensProcessadasCache.add(dedupKey);
@@ -361,6 +404,8 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
         ? gerarDataPosAtendimento(data_agendamento, parseInt(regra.dias_depois || regra.dias_antes || 1, 10), regra.hora_envio)
         : gerarData(data_agendamento, parseInt(regra.dias_antes || 1, 10), regra.hora_envio);
       
+      console.log(`📅 [Regra #${idx + 1}] Enfileirando mensagem para envio programado em:`, dataEnvioProgramado);
+
       mensagensParaFila.push({
         empresa_id: empresaDados.id,
         agendamento_id: agendamentoId,
@@ -378,10 +423,13 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
     try {
       const { error } = await supabase.from('fila_mensagens').insert(mensagensParaFila);
       if (error) console.error("Erro ao inserir fila de mensagens:", error);
+      else console.log(`✅ ${mensagensParaFila.length} mensagem(ns) enfileirada(s) com sucesso.`);
     } catch (e) {
       console.warn("Aviso ao salvar fila_mensagens:", e);
     }
   }
+
+  console.groupEnd();
 };
 
 // ENVIAR PARA MEDICALSYS SE HABILITADO
