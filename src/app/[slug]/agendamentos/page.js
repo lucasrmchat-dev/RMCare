@@ -275,6 +275,7 @@ export default function AgendamentoPremium() {
           return (
             servicosDB.find(
               (s) =>
+                s.ativo !== false &&
                 s.especialidade &&
                 s.especialidade.toLowerCase().includes(formData.especialidade.toLowerCase())
             ) || null
@@ -283,25 +284,29 @@ export default function AgendamentoPremium() {
         return null;
       }
 
+      const cleanTarget = String(nomeProfissional).trim().toLowerCase();
+
       // 1. Busca por nome exato
       let srv = servicosDB.find(
-        (s) => s.nome.trim().toLowerCase() === nomeProfissional.trim().toLowerCase()
+        (s) => s.ativo !== false && s.nome.trim().toLowerCase() === cleanTarget
       );
 
-      // 2. Busca por código URI ou ID
+      // 2. Busca por código URI, número de especialista ou ID
       if (!srv) {
         srv = servicosDB.find(
           (s) =>
-            String(s.codigo_uri) === String(nomeProfissional) ||
-            String(s.numero_especialista) === String(nomeProfissional) ||
-            s.id === nomeProfissional
+            s.ativo !== false &&
+            (String(s.codigo_uri || "").trim().toLowerCase() === cleanTarget ||
+             String(s.numero_especialista || "").trim() === cleanTarget ||
+             String(s.id || "").trim() === cleanTarget)
         );
       }
 
       // 3. Busca por substring ou sem dr./dra.
       if (!srv) {
-        const nomeLimpo = nomeProfissional.toLowerCase().replace(/dra\.|dr\./g, "").trim();
+        const nomeLimpo = cleanTarget.replace(/dra\.|dr\./g, "").trim();
         srv = servicosDB.find((s) => {
+          if (s.ativo === false) return false;
           const sNome = s.nome.toLowerCase().replace(/dra\.|dr\./g, "").trim();
           return sNome.includes(nomeLimpo) || nomeLimpo.includes(sNome);
         });
@@ -311,6 +316,7 @@ export default function AgendamentoPremium() {
       if (!srv && formData.especialidade) {
         srv = servicosDB.find(
           (s) =>
+            s.ativo !== false &&
             s.especialidade &&
             s.especialidade.toLowerCase().includes(formData.especialidade.toLowerCase())
         );
@@ -407,26 +413,11 @@ export default function AgendamentoPremium() {
       const wppUrl = searchParams.get("whatsapp");
       const emailUrl = searchParams.get("email");
       const nascUrl = searchParams.get("nascimento");
-
       const espRaw = searchParams.get("especialidade");
-      let especialidadeUrl = espRaw;
-      if (espRaw && /^\d+$/.test(espRaw)) {
-        const listaEsp = [
-          ...new Set(
-            servicosDB
-              .filter((s) => s.especialidade)
-              .flatMap((s) => s.especialidade.split(",").map((e) => e.trim()))
-          )
-        ].sort();
-        const indexEsp = parseInt(espRaw, 10) - 1;
-        if (indexEsp >= 0 && indexEsp < listaEsp.length) {
-          especialidadeUrl = listaEsp[indexEsp];
-        }
-      }
       const hideFlag = searchParams.get("hide") === "true";
 
       if (
-        (nomeUrlRaw !== null || cpfUrl !== null || medicoUrl !== null || wppUrl !== null) &&
+        (nomeUrlRaw !== null || cpfUrl !== null || medicoUrl !== null || wppUrl !== null || espRaw !== null) &&
         !context.isSmartLink
       ) {
         if (nomeUrlRaw) {
@@ -449,7 +440,85 @@ export default function AgendamentoPremium() {
 
         if (emailUrl) setValue("email", emailUrl);
         if (nascUrl) setValue("data_nascimento", masks.date(nascUrl));
-        if (especialidadeUrl) setValue("especialidade", especialidadeUrl);
+
+        let urlSrvId = null;
+        let foundSrv = null;
+
+        // 1. Resolução Estrita do Médico / Especialista por Código URI, Número de Especialista, ID ou Nome
+        if (medicoUrl && medicoUrl.trim() !== "") {
+          const cleanTarget = String(medicoUrl).trim().toLowerCase();
+
+          // A. Busca exata por código URI, número de especialista ou ID nos serviços ATIVOS
+          foundSrv = (servicosDB || []).find(
+            (s) =>
+              s.ativo !== false &&
+              (String(s.codigo_uri || "").trim().toLowerCase() === cleanTarget ||
+               String(s.numero_especialista || "").trim() === cleanTarget ||
+               String(s.id || "").trim() === cleanTarget)
+          );
+
+          // B. Busca por nome do profissional
+          if (!foundSrv) {
+            const cleanUrlMedico = cleanTarget.replace(/dra\.|dr\./g, "").trim();
+            foundSrv = (servicosDB || []).find((s) => {
+              if (s.ativo === false) return false;
+              const cleanDbNome = (s.nome || "").toLowerCase().replace(/dra\.|dr\./g, "").trim();
+              return cleanDbNome.includes(cleanUrlMedico) || cleanUrlMedico.includes(cleanDbNome);
+            });
+          }
+
+          if (foundSrv) {
+            const espDoMedico = foundSrv.especialidade ? foundSrv.especialidade.split(",")[0].trim() : "";
+            const isExame = foundSrv.tipo === "Exame" || /(exame|colonoscopia|endoscopia|ultrassom)/i.test(espDoMedico);
+            const tipo = isExame ? "Exame" : "Consulta";
+
+            setValue("tipo_servico", tipo);
+            setValue("medico_profissional", isExame ? "" : foundSrv.nome);
+            setValue("subtipo_exame", isExame ? (espDoMedico || foundSrv.nome) : "");
+            if (espDoMedico) {
+              setValue("especialidade", espDoMedico);
+            }
+            urlSrvId = foundSrv.id;
+          } else if (!/^\d+$/.test(medicoUrl)) {
+            setValue("medico_profissional", medicoUrl);
+          }
+        }
+
+        // 2. Resolução da Especialidade (quando não definida pelo médico)
+        if (!foundSrv && espRaw && espRaw.trim() !== "") {
+          const cleanEsp = String(espRaw).trim().toLowerCase();
+          
+          // Busca especialidade cadastrada nas categorias da clínica
+          const matchEspObj = (empresaDados?.config_campos?.especialidades_categorizadas || []).find(
+            (c) => c.nome && c.nome.toLowerCase().trim() === cleanEsp
+          );
+
+          let resolvedEsp = matchEspObj ? matchEspObj.nome : null;
+
+          if (!resolvedEsp) {
+            const matchSrv = (servicosDB || []).find(
+              (s) =>
+                s.ativo !== false &&
+                (String(s.codigo_uri || "").trim().toLowerCase() === cleanEsp ||
+                 String(s.numero_especialista || "").trim() === cleanEsp ||
+                 (s.especialidade && s.especialidade.toLowerCase().includes(cleanEsp)))
+            );
+            if (matchSrv?.especialidade) {
+              resolvedEsp = matchSrv.especialidade.split(",")[0].trim();
+            } else if (!/^\d+$/.test(espRaw)) {
+              resolvedEsp = espRaw;
+            }
+          }
+
+          if (resolvedEsp) {
+            const isExame = /(exame|colonoscopia|endoscopia|ultrassom)/i.test(resolvedEsp);
+            setValue("especialidade", resolvedEsp);
+            setValue("tipo_servico", isExame ? "Exame" : "Consulta");
+            if (isExame) {
+              setValue("subtipo_exame", resolvedEsp);
+            }
+          }
+        }
 
         const hasCpf = !!(cpfUrl && cpfUrl.trim() !== "");
         const hasTel = !!(limpaWpp && limpaWpp.trim() !== "");
@@ -471,45 +540,6 @@ export default function AgendamentoPremium() {
           isSmartLink: true,
           personalizedName: nomeUrlRaw ? nomeUrlRaw.trim().split(" ")[0] : ""
         }));
-
-        let urlSrvId = null;
-        if (hasMedico) {
-          let foundSrv = servicosDB.find(
-            (s) =>
-              s.id === medicoUrl ||
-              String(s.codigo_uri) === String(medicoUrl) ||
-              String(s.numero_especialista) === String(medicoUrl)
-          );
-
-          if (!foundSrv && /^\d+$/.test(medicoUrl)) {
-            const index = parseInt(medicoUrl, 10) - 1;
-            if (index >= 0 && index < servicosDB.length) {
-              foundSrv = servicosDB[index];
-            }
-          }
-
-          if (!foundSrv) {
-            const cleanUrlMedico = medicoUrl.toLowerCase().replace(/dra\.|dr\./g, "").trim();
-            foundSrv = servicosDB.find((s) => {
-              const cleanDbNome = s.nome.toLowerCase().replace(/dra\.|dr\./g, "").trim();
-              return cleanDbNome.includes(cleanUrlMedico) || cleanUrlMedico.includes(cleanDbNome);
-            });
-          }
-
-          if (foundSrv) {
-            const tipo = foundSrv.tipo || "Consulta";
-            setValue("tipo_servico", tipo);
-            setValue(tipo === "Exame" ? "subtipo_exame" : "medico_profissional", foundSrv.nome);
-            if (foundSrv.especialidade) {
-              setValue("especialidade", foundSrv.especialidade.split(",")[0].trim());
-            }
-            urlSrvId = foundSrv.id;
-          } else {
-            if (!/^\d+$/.test(medicoUrl)) {
-              setValue("medico_profissional", medicoUrl);
-            }
-          }
-        }
 
         const hasPerguntas = urlSrvId ? perguntasDB.some((p) => p.servico_id === urlSrvId) : false;
         const cpfValid = cpfUrl && cpfUrl.replace(/\D/g, "").length === 11;
