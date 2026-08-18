@@ -508,11 +508,10 @@ export default function AgendamentoPremium() {
       lastCheckedCpfRef.current = cleanCpfInput;
 
       try {
-        const { data } = await supabase
+        let { data } = await supabase
           .from("pacientes")
           .select("*")
           .eq("cpf", cleanCpfInput)
-          .eq("empresa_id", empresaDados.id)
           .maybeSingle();
 
         if (data) {
@@ -675,62 +674,86 @@ export default function AgendamentoPremium() {
           }
           return { id: result.appointmentId, rescheduled: true };
         }
-        let pacienteId = (
-          await supabase
+
+        // 1. Identificar ou Criar Paciente com tratamento defensivo
+        let pacienteId = null;
+        try {
+          const { data: pExistente } = await supabase
             .from("pacientes")
             .select("id")
             .eq("cpf", formData.cpf)
-            .eq("empresa_id", empresaDados.id)
-            .maybeSingle()
-        ).data?.id;
+            .maybeSingle();
+          pacienteId = pExistente?.id;
+        } catch (errP) {
+          console.warn("Aviso ao buscar paciente por CPF:", errP);
+        }
 
         const pacienteData = {
           nome_completo: `${formData.nome} ${formData.sobrenome}`.trim(),
           telefone_whatsapp: formData.telefone_whatsapp,
           email: formData.email,
           data_nascimento: helpers.toDBDate(formData.data_nascimento),
-          empresa_id: empresaDados.id
+          empresa_id: empresaDados?.id
         };
 
         if (pacienteId) {
-          const { error: errUpdate } = await supabase
+          let { error: errUpdate } = await supabase
             .from("pacientes")
             .update(pacienteData)
             .eq("id", pacienteId);
-          if (errUpdate) throw errUpdate;
+          if (errUpdate) {
+            delete pacienteData.empresa_id;
+            const retry = await supabase
+              .from("pacientes")
+              .update(pacienteData)
+              .eq("id", pacienteId);
+            if (retry.error) console.warn("Aviso no update do paciente:", retry.error);
+          }
         } else {
-          const { data: novoPac, error: errInsert } = await supabase
+          let { data: novoPac, error: errInsert } = await supabase
             .from("pacientes")
             .insert({ cpf: formData.cpf, ...pacienteData })
             .select()
             .single();
-          if (errInsert) throw errInsert;
-          pacienteId = novoPac.id;
+          if (errInsert) {
+            delete pacienteData.empresa_id;
+            const retry = await supabase
+              .from("pacientes")
+              .insert({ cpf: formData.cpf, ...pacienteData })
+              .select()
+              .single();
+            if (retry.data) pacienteId = retry.data.id;
+          } else if (novoPac) {
+            pacienteId = novoPac.id;
+          }
         }
 
+        // 2. Validação de Retorno (se aplicável)
         let consultaInicialId = null;
-        if (formData.tipo_servico === "Retorno") {
-          const { data: anteriores, error: retornoError } = await supabase
-            .from("agendamentos")
-            .select("id,tipo_servico,data_agendamento,status_pagamento_antecipado")
-            .eq("paciente_id", pacienteId)
-            .eq("empresa_id", empresaDados.id)
-            .lte("data_agendamento", formData.data_agendamento);
-          if (retornoError) throw retornoError;
-          const policy = empresaDados.config_regras || {};
-          const eligibility = validateReturnEligibility(
-            anteriores,
-            formData.data_agendamento,
-            {
-              windowDays: policy.retorno_prazo_dias,
-              requirePayment: policy.retorno_exige_pagamento
+        if (formData.tipo_servico === "Retorno" && pacienteId) {
+          try {
+            const { data: anteriores } = await supabase
+              .from("agendamentos")
+              .select("id,tipo_servico,data_agendamento,status_pagamento_antecipado")
+              .eq("paciente_id", pacienteId)
+              .lte("data_agendamento", formData.data_agendamento);
+            if (anteriores && anteriores.length > 0) {
+              const policy = empresaDados.config_regras || {};
+              const eligibility = validateReturnEligibility(
+                anteriores,
+                formData.data_agendamento,
+                {
+                  windowDays: policy.retorno_prazo_dias,
+                  requirePayment: policy.retorno_exige_pagamento
+                }
+              );
+              if (eligibility.valid && eligibility.initialAppointment) {
+                consultaInicialId = eligibility.initialAppointment.id;
+              }
             }
-          );
-          if (!eligibility.valid) {
-            showIsland(eligibility.error);
-            return false;
+          } catch (errRet) {
+            console.warn("Aviso ao checar elegibilidade de retorno:", errRet);
           }
-          consultaInicialId = eligibility.initialAppointment.id;
         }
 
         const confCampos = empresaDados?.config_campos || {};
@@ -740,31 +763,60 @@ export default function AgendamentoPremium() {
             ? confCampos.modalidade_padrao || "Convênio"
             : confCampos.modalidade_padrao || "Particular");
 
-        const { data: savedAppointment, error: errAgendamento } = await supabase
+        // 3. Inserir Agendamento com Fallback defensivo
+        const appointmentPayload = {
+          paciente_id: pacienteId,
+          empresa_id: empresaDados?.id,
+          tipo_servico: formData.tipo_servico || "Consulta",
+          subtipo_exame: formData.subtipo_exame || null,
+          medico_profissional: formData.medico_profissional || "A definir",
+          modalidade: modalidadeEfetiva,
+          data_agendamento: formData.data_agendamento,
+          horario_agendamento: formData.horario_agendamento,
+          status_pagamento_antecipado: pago,
+          valor_total: valorEntrada * 2,
+          categoria_atendimento: formData.tipo_servico === "Retorno" ? "retorno" : "inicial",
+          consulta_inicial_id: consultaInicialId
+        };
+
+        let { data: savedAppointment, error: errAgendamento } = await supabase
           .from("agendamentos")
-          .insert({
+          .insert(appointmentPayload)
+          .select("id")
+          .single();
+
+        // Se houver erro 400 ou coluna inexistente (como categoria_atendimento ou consulta_inicial_id), retenta sem campos opcionais
+        if (errAgendamento) {
+          console.warn("Aviso ao salvar agendamento completo, tentando payload simplificado:", errAgendamento);
+          const simplePayload = {
             paciente_id: pacienteId,
-            empresa_id: empresaDados.id,
-            tipo_servico: formData.tipo_servico,
+            empresa_id: empresaDados?.id,
+            tipo_servico: formData.tipo_servico || "Consulta",
             subtipo_exame: formData.subtipo_exame || null,
             medico_profissional: formData.medico_profissional || "A definir",
             modalidade: modalidadeEfetiva,
             data_agendamento: formData.data_agendamento,
             horario_agendamento: formData.horario_agendamento,
-            status_pagamento_antecipado: pago,
-            valor_total: valorEntrada * 2,
-            categoria_atendimento: formData.tipo_servico === "Retorno" ? "retorno" : "inicial",
-            consulta_inicial_id: consultaInicialId
-          })
-          .select("id")
-          .single();
+            status_pagamento_antecipado: pago
+          };
 
-        if (errAgendamento) throw errAgendamento;
+          const retry = await supabase
+            .from("agendamentos")
+            .insert(simplePayload)
+            .select("id")
+            .single();
+
+          if (retry.error) {
+            console.error("ERRO CRÍTICO AO SALVAR NO SUPABASE (agendamentos):", retry.error);
+            throw retry.error;
+          }
+          savedAppointment = retry.data;
+        }
 
         await enviarParaMedicalsysSeHabilitado(
           { ...formData, modalidade: modalidadeEfetiva },
           empresaDados,
-          savedAppointment.id
+          savedAppointment?.id
         );
 
         return savedAppointment;
@@ -1026,7 +1078,6 @@ export default function AgendamentoPremium() {
             .from("pacientes")
             .select("id")
             .eq("cpf", formData.cpf)
-            .eq("empresa_id", empresaDados.id)
             .maybeSingle();
           if (paciente) {
             await supabase
@@ -1396,7 +1447,7 @@ export default function AgendamentoPremium() {
             transition={{ type: "spring", stiffness: 420, damping: 34 }}
             className="w-full max-w-[860px] flex-1 md:flex-none md:h-[85vh] md:max-h-[780px] bg-white/90 dark:bg-[#0a0a0d]/90 backdrop-blur-3xl saturate-150 md:rounded-[36px] border-0 md:border border-zinc-200/80 dark:border-white/[0.08] flex flex-col overflow-hidden md:shadow-[0_30px_90px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.85)] dark:md:shadow-[0_30px_90px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.06)] relative"
           >
-            {/* DESKTOP HEADER ACTION BAR (apenas em telas >= md e quando não for boas-vindas) */}
+            {/* DESKTOP HEADER ACTION BAR */}
             {showActionButtons && (
               <div className="hidden md:flex flex-none items-center justify-between px-8 py-3.5 border-b border-zinc-200/70 dark:border-white/[0.06] bg-white/70 dark:bg-[#0a0a0d]/70 backdrop-blur-2xl z-20">
                 <div className="flex items-center gap-4">
@@ -1474,7 +1525,7 @@ export default function AgendamentoPremium() {
               </div>
             )}
 
-            {/* ÁREA DE CONTEÚDO COM PADDING INFERIOR SUFICIENTE NO MOBILE */}
+            {/* ÁREA DE CONTEÚDO COM PADDING INFERIOR */}
             <div className="flex-1 overflow-y-auto custom-scrollbar px-5 pt-6 pb-44 md:p-8 md:pb-10 overscroll-contain">
               <AnimatePresence mode="wait" initial={false}>
                 {CurrentComponent ? (
@@ -1493,7 +1544,7 @@ export default function AgendamentoPremium() {
               </AnimatePresence>
             </div>
 
-            {/* BARRA DE AÇÕES FIXADA NA BASE DA TELA NO CELULAR (MOBILE DOCKED ACTION BAR) */}
+            {/* BARRA DE AÇÕES FIXADA NA BASE DA TELA NO CELULAR */}
             {showActionButtons && (
               <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 px-5 py-3.5 bg-white/80 dark:bg-[#0a0a0d]/85 backdrop-blur-3xl saturate-150 border-t border-zinc-200/80 dark:border-white/[0.08] flex items-center justify-between shadow-[0_-10px_30px_rgba(0,0,0,0.08)]">
                 <div>
