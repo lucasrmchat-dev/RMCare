@@ -7,6 +7,16 @@ export const helpers = {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   },
+  toDBDate: (dateStr) => {
+    if (!dateStr) return null;
+    const str = String(dateStr).trim();
+    if (!str) return null;
+    if (str.includes('/')) {
+      const [d, m, y] = str.split('/');
+      if (d && m && y) return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    }
+    return str;
+  },
   isValidDate: (dateStr) => {
     if (!dateStr || dateStr.length !== 10) return false;
     const [d, m, y] = dateStr.split('/').map(Number);
@@ -106,10 +116,10 @@ export const calcularIdade = (dataNasc) => {
   return idade;
 };
 
-// O MOTOR COMPLETO QUE PROCESSA TODAS AS CATEGORIAS, IDADE, NICHOS E DADOS DINÂMICOS
+// O MOTOR COMPLETO QUE PROCESSA TODAS AS CATEGORIAS, IDADE, ENFERMIDADES, NICHOS E DADOS DINÂMICOS
 export const processarMensagensDinamicas = async (formData, empresaDados, agendamentoId = null, gatilhoFiltro = null, extraData = null) => {
   const { nome, telefone_whatsapp, data_agendamento, horario_agendamento, especialidade, medico_profissional, subtipo_exame, data_nascimento, tipo_servico } = formData || {};
-  const servicoSelecionado = tipo_servico === "Exame" ? subtipo_exame : medico_profissional;
+  const servicoSelecionado = subtipo_exame || medico_profissional;
   
   let regrasMensagens = empresaDados?.config_mensagens || [];
   if (!Array.isArray(regrasMensagens)) return;
@@ -117,14 +127,23 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
   let mensagensParaFila = [];
   const dataFormatada = data_agendamento ? data_agendamento.split("-").reverse().join("/") : "";
   const idadePaciente = calcularIdade(data_nascimento);
+
+  // Identificar categoria da especialidade
+  const catalogoEspecialidades = empresaDados?.config_campos?.especialidades_categorizadas || [];
+  const espCadastrada = Array.isArray(catalogoEspecialidades)
+    ? catalogoEspecialidades.find((e) => (e.nome || "").toLowerCase().trim() === (especialidade || "").toLowerCase().trim())
+    : null;
+  const categoriaEspecialidade = espCadastrada?.categoria || tipo_servico || "Geral";
   
   // DADOS E VARIÁVEIS SUPORTADAS EM TODOS OS MODELOS
   const vars = { 
     nome: (nome || "").trim(), 
     servico: servicoSelecionado || "", 
-    especialista: servicoSelecionado || medico_profissional || "",
+    especialista: medico_profissional || servicoSelecionado || "",
     especialidade: especialidade || "",
-    tipo_servico: tipo_servico || "Consulta",
+    categoria: categoriaEspecialidade,
+    tipo_servico: tipo_servico || categoriaEspecialidade || "Consulta",
+    enfermidade: (Array.isArray(formData?.enfermidades) && formData.enfermidades.length > 0) ? formData.enfermidades.join(", ") : "",
     idade: idadePaciente !== null ? String(idadePaciente) : "",
     data: dataFormatada, 
     hora: horario_agendamento || "",
@@ -139,12 +158,19 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
   for (const regra of regrasMensagens) {
     if (gatilhoFiltro && regra.gatilho !== gatilhoFiltro) continue;
 
-    // 1. FILTRO DE ALVO / NICHO (Tipo de Atendimento, Especialidade ou Profissional)
+    // 1. FILTRO DE ALVO / NICHO (Categoria Dinâmica, Especialidade ou Profissional)
     const alvo = regra.alvo || (regra.especialidade === "Todas" ? "Todas" : `especialidade:${regra.especialidade}`);
     let alvoValido = false;
 
     if (!alvo || alvo === "Todas" || alvo === "todos") {
       alvoValido = true;
+    } else if (alvo.startsWith("categoria:")) {
+      const targetCat = alvo.replace("categoria:", "").toLowerCase().trim();
+      const currCat = (categoriaEspecialidade || "").toLowerCase().trim();
+      const currTipo = (tipo_servico || "").toLowerCase().trim();
+      if (currCat === targetCat || currTipo === targetCat || currCat.includes(targetCat) || targetCat.includes(currCat)) {
+        alvoValido = true;
+      }
     } else if (alvo === `tipo:${tipo_servico}`) {
       alvoValido = true;
     } else if (alvo === `especialidade:${especialidade}`) {
@@ -164,7 +190,6 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
     // 2. FILTRO DE FAIXA ETÁRIA / IDADE DO PACIENTE
     if (regra.filtro_idade_tipo && regra.filtro_idade_tipo !== "todas") {
       if (idadePaciente === null) {
-        // Se a regra exige idade mas o paciente não preencheu nascimento, pula por segurança
         continue;
       }
       if (regra.filtro_idade_tipo === "maior_que" && Number(regra.idade_minima) > 0) {
@@ -177,6 +202,42 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
         const min = Number(regra.idade_minima || 0);
         const max = Number(regra.idade_maxima || 999);
         if (idadePaciente < min || idadePaciente > max) continue;
+      }
+    }
+
+    // 3. FILTRO DE ENFERMIDADE ESPECÍFICA (SE MARCADA NA REGRA)
+    if (regra.filtrar_enfermidade && regra.enfermidade_alvo) {
+      const targetEnf = regra.enfermidade_alvo.toLowerCase().trim();
+      let pacienteEnfermidades = [];
+
+      if (Array.isArray(formData?.enfermidades)) {
+        pacienteEnfermidades = formData.enfermidades;
+      } else if (empresaDados?.config_campos?.pacientes_enfermidades && (formData?.cpf || agendamentoId)) {
+        const mapEnf = empresaDados.config_campos.pacientes_enfermidades;
+        pacienteEnfermidades = mapEnf[agendamentoId] || mapEnf[formData?.cpf] || [];
+      }
+
+      if (pacienteEnfermidades.length === 0 && formData?.cpf) {
+        try {
+          const { data: pacDB } = await supabase
+            .from("pacientes")
+            .select("enfermidades")
+            .eq("cpf", formData.cpf)
+            .maybeSingle();
+          if (Array.isArray(pacDB?.enfermidades)) {
+            pacienteEnfermidades = pacDB.enfermidades;
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      const matchEnfermidade = pacienteEnfermidades.some(
+        (enf) => (enf || "").toLowerCase().trim() === targetEnf
+      );
+
+      if (!matchEnfermidade) {
+        continue;
       }
     }
 

@@ -17,7 +17,9 @@ import {
   Type,
   LayoutGrid,
   Check,
-  Calendar
+  Calendar,
+  Tag,
+  HeartPulse
 } from "lucide-react";
 import {
   fadeUp,
@@ -64,6 +66,18 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
       { id: "1", nome: "Particular", exige_senha: false, senha: "" },
       { id: "2", nome: "Convênio", exige_senha: false, senha: "" }
     ],
+    categorias_atendimento: ["Consultas", "Exames"],
+    especialidades_categorizadas: [],
+    catalogo_enfermidades: [
+      "Refluxo",
+      "Gastrite",
+      "Hipertensão",
+      "Diabetes",
+      "Doença Celíaca",
+      "Hérnia de Hiato",
+      "Esteatose Hepática",
+      "Síndrome do Intestino Irritável"
+    ],
     enviar_mensagens_importados_erp: true,
     tema: {
       cor_primaria: "#9FC131",
@@ -90,6 +104,26 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
             logo_url: emp.logo_url || emp.config_campos.logo_url || prev.logo_url,
             modalidades_opcoes: emp.config_campos.modalidades_opcoes || prev.modalidades_opcoes,
             modalidade_padrao: emp.config_campos.modalidade_padrao || prev.modalidade_padrao,
+            categorias_atendimento:
+              emp.config_campos.categorias_atendimento || prev.categorias_atendimento || [
+                "Consultas",
+                "Exames"
+              ],
+            especialidades_categorizadas:
+              emp.config_campos.especialidades_categorizadas ||
+              prev.especialidades_categorizadas ||
+              [],
+            catalogo_enfermidades:
+              emp.config_campos.catalogo_enfermidades || prev.catalogo_enfermidades || [
+                "Refluxo",
+                "Gastrite",
+                "Hipertensão",
+                "Diabetes",
+                "Doença Celíaca",
+                "Hérnia de Hiato",
+                "Esteatose Hepática",
+                "Síndrome do Intestino Irritável"
+              ],
             tema: {
               ...prev.tema,
               ...(emp.config_campos.tema || {})
@@ -164,7 +198,9 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
   const updateModalidade = (id, field, value) => {
     setCampos((prev) => ({
       ...prev,
-      modalidades_opcoes: prev.modalidades_opcoes.map((m) => (m.id === id ? { ...m, [field]: value } : m))
+      modalidades_opcoes: prev.modalidades_opcoes.map((m) =>
+        m.id === id ? { ...m, [field]: value } : m
+      )
     }));
   };
 
@@ -181,6 +217,8 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
       id: Date.now().toString(),
       alvo: "Todas",
       especialidade: "Todas",
+      filtrar_enfermidade: false,
+      enfermidade_alvo: (campos.catalogo_enfermidades && campos.catalogo_enfermidades[0]) || "Refluxo",
       gatilho: "imediato",
       dias_antes: 1,
       hora_envio: "08:00",
@@ -196,7 +234,9 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
   };
 
   const atualizarRegra = (id, campo, valor) =>
-    setRegrasMensagens((prev) => prev.map((r) => (r.id === id ? { ...r, [campo]: valor } : r)));
+    setRegrasMensagens((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, [campo]: valor } : r))
+    );
 
   const removerRegra = (id) =>
     setRegrasMensagens((prev) => prev.filter((r) => r.id !== id));
@@ -213,25 +253,94 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
     );
   };
 
+  // Lista dinâmica de categorias criadas pelo cliente
+  const categoriasDinamicas = useMemo(() => {
+    const fromConfig = Array.isArray(campos.categorias_atendimento)
+      ? campos.categorias_atendimento
+      : [];
+    const fromEspec = Array.isArray(campos.especialidades_categorizadas)
+      ? campos.especialidades_categorizadas.map((e) => e.categoria).filter(Boolean)
+      : [];
+    const setCats = new Set([...fromConfig, ...fromEspec]);
+    if (setCats.size === 0) {
+      setCats.add("Consultas");
+      setCats.add("Exames");
+    }
+    return [...setCats].filter(Boolean);
+  }, [campos.categorias_atendimento, campos.especialidades_categorizadas]);
+
+  const catalogoEnfermidades = useMemo(() => {
+    const list = Array.isArray(campos.catalogo_enfermidades) ? campos.catalogo_enfermidades : [];
+    if (list.length === 0) {
+      return [
+        "Refluxo",
+        "Gastrite",
+        "Hipertensão",
+        "Diabetes",
+        "Doença Celíaca",
+        "Hérnia de Hiato",
+        "Esteatose Hepática",
+        "Síndrome do Intestino Irritável"
+      ];
+    }
+    return list;
+  }, [campos.catalogo_enfermidades]);
+
   const especialidadesUnicas = useMemo(() => {
     const srvs = Array.isArray(servicos) ? servicos : [];
-    const unicas = srvs
+    const unicasSrv = srvs
       .filter((s) => s.especialidade)
       .flatMap((s) => s.especialidade.split(",").map((e) => e.trim()));
-    const base = ["Colonoscopia", "Endoscopia", "Gastroenterologia", "Cirurgia Geral", "Clínico Geral", "Psicologia"];
-    return [...new Set([...base, ...unicas])].filter(Boolean).sort();
-  }, [servicos]);
+    const fromConfig = Array.isArray(campos.especialidades_categorizadas)
+      ? campos.especialidades_categorizadas.map((e) => e.nome)
+      : [];
+    const base = [
+      "Colonoscopia",
+      "Endoscopia",
+      "Gastroenterologia",
+      "Cirurgia Geral",
+      "Clínico Geral",
+      "Psicologia"
+    ];
+    return [...new Set([...base, ...unicasSrv, ...fromConfig])].filter(Boolean).sort();
+  }, [servicos, campos.especialidades_categorizadas]);
 
+  // Opções de Alvo / Nicho com Categorias Dinâmicas, Especialidades e Profissionais
   const alvoOptions = useMemo(
     () => [
       { value: "Todas", label: "Todos os Atendimentos (Geral)" },
-      { value: "tipo:Consulta", label: "Apenas Consultas Médicas" },
-      { value: "tipo:Exame", label: "Apenas Exames e Procedimentos" },
-      { value: "tipo:Retorno", label: "Apenas Retornos Clínicos" },
-      ...especialidadesUnicas.map((e) => ({ value: `especialidade:${e}`, label: `Especialidade: ${e}` })),
-      ...servicos.map((s) => ({ value: `servico:${s.nome}`, label: `Profissional: ${s.nome}` }))
+      // Categorias de Atendimento
+      ...categoriasDinamicas.map((cat) => ({
+        value: `categoria:${cat}`,
+        label: `Categoria: ${cat}`
+      })),
+      // Especialidades
+      ...especialidadesUnicas.map((e) => {
+        const catObj = (campos.especialidades_categorizadas || []).find(
+          (item) => item.nome?.toLowerCase() === e.toLowerCase()
+        );
+        const catLabel = catObj?.categoria ? ` (${catObj.categoria})` : "";
+        return {
+          value: `especialidade:${e}`,
+          label: `Especialidade: ${e}${catLabel}`
+        };
+      }),
+      // Profissionais Individuais
+      ...servicos.map((s) => ({
+        value: `servico:${s.nome}`,
+        label: `Profissional: ${s.nome}`
+      }))
     ],
-    [especialidadesUnicas, servicos]
+    [categoriasDinamicas, especialidadesUnicas, campos.especialidades_categorizadas, servicos]
+  );
+
+  const filtroEspecialidadeOptions = useMemo(
+    () => [
+      { value: "Todas", label: "Todas as Categorias e Especialidades" },
+      ...categoriasDinamicas.map((c) => ({ value: `categoria:${c}`, label: `Categoria: ${c}` })),
+      ...especialidadesUnicas.map((e) => ({ value: e, label: `Especialidade: ${e}` }))
+    ],
+    [categoriasDinamicas, especialidadesUnicas]
   );
 
   const gatilhoOptions = [
@@ -249,7 +358,9 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
     { tag: "{servico}", desc: "Procedimento / Serviço" },
     { tag: "{especialista}", desc: "Nome do profissional" },
     { tag: "{especialidade}", desc: "Especialidade médica" },
-    { tag: "{tipo_servico}", desc: "Consulta ou Exame" },
+    { tag: "{categoria}", desc: "Categoria (Exame/Consulta)" },
+    { tag: "{tipo_servico}", desc: "Tipo do serviço" },
+    { tag: "{enfermidade}", desc: "Enfermidade / Condição diagnosticada" },
     { tag: "{idade}", desc: "Idade calculada do paciente" },
     { tag: "{data}", desc: "Data do atendimento" },
     { tag: "{hora}", desc: "Horário agendado" },
@@ -263,10 +374,13 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
       if (filterGatilho !== "Todos" && regra.gatilho !== filterGatilho) return false;
       if (filterEspecialidade !== "Todas") {
         const alvoRaw = (regra.alvo || "").toLowerCase();
-        const espRaw = (regra.especialidade || "").toLowerCase();
         const targetClean = filterEspecialidade.toLowerCase().trim();
-        const matchAlvo = alvoRaw === "todas" || alvoRaw.includes(targetClean);
-        const matchEsp = espRaw === "todas" || espRaw.includes(targetClean);
+        if (alvoRaw === "todas") return true;
+        if (targetClean.startsWith("categoria:")) {
+          return alvoRaw === targetClean;
+        }
+        const matchAlvo = alvoRaw.includes(targetClean);
+        const matchEsp = (regra.especialidade || "").toLowerCase().includes(targetClean);
         if (!matchAlvo && !matchEsp) return false;
       }
       return true;
@@ -849,13 +963,10 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                   </span>
                   <div className="grid sm:grid-cols-2 gap-3">
                     <CustomSelect
-                      label="Nicho / Especialidade"
+                      label="Categoria / Especialidade"
                       value={filterEspecialidade}
                       onChange={setFilterEspecialidade}
-                      options={[
-                        { value: "Todas", label: "Todas as Especialidades" },
-                        ...especialidadesUnicas.map((e) => ({ value: e, label: e }))
-                      ]}
+                      options={filtroEspecialidadeOptions}
                     />
 
                     <CustomSelect
@@ -913,7 +1024,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                             </div>
 
                             <CustomSelect
-                              label="Nicho / Atendimento"
+                              label="Nicho / Categoria / Especialidade"
                               value={
                                 regra.alvo ||
                                 (regra.especialidade === "Todas"
@@ -923,6 +1034,45 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                               onChange={(v) => atualizarRegra(regra.id, "alvo", v)}
                               options={alvoOptions}
                             />
+
+                            {/* SELEÇÃO OPCIONAL DE ENFERMIDADE ALVO */}
+                            <div className="p-3.5 bg-white dark:bg-black/40 border border-zinc-200/80 dark:border-zinc-800 rounded-xl space-y-2.5">
+                              <ToggleSwitch
+                                checked={!!regra.filtrar_enfermidade}
+                                onChange={(v) =>
+                                  atualizarRegra(regra.id, "filtrar_enfermidade", v)
+                                }
+                                label="Segmentar por Enfermidade Específica"
+                              />
+
+                              {regra.filtrar_enfermidade && (
+                                <div className="space-y-1 pt-1">
+                                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
+                                    Enfermidade Alvo
+                                  </label>
+                                  <select
+                                    value={
+                                      regra.enfermidade_alvo ||
+                                      catalogoEnfermidades[0] ||
+                                      "Refluxo"
+                                    }
+                                    onChange={(e) =>
+                                      atualizarRegra(regra.id, "enfermidade_alvo", e.target.value)
+                                    }
+                                    className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none text-zinc-800 dark:text-zinc-200 font-bold"
+                                  >
+                                    {catalogoEnfermidades.map((enf) => (
+                                      <option key={enf} value={enf}>
+                                        Enfermidade: {enf}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <p className="text-[10px] text-zinc-400">
+                                    A mensagem só será enviada se o paciente possuir esta condição cadastrada na sua ficha clínica.
+                                  </p>
+                                </div>
+                              )}
+                            </div>
 
                             <div className="grid sm:grid-cols-2 gap-3">
                               <CustomSelect

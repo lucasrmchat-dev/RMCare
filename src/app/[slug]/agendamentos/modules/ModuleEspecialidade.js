@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { motion } from "framer-motion";
-import { ChevronLeft, Stethoscope, User, Search, Check } from "lucide-react";
+import { ChevronLeft, Stethoscope, User, Search, Check, Tag } from "lucide-react";
 import { useAgendamento } from "../context";
 import { playDopamineSound, triggerHaptic } from "@/lib/dopamine";
 
@@ -15,18 +15,47 @@ export default function ModuleEspecialidade() {
     setFlags,
     modulosAtivos,
     setCurrentStepIndex,
-    perguntasAtuais
+    perguntasAtuais,
+    empresaDados
   } = useAgendamento();
 
   const [filterSearch, setFilterSearch] = useState("");
+  const [activeCategory, setActiveCategory] = useState("Todas");
 
-  const especialidades = [
-    ...new Set(
-      servicosDB
-        .filter((s) => s.especialidade)
-        .flatMap((s) => s.especialidade.split(",").map((e) => e.trim()))
-    )
-  ].sort();
+  // Lista de categorias configuradas na clínica
+  const categoriasDisponiveis = useMemo(() => {
+    const fromConfig = Array.isArray(empresaDados?.config_campos?.categorias_atendimento)
+      ? empresaDados.config_campos.categorias_atendimento
+      : [];
+    const fromEsps = Array.isArray(empresaDados?.config_campos?.especialidades_categorizadas)
+      ? empresaDados.config_campos.especialidades_categorizadas.map((e) => e.categoria).filter(Boolean)
+      : [];
+    const setCats = new Set([...fromConfig, ...fromEsps]);
+    return [...setCats].filter(Boolean);
+  }, [empresaDados]);
+
+  // Lista estruturada de especialidades com categoria
+  const catalogoEspecialidades = useMemo(() => {
+    const fromConfig = Array.isArray(empresaDados?.config_campos?.especialidades_categorizadas)
+      ? empresaDados.config_campos.especialidades_categorizadas
+      : [];
+
+    const fromServicos = (servicosDB || [])
+      .filter((s) => s.especialidade)
+      .flatMap((s) => s.especialidade.split(",").map((e) => e.trim()))
+      .filter(Boolean);
+
+    const todasNomes = [...new Set([...fromConfig.map((e) => e.nome), ...fromServicos])].filter(Boolean).sort();
+
+    return todasNomes.map((nome) => {
+      const confItem = fromConfig.find((c) => c.nome.toLowerCase() === nome.toLowerCase());
+      const isExame = /(colonoscopia|endoscopia|ultrassom|exame|raio-x|tomografia|ressonancia)/i.test(nome);
+      return {
+        nome,
+        categoria: confItem?.categoria || (isExame ? "Exames" : "Consultas")
+      };
+    });
+  }, [empresaDados, servicosDB]);
 
   useEffect(() => {
     if (formData.especialidade && formData.medico_profissional) {
@@ -35,17 +64,43 @@ export default function ModuleEspecialidade() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const filteredEspecialidades = especialidades.filter((e) =>
-    e.toLowerCase().includes(filterSearch.toLowerCase())
-  );
+  const filteredEspecialidades = useMemo(() => {
+    return catalogoEspecialidades.filter((esp) => {
+      if (activeCategory !== "Todas" && esp.categoria !== activeCategory) return false;
+      if (filterSearch.trim() && !esp.nome.toLowerCase().includes(filterSearch.toLowerCase())) return false;
+      return true;
+    });
+  }, [catalogoEspecialidades, activeCategory, filterSearch]);
 
-  const especialistasDaEspecialidade = servicosDB.filter((s) =>
-    s.especialidade &&
-    s.especialidade
-      .split(",")
-      .map((e) => e.trim())
-      .includes(formData.especialidade)
-  );
+  const especialistasDaEspecialidade = useMemo(() => {
+    if (!formData.especialidade) return [];
+    return (servicosDB || []).filter((s) => {
+      if (!s.especialidade) return true;
+      const esps = s.especialidade.split(",").map((e) => e.trim().toLowerCase());
+      return esps.includes(formData.especialidade.toLowerCase()) || esps.length === 0;
+    });
+  }, [servicosDB, formData.especialidade]);
+
+  const handleSelectEspecialidade = (espObj) => {
+    playDopamineSound("select");
+    triggerHaptic("light");
+    const isExame = espObj.categoria === "Exames" || /(exame|colonoscopia|endoscopia|ultrassom)/i.test(espObj.nome);
+    setValue("especialidade", espObj.nome);
+    setValue("tipo_servico", isExame ? "Exame" : "Consulta");
+    setValue("medico_profissional", "");
+    setValue("subtipo_exame", "");
+  };
+
+  const handleSelectProfissional = (m) => {
+    playDopamineSound("select");
+    triggerHaptic("light");
+    const isExame = formData.tipo_servico === "Exame";
+    setValue("medico_profissional", m.nome);
+    setValue("subtipo_exame", isExame ? (formData.especialidade || m.nome) : "");
+    setValue("modalidade", "");
+    setValue("data_agendamento", "");
+    setValue("horario_agendamento", "");
+  };
 
   return (
     <motion.div
@@ -60,7 +115,7 @@ export default function ModuleEspecialidade() {
         </h2>
         <p className="text-zinc-500 dark:text-zinc-400 text-xs sm:text-sm mt-1.5 leading-relaxed">
           {!formData.especialidade
-            ? "Selecione a especialidade desejada para listar os profissionais disponíveis."
+            ? "Selecione o atendimento ou especialidade desejada para listar os profissionais disponíveis."
             : `Especialidade: ${formData.especialidade}. Escolha o especialista.`}
         </p>
       </div>
@@ -113,46 +168,73 @@ export default function ModuleEspecialidade() {
         <div className="w-full space-y-4">
           {!formData.especialidade ? (
             <div className="space-y-4">
-              {especialidades.length > 4 && (
+              {/* FILTROS POR CATEGORIA DE ATENDIMENTO */}
+              {categoriasDisponiveis.length > 1 && (
+                <div className="flex items-center gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                  {["Todas", ...categoriasDisponiveis].map((cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => {
+                        playDopamineSound("click");
+                        setActiveCategory(cat);
+                      }}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                        activeCategory === cat
+                          ? "bg-zinc-950 dark:bg-white text-white dark:text-black shadow-sm"
+                          : "bg-white/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white"
+                      }`}
+                    >
+                      <Tag size={12} className={activeCategory === cat ? "opacity-100" : "opacity-40"} />
+                      <span>{cat}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* BUSCA DE ESPECIALIDADES */}
+              {catalogoEspecialidades.length > 4 && (
                 <div className="relative">
                   <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" />
                   <input
                     type="text"
                     value={filterSearch}
                     onChange={(e) => setFilterSearch(e.target.value)}
-                    placeholder="Filtrar especialidade..."
+                    placeholder="Filtrar por especialidade ou procedimento..."
                     className="w-full min-h-[44px] pl-10 pr-4 py-2.5 bg-white/70 dark:bg-white/[0.04] backdrop-blur-xl border border-zinc-200/80 dark:border-white/10 rounded-2xl text-xs font-medium outline-none focus:border-[#9FC131] transition-all"
                   />
                 </div>
               )}
 
+              {/* GRID DE ESPECIALIDADES */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 {filteredEspecialidades.length > 0 ? (
                   filteredEspecialidades.map((esp) => (
                     <motion.button
                       whileHover={{ scale: 1.01, y: -2 }}
                       whileTap={{ scale: 0.97 }}
-                      key={esp}
-                      onClick={() => {
-                        playDopamineSound("select");
-                        triggerHaptic("light");
-                        setValue("especialidade", esp);
-                        setValue("medico_profissional", "");
-                        setValue("tipo_servico", "");
-                      }}
-                      className="min-h-[56px] p-4 sm:p-5 border rounded-2xl flex items-center gap-3.5 text-left transition-all border-zinc-200/80 dark:border-white/10 hover:border-[#9FC131] bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-xl shadow-sm hover:shadow-md"
+                      key={esp.nome}
+                      onClick={() => handleSelectEspecialidade(esp)}
+                      className="min-h-[58px] p-4 sm:p-5 border rounded-2xl flex items-center justify-between text-left transition-all border-zinc-200/80 dark:border-white/10 hover:border-[#9FC131] bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-xl shadow-sm hover:shadow-md group"
                     >
-                      <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 border border-blue-500/20">
-                        <Stethoscope size={20} strokeWidth={2} />
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 border border-blue-500/20 group-hover:bg-[#9FC131]/20 group-hover:text-[#86a621] dark:group-hover:text-[#9FC131] transition-colors">
+                          <Stethoscope size={20} strokeWidth={2} />
+                        </div>
+                        <div className="truncate">
+                          <span className="font-bold text-zinc-950 dark:text-white text-sm sm:text-base block truncate">
+                            {esp.nome}
+                          </span>
+                          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                            {esp.categoria}
+                          </span>
+                        </div>
                       </div>
-                      <span className="font-bold text-zinc-950 dark:text-white text-sm sm:text-base">
-                        {esp}
-                      </span>
                     </motion.button>
                   ))
                 ) : (
                   <div className="col-span-2 p-8 text-center border border-dashed rounded-3xl border-zinc-200 dark:border-zinc-800 bg-white/40 dark:bg-white/[0.02]">
-                    <p className="text-zinc-500 font-medium text-sm">Nenhuma especialidade correspondente.</p>
+                    <p className="text-zinc-500 font-medium text-sm">Nenhuma especialidade encontrada.</p>
                   </div>
                 )}
               </div>
@@ -164,6 +246,7 @@ export default function ModuleEspecialidade() {
                   playDopamineSound("click");
                   setValue("especialidade", "");
                   setValue("medico_profissional", "");
+                  setValue("subtipo_exame", "");
                 }}
                 className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-zinc-100 dark:bg-zinc-800/80 rounded-full text-xs font-bold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 transition-colors min-h-[36px]"
               >
@@ -180,17 +263,7 @@ export default function ModuleEspecialidade() {
                       whileHover={{ scale: 1.01, y: -2 }}
                       whileTap={{ scale: 0.97 }}
                       key={m.id}
-                      onClick={() => {
-                        playDopamineSound("select");
-                        triggerHaptic("light");
-                        const tipo = m.tipo || "Consulta";
-                        setValue("tipo_servico", tipo);
-                        setValue("medico_profissional", tipo === "Exame" ? "" : m.nome);
-                        setValue("subtipo_exame", tipo === "Exame" ? m.nome : "");
-                        setValue("modalidade", "");
-                        setValue("data_agendamento", "");
-                        setValue("horario_agendamento", "");
-                      }}
+                      onClick={() => handleSelectProfissional(m)}
                       className={`min-h-[64px] p-4 sm:p-5 border rounded-2xl flex items-center justify-between text-left transition-all ${
                         isSelected
                           ? "border-zinc-950 bg-zinc-50 dark:border-white dark:bg-white/[0.08] shadow-md ring-2 ring-[#9FC131]"
@@ -218,7 +291,7 @@ export default function ModuleEspecialidade() {
                             {m.nome}
                           </span>
                           <span className="text-[10px] text-zinc-400 uppercase tracking-widest mt-0.5 block">
-                            {m.tipo || "Especialista"}
+                            {formData.especialidade}
                           </span>
                         </div>
                       </div>

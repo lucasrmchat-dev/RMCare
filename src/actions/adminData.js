@@ -149,7 +149,7 @@ export async function fetchAdminAgendamentos() {
 
   const { data, error } = await supabaseAdmin
     .from("agendamentos")
-    .select(`*, pacientes (id, cpf, nome_completo)`)
+    .select(`*, pacientes (*)`)
     .eq("empresa_id", admin.empresa_id)
     .order("horario_agendamento", { ascending: true });
 
@@ -225,7 +225,7 @@ export async function fetchAdminServicos() {
     .from("servicos")
     .select("*")
     .eq("empresa_id", admin.empresa_id)
-    .order("tipo", { ascending: true });
+    .order("nome", { ascending: true });
 
   if (error) throw error;
   return data || [];
@@ -280,7 +280,7 @@ export async function actionAtualizarServico(id, srvData) {
     nome: srvData.nome,
     codigo_uri: srvData.codigo_uri || null,
     numero_especialista: srvData.numero_especialista || null,
-    tipo: srvData.tipo,
+    tipo: srvData.tipo || "Profissional",
     ativo: srvData.ativo,
     preco: Number(srvData.preco),
     dias_bloqueio_padrao: Number(srvData.dias_bloqueio_padrao),
@@ -318,6 +318,7 @@ export async function actionCriarServico(payload) {
   const insertData = { 
     ...payload, 
     empresa_id: admin.empresa_id,
+    tipo: payload.tipo || "Profissional",
     codigo_uri: payload.codigo_uri || null,
     numero_especialista: payload.numero_especialista || null,
     especialidade: payload.especialidade || null,
@@ -830,4 +831,86 @@ export async function actionTestarPushRmChat(urlWebhook, telefone = "55839999999
   }
 
   return { success: true };
+}
+
+/* ==========================================
+   GESTÃO DE ENFERMIDADES E DADOS CLÍNICOS
+   ========================================== */
+export async function actionSalvarEnfermidadesPaciente({ pacienteId, agendamentoId, enfermidades }) {
+  const admin = await getAdminLogado(true);
+  const cleanList = Array.isArray(enfermidades) ? [...new Set(enfermidades.map((e) => e.trim()).filter(Boolean))] : [];
+
+  // 1. Atualizar ou garantir que as enfermidades existam no catálogo geral da clínica
+  const { data: emp } = await supabaseAdmin
+    .from("empresas")
+    .select("config_campos")
+    .eq("id", admin.empresa_id)
+    .single();
+
+  const confCampos = emp?.config_campos || {};
+  const catalogoAtual = Array.isArray(confCampos.catalogo_enfermidades) ? confCampos.catalogo_enfermidades : [
+    "Refluxo",
+    "Gastrite",
+    "Hipertensão",
+    "Diabetes",
+    "Doença Celíaca",
+    "Hérnia de Hiato",
+    "Esteatose Hepática",
+    "Síndrome do Intestino Irritável"
+  ];
+
+  const novoCatalogo = [...new Set([...catalogoAtual, ...cleanList])];
+  const pacientesEnfermidadesMap = confCampos.pacientes_enfermidades || {};
+  if (pacienteId) {
+    pacientesEnfermidadesMap[pacienteId] = cleanList;
+  }
+
+  await supabaseAdmin
+    .from("empresas")
+    .update({
+      config_campos: {
+        ...confCampos,
+        catalogo_enfermidades: novoCatalogo,
+        pacientes_enfermidades: pacientesEnfermidadesMap
+      }
+    })
+    .eq("id", admin.empresa_id);
+
+  // 2. Se houver pacienteId, tentar atualizar a tabela pacientes
+  if (pacienteId) {
+    try {
+      await supabaseAdmin
+        .from("pacientes")
+        .update({ enfermidades: cleanList })
+        .eq("id", pacienteId);
+    } catch (e) {
+      // Coluna pode não existir ainda no Supabase
+    }
+  }
+
+  return { success: true, enfermidades: cleanList };
+}
+
+export async function actionSalvarCatalogoEnfermidades(catalogo) {
+  const admin = await getAdminLogado(true);
+  const cleanList = Array.isArray(catalogo) ? [...new Set(catalogo.map((e) => e.trim()).filter(Boolean))] : [];
+
+  const { data: emp } = await supabaseAdmin
+    .from("empresas")
+    .select("config_campos")
+    .eq("id", admin.empresa_id)
+    .single();
+
+  const confCampos = emp?.config_campos || {};
+  await supabaseAdmin
+    .from("empresas")
+    .update({
+      config_campos: {
+        ...confCampos,
+        catalogo_enfermidades: cleanList
+      }
+    })
+    .eq("id", admin.empresa_id);
+
+  return { success: true, catalogo: cleanList };
 }
