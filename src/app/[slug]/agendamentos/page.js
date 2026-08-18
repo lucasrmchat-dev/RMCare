@@ -267,20 +267,56 @@ export default function AgendamentoPremium() {
       fetchEmpresaConfigAndData();
     }, [slug, searchParams]);
 
+    // Resolução inteligente do serviço/especialista selecionado
     const getSelectedService = () => {
-      if (!formData.tipo_servico) return null;
-      const nomeBusca =
-        formData.tipo_servico === "Exame" ? formData.subtipo_exame : formData.medico_profissional;
-      if (!nomeBusca) return null;
-
-      let srv = servicosDB.find(
-        (s) => s.nome.trim().toLowerCase() === nomeBusca.trim().toLowerCase()
-      );
-      if (!srv) {
-        const nomeLimpo = nomeBusca.toLowerCase().replace(/dra\.|dr\./g, "").trim();
-        srv = servicosDB.find((s) => s.nome.toLowerCase().includes(nomeLimpo));
+      const nomeProfissional = formData.medico_profissional || formData.subtipo_exame;
+      if (!nomeProfissional) {
+        if (formData.especialidade) {
+          return (
+            servicosDB.find(
+              (s) =>
+                s.especialidade &&
+                s.especialidade.toLowerCase().includes(formData.especialidade.toLowerCase())
+            ) || null
+          );
+        }
+        return null;
       }
-      return srv;
+
+      // 1. Busca por nome exato
+      let srv = servicosDB.find(
+        (s) => s.nome.trim().toLowerCase() === nomeProfissional.trim().toLowerCase()
+      );
+
+      // 2. Busca por código URI ou ID
+      if (!srv) {
+        srv = servicosDB.find(
+          (s) =>
+            String(s.codigo_uri) === String(nomeProfissional) ||
+            String(s.numero_especialista) === String(nomeProfissional) ||
+            s.id === nomeProfissional
+        );
+      }
+
+      // 3. Busca por substring ou sem dr./dra.
+      if (!srv) {
+        const nomeLimpo = nomeProfissional.toLowerCase().replace(/dra\.|dr\./g, "").trim();
+        srv = servicosDB.find((s) => {
+          const sNome = s.nome.toLowerCase().replace(/dra\.|dr\./g, "").trim();
+          return sNome.includes(nomeLimpo) || nomeLimpo.includes(sNome);
+        });
+      }
+
+      // 4. Se ainda não encontrou e tem especialidade
+      if (!srv && formData.especialidade) {
+        srv = servicosDB.find(
+          (s) =>
+            s.especialidade &&
+            s.especialidade.toLowerCase().includes(formData.especialidade.toLowerCase())
+        );
+      }
+
+      return srv || null;
     };
 
     const selectedSrv = getSelectedService();
@@ -367,7 +403,7 @@ export default function AgendamentoPremium() {
       const nomeUrlRaw = searchParams.get("nome");
       const sobrenomeUrlRaw = searchParams.get("sobrenome");
       const cpfUrl = searchParams.get("cpf");
-      const medicoUrl = searchParams.get("medico");
+      const medicoUrl = searchParams.get("medico") || searchParams.get("especialista");
       const wppUrl = searchParams.get("whatsapp");
       const emailUrl = searchParams.get("email");
       const nascUrl = searchParams.get("nascimento");
@@ -438,7 +474,12 @@ export default function AgendamentoPremium() {
 
         let urlSrvId = null;
         if (hasMedico) {
-          let foundSrv = servicosDB.find((s) => s.id === medicoUrl);
+          let foundSrv = servicosDB.find(
+            (s) =>
+              s.id === medicoUrl ||
+              String(s.codigo_uri) === String(medicoUrl) ||
+              String(s.numero_especialista) === String(medicoUrl)
+          );
 
           if (!foundSrv && /^\d+$/.test(medicoUrl)) {
             const index = parseInt(medicoUrl, 10) - 1;
@@ -464,7 +505,9 @@ export default function AgendamentoPremium() {
             }
             urlSrvId = foundSrv.id;
           } else {
-            setValue("medico_profissional", medicoUrl);
+            if (!/^\d+$/.test(medicoUrl)) {
+              setValue("medico_profissional", medicoUrl);
+            }
           }
         }
 

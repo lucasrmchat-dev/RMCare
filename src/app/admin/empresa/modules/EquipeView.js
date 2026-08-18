@@ -29,7 +29,12 @@ import {
   spring
 } from "../components/SharedUI";
 import { supabase } from "@/lib/supabase";
-import { actionAtualizarServico, actionCriarServico, actionSalvarCustomization, fetchAdminCustomization } from "@/actions/adminData";
+import {
+  actionAtualizarServico,
+  actionCriarServico,
+  actionSalvarCustomization,
+  fetchAdminCustomization
+} from "@/actions/adminData";
 
 // ==========================================
 // COMPONENTE: CARD DO PROFISSIONAL
@@ -321,7 +326,7 @@ const ServicoForm = ({ initialData, onSave, onCancel, loading, especialidadesLis
             <TextInput
               label="Antecedência Mínima (Dias)"
               type="number"
-              placeholder="Ex: 1"
+              placeholder="Ex: 2"
               value={formData.dias_bloqueio_padrao}
               onChange={(e) =>
                 setFormData({ ...formData, dias_bloqueio_padrao: e.target.value })
@@ -386,44 +391,99 @@ export default function EquipeView({
   const [novaEspecialidadeCat, setNovaEspecialidadeCat] = useState("Consultas");
   const [filtroCategoria, setFiltroCategoria] = useState("Todas");
 
+  // Carregar dados de forma inteligente agregando de todas as fontes
   useEffect(() => {
     const fetchDados = async () => {
-      const { data } = await supabase
-        .from("empresas")
-        .select("id, especialidades, config_campos")
-        .limit(1)
-        .single();
-      if (data) {
-        setEmpresaId(data.id);
-        const conf = data.config_campos || {};
+      try {
+        const emp = await fetchAdminCustomization();
+        if (emp) {
+          setEmpresaId(emp.id);
+          const conf = emp.config_campos || {};
 
-        // 1. Categorias
-        const savedCats = Array.isArray(conf.categorias_atendimento) && conf.categorias_atendimento.length > 0
-          ? conf.categorias_atendimento
-          : ["Consultas", "Exames"];
-        setCategoriasList(savedCats);
-        setNovaEspecialidadeCat(savedCats[0] || "Consultas");
+          // 1. Categorias
+          const savedCats =
+            Array.isArray(conf.categorias_atendimento) && conf.categorias_atendimento.length > 0
+              ? conf.categorias_atendimento
+              : ["Consultas", "Exames"];
+          setCategoriasList(savedCats);
+          setNovaEspecialidadeCat(savedCats[0] || "Consultas");
 
-        // 2. Especialidades categorizadas
-        let savedEspCat = [];
-        if (Array.isArray(conf.especialidades_categorizadas) && conf.especialidades_categorizadas.length > 0) {
-          savedEspCat = conf.especialidades_categorizadas;
-        } else if (Array.isArray(data.especialidades)) {
-          // Migrar especialidades antigas simples
-          savedEspCat = data.especialidades.map((e) => {
-            const nomeStr = typeof e === "object" ? e.nome : e;
-            const isExame = /(colonoscopia|endoscopia|ultrassom|exame|raio-x|tomografia|ressonancia)/i.test(nomeStr);
-            return {
-              nome: nomeStr,
-              categoria: isExame ? "Exames" : "Consultas"
-            };
+          // 2. Mapeamento completo de especialidades
+          const mapCategorias = new Map();
+
+          // A. Especialidades já cadastradas nos serviços (corpo clínico)
+          (servicos || []).forEach((s) => {
+            if (s.especialidade) {
+              s.especialidade
+                .split(",")
+                .map((e) => e.trim())
+                .filter(Boolean)
+                .forEach((espName) => {
+                  const isExame = /(colonoscopia|endoscopia|ultrassom|exame|raio-x|tomografia|ressonancia)/i.test(
+                    espName
+                  );
+                  mapCategorias.set(espName.toLowerCase(), {
+                    nome: espName,
+                    categoria: isExame ? "Exames" : "Consultas"
+                  });
+                });
+            }
           });
+
+          // B. Especialidades simples da empresa
+          if (Array.isArray(emp.especialidades)) {
+            emp.especialidades.forEach((e) => {
+              const espName = typeof e === "object" ? e.nome : e;
+              if (espName && String(espName).trim()) {
+                const nameClean = String(espName).trim();
+                const isExame = /(colonoscopia|endoscopia|ultrassom|exame|raio-x|tomografia|ressonancia)/i.test(
+                  nameClean
+                );
+                mapCategorias.set(nameClean.toLowerCase(), {
+                  nome: nameClean,
+                  categoria: isExame ? "Exames" : "Consultas"
+                });
+              }
+            });
+          }
+
+          // C. Especialidades já categorizadas pelo usuário (prevalecem na categoria)
+          if (Array.isArray(conf.especialidades_categorizadas)) {
+            conf.especialidades_categorizadas.forEach((item) => {
+              if (item?.nome && String(item.nome).trim()) {
+                const nameClean = String(item.nome).trim();
+                mapCategorias.set(nameClean.toLowerCase(), {
+                  nome: nameClean,
+                  categoria: item.categoria || "Consultas"
+                });
+              }
+            });
+          }
+
+          // D. Fallback base se estiver vazio
+          if (mapCategorias.size === 0) {
+            ["Gastroenterologia", "Colonoscopia", "Endoscopia", "Psicologia", "Cardiologia"].forEach(
+              (baseName) => {
+                const isExame = /(colonoscopia|endoscopia|ultrassom|exame)/i.test(baseName);
+                mapCategorias.set(baseName.toLowerCase(), {
+                  nome: baseName,
+                  categoria: isExame ? "Exames" : "Consultas"
+                });
+              }
+            );
+          }
+
+          const listaFinal = Array.from(mapCategorias.values()).sort((a, b) =>
+            a.nome.localeCompare(b.nome)
+          );
+          setEspecialidadesCategorizadas(listaFinal);
         }
-        setEspecialidadesCategorizadas(savedEspCat);
+      } catch (err) {
+        console.error("Erro ao carregar especialidades:", err);
       }
     };
     fetchDados();
-  }, []);
+  }, [servicos]);
 
   const handleOpenForm = (servico = null) => {
     setEditingServico(servico);
@@ -501,18 +561,15 @@ export default function EquipeView({
         especialidades_categorizadas: novasEsps
       };
 
-      // Array simples de nomes de especialidades para manter compatibilidade
       const nomesSimples = novasEsps.map((e) => e.nome);
 
-      await Promise.all([
-        supabase
-          .from("empresas")
-          .update({
-            config_campos: updatedConfig,
-            especialidades: nomesSimples
-          })
-          .eq("id", empresaId)
-      ]);
+      await supabase
+        .from("empresas")
+        .update({
+          config_campos: updatedConfig,
+          especialidades: nomesSimples
+        })
+        .eq("id", empresaId);
     } catch (err) {
       console.error("Erro ao persistir especialidades:", err);
     }
@@ -538,7 +595,12 @@ export default function EquipeView({
       showToast("Mantenha pelo menos uma categoria cadastrada.", "error");
       return;
     }
-    if (!window.confirm(`Excluir a categoria "${catNome}"? As especialidades dela serão movidas para a categoria padrão.`)) return;
+    if (
+      !window.confirm(
+        `Excluir a categoria "${catNome}"? As especialidades dela serão movidas para a categoria padrão.`
+      )
+    )
+      return;
 
     const fallbackCat = categoriasList.find((c) => c !== catNome) || "Geral";
     const updatedCats = categoriasList.filter((c) => c !== catNome);
@@ -714,7 +776,7 @@ export default function EquipeView({
           {/* SUB-ABA 2: CATEGORIAS & ESPECIALIDADES */}
           {subTab === "especialidades" && (
             <div className="space-y-6">
-              {/* BLOCO 1: CATEGORIAS DE ATENDIMENTO (CRIADAS PELO CLIENTE) */}
+              {/* BLOCO 1: CATEGORIAS DE ATENDIMENTO */}
               <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm space-y-5">
                 <div className="border-b border-zinc-100 dark:border-white/5 pb-3">
                   <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">

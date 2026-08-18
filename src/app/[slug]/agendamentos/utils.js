@@ -62,10 +62,17 @@ export const dispararPushRmChat = async (telefone, nome, mensagem, urlWebhook) =
       return false;
     }
 
+    let tel = (telefone || "").replace(/\D/g, "");
+    if (!tel) return false;
+    if (!tel.startsWith("55") && (tel.length === 10 || tel.length === 11)) {
+      tel = `55${tel}`;
+    }
+
     const payload = {
-      name: nome,
-      number: telefone.replace(/\D/g, ""),
-      texto: mensagem
+      name: nome || "Paciente",
+      number: tel,
+      texto: mensagem,
+      message: mensagem
     };
 
     const res = await fetch(urlWebhook, {
@@ -119,7 +126,39 @@ export const calcularIdade = (dataNasc) => {
 // O MOTOR COMPLETO QUE PROCESSA TODAS AS CATEGORIAS, IDADE, ENFERMIDADES, NICHOS E DADOS DINÂMICOS
 export const processarMensagensDinamicas = async (formData, empresaDados, agendamentoId = null, gatilhoFiltro = null, extraData = null) => {
   const { nome, telefone_whatsapp, data_agendamento, horario_agendamento, especialidade, medico_profissional, subtipo_exame, data_nascimento, tipo_servico } = formData || {};
-  const servicoSelecionado = subtipo_exame || medico_profissional;
+  
+  // Resolução inteligente do nome do especialista / profissional
+  let nomeProfissional = medico_profissional || subtipo_exame || "";
+  
+  if (nomeProfissional && (/^\d+$/.test(nomeProfissional) || nomeProfissional.length < 3)) {
+    try {
+      if (empresaDados?.id) {
+        const { data: srvs } = await supabase
+          .from("servicos")
+          .select("id, nome, codigo_uri, numero_especialista, especialidade")
+          .eq("empresa_id", empresaDados.id);
+
+        if (srvs && srvs.length > 0) {
+          const srvMatch = srvs.find(
+            (s) =>
+              String(s.codigo_uri) === String(nomeProfissional) ||
+              String(s.numero_especialista) === String(nomeProfissional) ||
+              s.id === nomeProfissional
+          );
+          if (srvMatch) {
+            nomeProfissional = srvMatch.nome;
+          } else if (especialidade) {
+            const srvEsp = srvs.find((s) => (s.especialidade || "").toLowerCase().includes(especialidade.toLowerCase()));
+            if (srvEsp) nomeProfissional = srvEsp.nome;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Aviso ao resolver nome do profissional para mensagens:", e);
+    }
+  }
+
+  const servicoSelecionado = subtipo_exame || nomeProfissional;
   
   let regrasMensagens = empresaDados?.config_mensagens || [];
   if (!Array.isArray(regrasMensagens)) return;
@@ -139,7 +178,7 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
   const vars = { 
     nome: (nome || "").trim(), 
     servico: servicoSelecionado || "", 
-    especialista: medico_profissional || servicoSelecionado || "",
+    especialista: nomeProfissional || servicoSelecionado || "",
     especialidade: especialidade || "",
     categoria: categoriaEspecialidade,
     tipo_servico: tipo_servico || categoriaEspecialidade || "Consulta",
@@ -175,7 +214,7 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
       alvoValido = true;
     } else if (alvo === `especialidade:${especialidade}`) {
       alvoValido = true;
-    } else if (alvo === `servico:${servicoSelecionado}` || alvo === `servico:${medico_profissional}`) {
+    } else if (alvo === `servico:${servicoSelecionado}` || alvo === `servico:${nomeProfissional}` || alvo === `servico:${medico_profissional}`) {
       alvoValido = true;
     } else if (alvo.startsWith("especialidade:") && especialidade) {
       const targetEsp = alvo.replace("especialidade:", "").toLowerCase().trim();
