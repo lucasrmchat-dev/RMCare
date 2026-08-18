@@ -201,52 +201,39 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
   const categoriaEfetiva = classificarAtendimento(formData, empresaDados);
   const isExame = categoriaEfetiva === "Exames";
 
-  // 2. RESOLUÇÃO COMPLETA DO NOME DO PROFISSIONAL (CONSULTANDO SERVIÇOS DO BANCO SE FOR ID/NÚMERO)
-  let nomeProfissionalOficial = medico_profissional || "";
+  // 2. RESOLUÇÃO COMPLETA DO NOME DO PROFISSIONAL
+  let nomeProfissionalOficial = (medico_profissional || "").trim();
 
-  try {
-    if (empresaDados?.id) {
+  // Verifica se o profissional recebido é um nome real ou código/número
+  const isNumeroOuId = !nomeProfissionalOficial || /^\d+$/.test(nomeProfissionalOficial) || nomeProfissionalOficial.length < 3;
+
+  if (isNumeroOuId && empresaDados?.id) {
+    try {
+      // Busca apenas especialistas ATIVOS na clínica
       const { data: servicosClinica } = await supabase
         .from("servicos")
-        .select("id, nome, codigo_uri, numero_especialista, especialidade, tipo")
-        .eq("empresa_id", empresaDados.id);
+        .select("id, nome, codigo_uri, numero_especialista, especialidade, tipo, ativo")
+        .eq("empresa_id", empresaDados.id)
+        .eq("ativo", true);
 
       if (Array.isArray(servicosClinica) && servicosClinica.length > 0) {
-        // A. Busca por ID exato, código URI ou número de especialista
+        // A. Busca pelo código URI ou número de especialista (ex: medico=8)
         let srvEncontrado = servicosClinica.find(
           (s) =>
             (nomeProfissionalOficial && (s.id === nomeProfissionalOficial || String(s.codigo_uri) === String(nomeProfissionalOficial) || String(s.numero_especialista) === String(nomeProfissionalOficial))) ||
             (subtipo_exame && (s.id === subtipo_exame || String(s.codigo_uri) === String(subtipo_exame) || String(s.numero_especialista) === String(subtipo_exame)))
         );
 
-        // B. Se não achou e o nome recebido for número ou vazio, busca pelo nome da especialidade
-        if (!srvEncontrado && especialidade) {
-          srvEncontrado = servicosClinica.find((s) => {
-            const espSrv = (s.especialidade || "").toLowerCase();
-            const espAlvo = especialidade.toLowerCase().trim();
-            return espSrv.includes(espAlvo) || espAlvo.includes(espSrv);
-          });
-        }
-
-        // C. Se ainda não achou e for nome aproximado
-        if (!srvEncontrado && nomeProfissionalOficial && !/^\d+$/.test(nomeProfissionalOficial)) {
-          const cleanInput = nomeProfissionalOficial.toLowerCase().replace(/dra\.|dr\./g, "").trim();
-          srvEncontrado = servicosClinica.find((s) => {
-            const cleanSrv = (s.nome || "").toLowerCase().replace(/dra\.|dr\./g, "").trim();
-            return cleanSrv.includes(cleanInput) || cleanInput.includes(cleanSrv);
-          });
-        }
-
         if (srvEncontrado?.nome) {
           nomeProfissionalOficial = srvEncontrado.nome;
         }
       }
+    } catch (errResolve) {
+      console.warn("Aviso ao resolver código do profissional:", errResolve);
     }
-  } catch (errResolve) {
-    console.warn("Aviso ao resolver nome do profissional:", errResolve);
   }
 
-  // Se o profissional ainda for um número puro (ex: "8"), limpa para não exibir número feio
+  // Se o profissional ainda for um número puro (ex: "8"), limpa para não exibir número
   if (/^\d+$/.test(nomeProfissionalOficial)) {
     nomeProfissionalOficial = "";
   }
@@ -255,8 +242,6 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
   const dataFormatada = data_agendamento ? data_agendamento.split("-").reverse().join("/") : "";
   const idadePaciente = calcularIdade(data_nascimento);
 
-  // Para consultas: {servico} e {especialista} devem conter o nome do profissional (ou especialidade se não tiver profissional)
-  // Para exames: {servico} deve ser o exame (ex: Colonoscopia) e {especialista} o médico
   const nomeExameFormatado = subtipo_exame || especialidade || "Exame";
   const nomeEspecialistaFormatado = nomeProfissionalOficial || (isExame ? "Corpo Clínico" : (especialidade || "Especialista Clínico"));
   const servicoFormatado = isExame ? nomeExameFormatado : nomeEspecialistaFormatado;
