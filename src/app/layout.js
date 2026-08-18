@@ -1,5 +1,6 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import CommandPalette from "@/components/CommandPalette";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -20,8 +21,11 @@ export const metadata = {
 };
 
 export const viewport = {
-  width: "device-width", initialScale: 1, maximumScale: 1,
-  viewportFit: "cover", themeColor: "#fafafa"
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: "cover",
+  themeColor: "#fafafa"
 };
 
 export default function RootLayout({ children }) {
@@ -47,7 +51,10 @@ export default function RootLayout({ children }) {
           }}
         />
       </head>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col selection:bg-[#9FC131] selection:text-black font-sans">
+        {children}
+        <CommandPalette />
+      </body>
     </html>
   );
 }

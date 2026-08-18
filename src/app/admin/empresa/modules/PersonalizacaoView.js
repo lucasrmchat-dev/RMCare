@@ -5,21 +5,19 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageSquare,
   Sparkles,
-  Zap,
-  Clock,
   Trash2,
   Plus,
-  Lock,
-  Eye,
-  CheckCircle2,
-  Calendar,
   Save,
   Filter,
   ListChecks,
   Image as ImageIcon,
   Upload,
-  UserCheck,
-  ShieldAlert
+  Palette,
+  Sliders,
+  Type,
+  LayoutGrid,
+  Check,
+  Calendar
 } from "lucide-react";
 import {
   fadeUp,
@@ -29,13 +27,28 @@ import {
   TextInput,
   spring
 } from "../components/SharedUI";
-import { fetchAdminCustomization, actionSalvarCustomization, actionSalvarLogoEmpresa } from "@/actions/adminData";
+import {
+  fetchAdminCustomization,
+  actionSalvarCustomization,
+  actionSalvarLogoEmpresa
+} from "@/actions/adminData";
 
-export default function PersonalizacaoView({ subTab = "jornada", setSubTab, showToast, servicos = [] }) {
+const PALETAS_PRESETS = [
+  { nome: "Verde Lima (Padrão)", prim: "#9FC131", sec: "#10B981" },
+  { nome: "Esmeralda Clínico", prim: "#10B981", sec: "#059669" },
+  { nome: "Azul Safira Elegance", prim: "#2563EB", sec: "#3B82F6" },
+  { nome: "Índigo Real", prim: "#6366F1", sec: "#4F46E5" },
+  { nome: "Teal Oceano", prim: "#0D9488", sec: "#14B8A6" },
+  { nome: "Âmbar Dourado", prim: "#F59E0B", sec: "#D97706" },
+  { nome: "Preto Titanium", prim: "#18181B", sec: "#3F3F46" },
+  { nome: "Rosa Quartzo", prim: "#EC4899", sec: "#DB2777" }
+];
+
+export default function PersonalizacaoView({ subTab = "jornada", showToast, servicos = [] }) {
   const [loading, setLoading] = useState(false);
   const [empresaId, setEmpresaId] = useState(null);
 
-  // Estados dos Campos e Configurações da Empresa
+  // Configurações gerais e campos
   const [campos, setCampos] = useState({
     mostrar_cpf: true,
     mostrar_sobrenome: true,
@@ -51,29 +64,36 @@ export default function PersonalizacaoView({ subTab = "jornada", setSubTab, show
       { id: "1", nome: "Particular", exige_senha: false, senha: "" },
       { id: "2", nome: "Convênio", exige_senha: false, senha: "" }
     ],
-    enviar_mensagens_importados_erp: true
+    enviar_mensagens_importados_erp: true,
+    tema: {
+      cor_primaria: "#9FC131",
+      cor_secundaria: "#10B981",
+      densidade_texto: "compacto",
+      estilo_cards: "moderno"
+    }
   });
 
-  // Estados das Regras de Mensagens Automáticas
   const [regrasMensagens, setRegrasMensagens] = useState([]);
-
-  // Estados para Filtros das Mensagens
   const [filterEspecialidade, setFilterEspecialidade] = useState("Todas");
   const [filterGatilho, setFilterGatilho] = useState("Todos");
 
-  // Carregar dados salvos no banco de dados
+  // Carregar dados salvos
   useEffect(() => {
     const fetchDados = async () => {
       const emp = await fetchAdminCustomization();
       if (emp) {
         setEmpresaId(emp.id);
         if (emp.config_campos) {
-          setCampos((prev) => ({ 
-            ...prev, 
+          setCampos((prev) => ({
+            ...prev,
             ...emp.config_campos,
             logo_url: emp.logo_url || emp.config_campos.logo_url || prev.logo_url,
             modalidades_opcoes: emp.config_campos.modalidades_opcoes || prev.modalidades_opcoes,
-            modalidade_padrao: emp.config_campos.modalidade_padrao || prev.modalidade_padrao
+            modalidade_padrao: emp.config_campos.modalidade_padrao || prev.modalidade_padrao,
+            tema: {
+              ...prev.tema,
+              ...(emp.config_campos.tema || {})
+            }
           }));
         }
         if (Array.isArray(emp.config_mensagens)) setRegrasMensagens(emp.config_mensagens);
@@ -81,6 +101,17 @@ export default function PersonalizacaoView({ subTab = "jornada", setSubTab, show
     };
     fetchDados();
   }, [servicos]);
+
+  const aplicarTemaEmTempoReal = (novoTema) => {
+    if (typeof window === "undefined") return;
+    const root = document.documentElement;
+    if (novoTema.cor_primaria) {
+      root.style.setProperty("--brand-primary", novoTema.cor_primaria);
+    }
+    if (novoTema.cor_secundaria) {
+      root.style.setProperty("--brand-secondary", novoTema.cor_secundaria);
+    }
+  };
 
   const handleSave = async () => {
     if (!empresaId) {
@@ -93,7 +124,8 @@ export default function PersonalizacaoView({ subTab = "jornada", setSubTab, show
       if (campos.logo_url) {
         await actionSalvarLogoEmpresa(campos.logo_url);
       }
-      showToast("Painel atualizado com sucesso!");
+      aplicarTemaEmTempoReal(campos.tema);
+      showToast("Personalização salva com sucesso!");
     } catch (e) {
       console.error(e);
       showToast(`Erro ao salvar: ${e.message}`, "error");
@@ -102,42 +134,20 @@ export default function PersonalizacaoView({ subTab = "jornada", setSubTab, show
     }
   };
 
-  // Funções de Mensagens
-  const adicionarNovaRegra = () => {
-    const novaRegra = {
-      id: Date.now().toString(),
-      alvo: "Todas",
-      especialidade: "Todas",
-      gatilho: "imediato",
-      dias_antes: 1,
-      hora_envio: "08:00",
-      referencia_pos: "termino",
-      offset_valor: 0,
-      offset_unidade: "minutos",
-      filtro_idade_tipo: "todas",
-      idade_minima: 0,
-      idade_maxima: 999,
-      mensagem: "Olá {nome}, seu agendamento de {servico} com {especialista} está confirmado!"
+  // Upload de logotipo com limite ampliado (até 25MB)
+  const handleLogoUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 25 * 1024 * 1024) {
+      showToast("A imagem deve ter no máximo 25MB.", "error");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setCampos((prev) => ({ ...prev, logo_url: reader.result }));
+      showToast("Logotipo carregado! Clique em Salvar para persistir.");
     };
-    setRegrasMensagens([novaRegra, ...regrasMensagens]);
-  };
-
-  const atualizarRegra = (id, campo, valor) =>
-    setRegrasMensagens((prev) => prev.map((r) => (r.id === id ? { ...r, [campo]: valor } : r)));
-  
-  const removerRegra = (id) =>
-    setRegrasMensagens((prev) => prev.filter((r) => r.id !== id));
-
-  const inserirVariavelNaRegra = (id, tag) => {
-    setRegrasMensagens((prev) =>
-      prev.map((r) => {
-        if (r.id === id) {
-          const msgAtual = r.mensagem || "";
-          return { ...r, mensagem: `${msgAtual} ${tag}`.trim() };
-        }
-        return r;
-      })
-    );
+    reader.readAsDataURL(file);
   };
 
   // Funções de Modalidades
@@ -165,23 +175,44 @@ export default function PersonalizacaoView({ subTab = "jornada", setSubTab, show
     }));
   };
 
-  // Upload da Logo da Empresa
-  const handleLogoUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      showToast("A imagem deve ter no máximo 2MB.", "error");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setCampos((prev) => ({ ...prev, logo_url: reader.result }));
-      showToast("Logotipo carregado! Clique em Salvar para persistir.");
+  // Funções de Mensagens
+  const adicionarNovaRegra = () => {
+    const novaRegra = {
+      id: Date.now().toString(),
+      alvo: "Todas",
+      especialidade: "Todas",
+      gatilho: "imediato",
+      dias_antes: 1,
+      hora_envio: "08:00",
+      referencia_pos: "termino",
+      offset_valor: 0,
+      offset_unidade: "minutos",
+      filtro_idade_tipo: "todas",
+      idade_minima: 0,
+      idade_maxima: 999,
+      mensagem: "Olá {nome}, seu agendamento de {servico} com {especialista} está confirmado!"
     };
-    reader.readAsDataURL(file);
+    setRegrasMensagens([novaRegra, ...regrasMensagens]);
   };
 
-  // Lista de Especialidades Únicas
+  const atualizarRegra = (id, campo, valor) =>
+    setRegrasMensagens((prev) => prev.map((r) => (r.id === id ? { ...r, [campo]: valor } : r)));
+
+  const removerRegra = (id) =>
+    setRegrasMensagens((prev) => prev.filter((r) => r.id !== id));
+
+  const inserirVariavelNaRegra = (id, tag) => {
+    setRegrasMensagens((prev) =>
+      prev.map((r) => {
+        if (r.id === id) {
+          const msgAtual = r.mensagem || "";
+          return { ...r, mensagem: `${msgAtual} ${tag}`.trim() };
+        }
+        return r;
+      })
+    );
+  };
+
   const especialidadesUnicas = useMemo(() => {
     const srvs = Array.isArray(servicos) ? servicos : [];
     const unicas = srvs
@@ -191,14 +222,17 @@ export default function PersonalizacaoView({ subTab = "jornada", setSubTab, show
     return [...new Set([...base, ...unicas])].filter(Boolean).sort();
   }, [servicos]);
 
-  const alvoOptions = useMemo(() => [
-    { value: "Todas", label: "🌐 Todos os Atendimentos (Geral)" },
-    { value: "tipo:Consulta", label: "📋 Apenas Consultas Médicas" },
-    { value: "tipo:Exame", label: "🔬 Apenas Exames e Procedimentos" },
-    { value: "tipo:Retorno", label: "🔄 Apenas Retornos Clínicos" },
-    ...especialidadesUnicas.map((e) => ({ value: `especialidade:${e}`, label: `Especialidade: ${e}` })),
-    ...servicos.map((s) => ({ value: `servico:${s.nome}`, label: `Profissional: ${s.nome}` }))
-  ], [especialidadesUnicas, servicos]);
+  const alvoOptions = useMemo(
+    () => [
+      { value: "Todas", label: "Todos os Atendimentos (Geral)" },
+      { value: "tipo:Consulta", label: "Apenas Consultas Médicas" },
+      { value: "tipo:Exame", label: "Apenas Exames e Procedimentos" },
+      { value: "tipo:Retorno", label: "Apenas Retornos Clínicos" },
+      ...especialidadesUnicas.map((e) => ({ value: `especialidade:${e}`, label: `Especialidade: ${e}` })),
+      ...servicos.map((s) => ({ value: `servico:${s.nome}`, label: `Profissional: ${s.nome}` }))
+    ],
+    [especialidadesUnicas, servicos]
+  );
 
   const gatilhoOptions = [
     { value: "imediato", label: "Na hora do Agendamento (Instantâneo)" },
@@ -240,154 +274,554 @@ export default function PersonalizacaoView({ subTab = "jornada", setSubTab, show
   }, [regrasMensagens, filterGatilho, filterEspecialidade]);
 
   return (
-    <motion.div key="personalizacao" {...fadeUp} className="flex-1 flex flex-col h-full overflow-hidden w-full max-w-6xl mx-auto p-4 md:p-6 lg:p-8">
-      
-      {/* CABEÇALHO UNIFICADO */}
-      <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-200/80 dark:border-zinc-800 pb-6">
+    <motion.div
+      key="personalizacao"
+      {...fadeUp}
+      className="flex-1 flex flex-col h-full overflow-hidden w-full max-w-7xl mx-auto p-4 md:p-6 lg:p-8"
+    >
+      {/* CABEÇALHO COM TÍTULO E BOTÃO SALVAR */}
+      <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-200/80 dark:border-white/10 pb-4">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 flex items-center justify-center flex-shrink-0 shadow-sm">
-            <Zap size={24} />
+          <div className="w-10 h-10 rounded-xl bg-zinc-950 dark:bg-white text-white dark:text-black flex items-center justify-center shrink-0 shadow-sm">
+            <Palette size={18} strokeWidth={1.75} />
           </div>
           <div>
-            <h2 className="text-2xl md:text-3xl font-black text-zinc-900 dark:text-white tracking-tight">
-              Mensagens, Jornada & Logotipo
+            <h2 className="text-xl font-bold text-zinc-950 dark:text-white tracking-tight">
+              {subTab === "jornada" && "Identificação & Logotipo"}
+              {subTab === "aparencia" && "Design, Cores & Escala"}
+              {subTab === "modalidades" && "Formas de Atendimento & Coberturas"}
+              {subTab === "mensagens" && "Automações de Mensagens WhatsApp"}
             </h2>
-            <p className="text-xs md:text-sm text-zinc-500 dark:text-zinc-400 font-medium mt-0.5">
-              Configure templates por nicho e idade, personalize os dados do paciente e envie o logotipo da sua clínica.
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">
+              Configurações salvas diretamente no perfil desta clínica.
             </p>
           </div>
         </div>
 
-        <ButtonPrimary onClick={handleSave} disabled={loading} icon={Save} className="px-8 py-3 text-xs">
+        <ButtonPrimary
+          onClick={handleSave}
+          disabled={loading}
+          icon={Save}
+          className="px-6 py-2 text-xs min-h-[38px] rounded-xl"
+        >
           {loading ? "Salvando..." : "Salvar Alterações"}
         </ButtonPrimary>
       </div>
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar space-y-8 pb-32">
+      <div className="flex-1 overflow-y-auto custom-scrollbar space-y-6 pb-24 pr-1">
         <AnimatePresence mode="wait">
-          
-          {/* ==========================================
-              TAB 1: DADOS DO PACIENTE & LOGOTIPO DA EMPRESA
-              ========================================== */}
+          {/* TAB 1: IDENTIFICAÇÃO E LOGO */}
           {subTab === "jornada" && (
-            <motion.div key="jornada" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={spring} className="space-y-8">
-              
-              {/* LOGOTIPO DA EMPRESA */}
-              <section className="bg-white dark:bg-[#111] border border-zinc-200/80 dark:border-zinc-800 p-8 rounded-[2.5rem] shadow-sm">
-                <div className="flex items-center gap-3 mb-6 border-b border-zinc-100 dark:border-zinc-800 pb-4">
-                  <div className="w-10 h-10 rounded-2xl bg-purple-50 dark:bg-purple-950/40 text-purple-600 flex items-center justify-center">
-                    <ImageIcon size={20} />
+            <motion.div
+              key="jornada"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={spring}
+              className="space-y-6"
+            >
+              <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm">
+                <div className="flex items-center gap-3 mb-6 border-b border-zinc-100 dark:border-white/5 pb-4">
+                  <div className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300">
+                    <ImageIcon size={18} strokeWidth={1.5} />
                   </div>
                   <div>
-                    <h3 className="text-lg font-black text-zinc-900 dark:text-white">Logotipo da Clínica / Empresa</h3>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                      Sua logomarca será exibida elegantemente no cabeçalho do portal de agendamento dos seus pacientes.
+                    <h3 className="text-base font-bold text-zinc-950 dark:text-white">
+                      Logotipo da Clínica
+                    </h3>
+                    <p className="text-xs text-zinc-500">
+                      Exibido no portal de agendamento e nas mensagens. Limite de upload: até 25MB.
                     </p>
                   </div>
                 </div>
 
-                <div className="grid md:grid-cols-2 gap-8 items-center">
-                  <div className="space-y-4">
+                <div className="grid md:grid-cols-2 gap-6 items-center">
+                  <div className="space-y-3">
                     <TextInput
-                      label="URL da Imagem da Logo"
+                      label="URL Direta da Imagem"
                       placeholder="https://suaclinica.com.br/logo.png"
                       value={campos.logo_url || ""}
                       onChange={(e) => setCampos({ ...campos, logo_url: e.target.value })}
                     />
-                    
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs text-zinc-400 font-bold uppercase">Ou faça upload:</span>
-                      <label className="cursor-pointer px-4 py-2.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 text-xs font-bold rounded-xl flex items-center gap-2 transition-all">
-                        <Upload size={14} /> Escolher Imagem (PNG/JPG)
-                        <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
+
+                    <div className="flex items-center gap-3 pt-1">
+                      <label className="cursor-pointer px-4 py-2 bg-zinc-950 dark:bg-white text-white dark:text-black text-xs font-bold rounded-xl flex items-center gap-2 hover:bg-zinc-800 transition-all min-h-[38px] shadow-sm">
+                        <Upload size={14} strokeWidth={1.75} /> Upload de Imagem (PNG/JPG/SVG)
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleLogoUpload}
+                          className="hidden"
+                        />
                       </label>
+                      {campos.logo_url && (
+                        <button
+                          type="button"
+                          onClick={() => setCampos({ ...campos, logo_url: "" })}
+                          className="text-xs text-red-500 hover:underline font-medium"
+                        >
+                          Remover logo
+                        </button>
+                      )}
                     </div>
                   </div>
 
-                  {/* PREVIEW DA LOGO */}
-                  <div className="p-6 rounded-3xl border border-zinc-200/80 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 flex flex-col items-center justify-center text-center min-h-[160px]">
-                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-3">Prévia do Logotipo</span>
+                  <div className="p-6 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/60 flex flex-col items-center justify-center text-center min-h-[140px]">
+                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">
+                      Prévia do Logotipo
+                    </span>
                     {campos.logo_url ? (
-                      <div className="p-3 bg-white dark:bg-black rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm max-w-[220px]">
-                        <img src={campos.logo_url} alt="Logo da Clínica" className="max-h-14 max-w-full object-contain mx-auto" />
+                      <div className="p-2.5 bg-white dark:bg-black rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm max-w-[200px]">
+                        <img
+                          src={campos.logo_url}
+                          alt="Logo da Clínica"
+                          className="max-h-12 max-w-full object-contain mx-auto"
+                        />
                       </div>
                     ) : (
-                      <div className="text-zinc-400 text-xs flex flex-col items-center gap-1.5">
-                        <ImageIcon size={32} className="opacity-40" />
-                        Nenhum logotipo configurado ainda.
+                      <div className="text-zinc-400 text-xs flex flex-col items-center gap-1">
+                        <ImageIcon size={26} strokeWidth={1.2} className="opacity-40" />
+                        Nenhum logotipo configurado.
                       </div>
                     )}
                   </div>
                 </div>
               </section>
 
-              {/* DADOS EXIGIDOS NA IDENTIFICAÇÃO */}
-              <section className="bg-white dark:bg-[#111] border border-zinc-200/80 dark:border-zinc-800 p-8 rounded-[2.5rem] shadow-sm">
-                <h3 className="text-lg font-black text-zinc-900 dark:text-white mb-6 border-b border-zinc-100 dark:border-zinc-800 pb-4">
-                  Dados Exigidos na Identificação do Paciente
+              <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm">
+                <h3 className="text-base font-bold text-zinc-950 dark:text-white mb-5 border-b border-zinc-100 dark:border-white/5 pb-3">
+                  Campos Exigidos na Identificação
                 </h3>
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-                  <ToggleSwitch checked={campos.mostrar_cpf} onChange={(v) => setCampos({ ...campos, mostrar_cpf: v })} label="Exigir CPF" />
-                  <ToggleSwitch checked={campos.mostrar_sobrenome} onChange={(v) => setCampos({ ...campos, mostrar_sobrenome: v })} label="Exigir Sobrenome" />
-                  <ToggleSwitch checked={campos.mostrar_nascimento} onChange={(v) => setCampos({ ...campos, mostrar_nascimento: v })} label="Data de Nascimento" />
-                  <ToggleSwitch checked={campos.mostrar_email} onChange={(v) => setCampos({ ...campos, mostrar_email: v })} label="Exigir E-mail" />
-                  <ToggleSwitch checked={campos.mostrar_whatsapp} onChange={(v) => setCampos({ ...campos, mostrar_whatsapp: v })} label="Exigir WhatsApp" />
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-6">
+                  <ToggleSwitch
+                    checked={campos.mostrar_cpf}
+                    onChange={(v) => setCampos({ ...campos, mostrar_cpf: v })}
+                    label="Exigir CPF"
+                  />
+                  <ToggleSwitch
+                    checked={campos.mostrar_sobrenome}
+                    onChange={(v) => setCampos({ ...campos, mostrar_sobrenome: v })}
+                    label="Exigir Sobrenome"
+                  />
+                  <ToggleSwitch
+                    checked={campos.mostrar_nascimento}
+                    onChange={(v) => setCampos({ ...campos, mostrar_nascimento: v })}
+                    label="Data de Nascimento"
+                  />
+                  <ToggleSwitch
+                    checked={campos.mostrar_email}
+                    onChange={(v) => setCampos({ ...campos, mostrar_email: v })}
+                    label="Exigir E-mail"
+                  />
+                  <ToggleSwitch
+                    checked={campos.mostrar_whatsapp}
+                    onChange={(v) => setCampos({ ...campos, mostrar_whatsapp: v })}
+                    label="Exigir WhatsApp"
+                  />
                 </div>
-                
-                <h4 className="text-xs font-black text-zinc-400 uppercase tracking-widest mb-4">Pular Módulos do Sistema</h4>
-                <div className="grid md:grid-cols-2 gap-6 p-6 bg-zinc-50 dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800">
-                  <ToggleSwitch checked={campos.ocultar_triagem} onChange={(v) => setCampos({ ...campos, ocultar_triagem: v })} label="Ocultar Etapa de Triagem" />
-                  <ToggleSwitch checked={campos.ocultar_modalidade} onChange={(v) => setCampos({ ...campos, ocultar_modalidade: v })} label="Ocultar Particular/Convênio" />
-                  <ToggleSwitch checked={campos.ocultar_checkout} onChange={(v) => setCampos({ ...campos, ocultar_checkout: v })} label="Ocultar Pagamento (Checkout)" />
+
+                <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-3">
+                  Pular Etapas
+                </h4>
+                <div className="grid sm:grid-cols-3 gap-4 p-4 bg-zinc-50/70 dark:bg-zinc-900/60 rounded-2xl border border-zinc-200/60 dark:border-zinc-800">
+                  <ToggleSwitch
+                    checked={campos.ocultar_triagem}
+                    onChange={(v) => setCampos({ ...campos, ocultar_triagem: v })}
+                    label="Ocultar Triagem"
+                  />
+                  <ToggleSwitch
+                    checked={campos.ocultar_modalidade}
+                    onChange={(v) => setCampos({ ...campos, ocultar_modalidade: v })}
+                    label="Ocultar Modalidade"
+                  />
+                  <ToggleSwitch
+                    checked={campos.ocultar_checkout}
+                    onChange={(v) => setCampos({ ...campos, ocultar_checkout: v })}
+                    label="Ocultar Pagamento"
+                  />
                 </div>
               </section>
             </motion.div>
           )}
 
-          {/* ==========================================
-              TAB 2: FORMAS DE ATENDIMENTO
-              ========================================== */}
-          {subTab === "modalidades" && (
-            <motion.div key="modalidades" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={spring} className="space-y-8">
-              <section className="bg-white dark:bg-[#111] border border-zinc-200/80 dark:border-zinc-800 p-8 rounded-[2.5rem] shadow-sm">
-                <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-8 gap-4 border-b border-zinc-100 dark:border-zinc-800 pb-6">
-                  <div>
-                    <h3 className="text-lg font-black text-zinc-900 dark:text-white flex items-center gap-2">
-                      <ListChecks size={18} className="text-indigo-500" /> Modalidades & Coberturas
-                    </h3>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-2">
-                      Defina os métodos aceitos e exija senha para liberar o agendamento em opções restritas.
+          {/* TAB 2: DESIGN & CORES */}
+          {subTab === "aparencia" && (
+            <motion.div
+              key="aparencia"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={spring}
+              className="space-y-6"
+            >
+              <div className="grid lg:grid-cols-12 gap-6">
+                <div className="lg:col-span-7 space-y-6">
+                  {/* DENSIDADE E ESCALA */}
+                  <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-7 rounded-[2rem] shadow-sm space-y-5">
+                    <div>
+                      <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">
+                        <Type size={18} strokeWidth={1.5} /> Densidade & Escala de Texto
+                      </h3>
+                      <p className="text-xs text-zinc-500 mt-1">
+                        Ajuste o tamanho dos menus, cabeçalhos e densidade de informação das telas.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2.5">
+                      {[
+                        { id: "compacto", label: "Compacto", desc: "Mais dados na tela" },
+                        { id: "padrao", label: "Padrão", desc: "Equilibrado" },
+                        { id: "confortavel", label: "Confortável", desc: "Mais espaçado" }
+                      ].map((item) => {
+                        const isSel = campos.tema?.densidade_texto === item.id;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() =>
+                              setCampos((prev) => ({
+                                ...prev,
+                                tema: { ...prev.tema, densidade_texto: item.id }
+                              }))
+                            }
+                            className={`p-3.5 rounded-2xl border text-left transition-all min-h-[72px] flex flex-col justify-between ${
+                              isSel
+                                ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-sm font-bold"
+                                : "bg-zinc-50/60 dark:bg-zinc-900/60 border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300"
+                            }`}
+                          >
+                            <span className="text-xs font-bold">{item.label}</span>
+                            <span className="text-[10px] opacity-70">{item.desc}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+
+                  {/* FORMATO DOS CARDS */}
+                  <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-7 rounded-[2rem] shadow-sm space-y-5">
+                    <div>
+                      <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">
+                        <LayoutGrid size={18} strokeWidth={1.5} /> Dimensionamento & Raio dos Cards
+                      </h3>
+                      <p className="text-xs text-zinc-500 mt-1">
+                        Estilo visual das bordas e arredondamento dos blocos da aplicação.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2.5">
+                      {[
+                        { id: "minimalista", label: "Minimalista", desc: "Bordas finas (12px)" },
+                        { id: "moderno", label: "Moderno", desc: "Equilibrado (18px)" },
+                        { id: "luxo_apple", label: "Soft Apple", desc: "Vidro suave (24px)" }
+                      ].map((item) => {
+                        const isSel = campos.tema?.estilo_cards === item.id;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() =>
+                              setCampos((prev) => ({
+                                ...prev,
+                                tema: { ...prev.tema, estilo_cards: item.id }
+                              }))
+                            }
+                            className={`p-3.5 rounded-2xl border text-left transition-all min-h-[72px] flex flex-col justify-between ${
+                              isSel
+                                ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-sm font-bold"
+                                : "bg-zinc-50/60 dark:bg-zinc-900/60 border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300"
+                            }`}
+                          >
+                            <span className="text-xs font-bold">{item.label}</span>
+                            <span className="text-[10px] opacity-70">{item.desc}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+
+                  {/* CORES DA MARCA */}
+                  <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-7 rounded-[2rem] shadow-sm space-y-5">
+                    <div>
+                      <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">
+                        <Sliders size={18} strokeWidth={1.5} /> Paleta de Cores da Marca
+                      </h3>
+                      <p className="text-xs text-zinc-500 mt-1">
+                        Selecione as cores primária e secundária para botões, detalhes e realces.
+                      </p>
+                    </div>
+
+                    <div className="space-y-3">
+                      <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
+                        Paletas Recomendadas:
+                      </span>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {PALETAS_PRESETS.map((p) => {
+                          const isSelected =
+                            campos.tema?.cor_primaria === p.prim &&
+                            campos.tema?.cor_secundaria === p.sec;
+                          return (
+                            <button
+                              key={p.nome}
+                              type="button"
+                              onClick={() => {
+                                setCampos((prev) => ({
+                                  ...prev,
+                                  tema: {
+                                    ...prev.tema,
+                                    cor_primaria: p.prim,
+                                    cor_secundaria: p.sec
+                                  }
+                                }));
+                                aplicarTemaEmTempoReal({
+                                  cor_primaria: p.prim,
+                                  cor_secundaria: p.sec
+                                });
+                              }}
+                              className={`p-2.5 rounded-xl border flex items-center gap-2 transition-all ${
+                                isSelected
+                                  ? "border-zinc-950 dark:border-white bg-zinc-100 dark:bg-zinc-800"
+                                  : "border-zinc-200/70 dark:border-zinc-800 hover:border-zinc-300"
+                              }`}
+                            >
+                              <div className="flex -space-x-1">
+                                <div
+                                  className="w-4 h-4 rounded-full border border-black/10"
+                                  style={{ backgroundColor: p.prim }}
+                                />
+                                <div
+                                  className="w-4 h-4 rounded-full border border-black/10"
+                                  style={{ backgroundColor: p.sec }}
+                                />
+                              </div>
+                              <span className="text-[11px] font-bold text-zinc-800 dark:text-zinc-200 truncate">
+                                {p.nome.split(" ")[0]}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="grid sm:grid-cols-2 gap-4 pt-2">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">
+                          Cor Primária (Hexadecimal)
+                        </label>
+                        <div className="flex items-center gap-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl px-3 py-2">
+                          <input
+                            type="color"
+                            value={campos.tema?.cor_primaria || "#9FC131"}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setCampos((prev) => ({
+                                ...prev,
+                                tema: { ...prev.tema, cor_primaria: val }
+                              }));
+                              aplicarTemaEmTempoReal({ cor_primaria: val });
+                            }}
+                            className="w-6 h-6 rounded border-0 cursor-pointer bg-transparent"
+                          />
+                          <input
+                            type="text"
+                            value={campos.tema?.cor_primaria || "#9FC131"}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setCampos((prev) => ({
+                                ...prev,
+                                tema: { ...prev.tema, cor_primaria: val }
+                              }));
+                              aplicarTemaEmTempoReal({ cor_primaria: val });
+                            }}
+                            className="w-full bg-transparent text-xs font-mono font-bold uppercase outline-none text-zinc-900 dark:text-white"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">
+                          Cor Secundária (Hexadecimal)
+                        </label>
+                        <div className="flex items-center gap-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl px-3 py-2">
+                          <input
+                            type="color"
+                            value={campos.tema?.cor_secundaria || "#10B981"}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setCampos((prev) => ({
+                                ...prev,
+                                tema: { ...prev.tema, cor_secundaria: val }
+                              }));
+                              aplicarTemaEmTempoReal({ cor_secundaria: val });
+                            }}
+                            className="w-6 h-6 rounded border-0 cursor-pointer bg-transparent"
+                          />
+                          <input
+                            type="text"
+                            value={campos.tema?.cor_secundaria || "#10B981"}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setCampos((prev) => ({
+                                ...prev,
+                                tema: { ...prev.tema, cor_secundaria: val }
+                              }));
+                              aplicarTemaEmTempoReal({ cor_secundaria: val });
+                            }}
+                            className="w-full bg-transparent text-xs font-mono font-bold uppercase outline-none text-zinc-900 dark:text-white"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+
+                {/* PRÉ-VISUALIZAÇÃO EM TEMPO REAL */}
+                <div className="lg:col-span-5">
+                  <div className="sticky top-6 bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 rounded-[2rem] shadow-sm space-y-4">
+                    <div className="flex justify-between items-center border-b border-zinc-100 dark:border-white/5 pb-3">
+                      <span className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-widest">
+                        Pré-visualização do Paciente
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400">
+                        {campos.tema?.densidade_texto || "compacto"}
+                      </span>
+                    </div>
+
+                    <div
+                      className="p-5 border transition-all space-y-4 bg-zinc-50/70 dark:bg-zinc-900/60 border-zinc-200/80 dark:border-zinc-800"
+                      style={{
+                        borderRadius:
+                          campos.tema?.estilo_cards === "minimalista"
+                            ? "12px"
+                            : campos.tema?.estilo_cards === "luxo_apple"
+                            ? "24px"
+                            : "18px"
+                      }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-10 h-10 rounded-xl flex items-center justify-center text-black font-bold shadow-sm"
+                            style={{
+                              backgroundColor: campos.tema?.cor_primaria || "#9FC131"
+                            }}
+                          >
+                            <Calendar size={18} strokeWidth={2} />
+                          </div>
+                          <div>
+                            <h4 className="font-extrabold text-xs text-zinc-950 dark:text-white">
+                              Dr. Lucas Amorim
+                            </h4>
+                            <p className="text-[11px] text-zinc-500">Gastroenterologia</p>
+                          </div>
+                        </div>
+
+                        <span
+                          className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full"
+                          style={{
+                            color: campos.tema?.cor_secundaria || "#10B981",
+                            backgroundColor: `${campos.tema?.cor_secundaria || "#10B981"}20`
+                          }}
+                        >
+                          Disponível
+                        </span>
+                      </div>
+
+                      <div className="p-3 bg-white dark:bg-black/60 rounded-xl border border-zinc-200/60 dark:border-zinc-800/80 flex items-center justify-between text-xs font-semibold">
+                        <span className="text-zinc-500">Horário Selecionado:</span>
+                        <span className="font-bold text-zinc-950 dark:text-white">09:30 h</span>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="w-full py-2.5 px-4 rounded-xl font-bold text-xs text-black transition-transform shadow-md flex items-center justify-center gap-2"
+                        style={{
+                          backgroundColor: campos.tema?.cor_primaria || "#9FC131"
+                        }}
+                      >
+                        <Check size={14} strokeWidth={2.5} /> Confirmar Atendimento
+                      </button>
+                    </div>
+
+                    <p className="text-[11px] text-zinc-400 text-center leading-relaxed">
+                      As alterações visuais serão aplicadas no agendamento do paciente após clicar em <strong>Salvar</strong>.
                     </p>
                   </div>
-                  <button onClick={addModalidade} className="flex items-center justify-center gap-2 px-5 py-3 bg-zinc-900 dark:bg-white text-white dark:text-black text-xs font-bold uppercase tracking-widest rounded-xl hover:bg-black transition-transform shadow-md">
-                    <Plus size={16} /> Adicionar Método
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* TAB 3: MODALIDADES */}
+          {subTab === "modalidades" && (
+            <motion.div
+              key="modalidades"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={spring}
+              className="space-y-6"
+            >
+              <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm">
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-6 gap-4 border-b border-zinc-100 dark:border-white/5 pb-4">
+                  <div>
+                    <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">
+                      <ListChecks size={18} strokeWidth={1.5} /> Formas de Atendimento & Coberturas
+                    </h3>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      Defina os métodos de cobertura aceitos e configure senhas para restrições.
+                    </p>
+                  </div>
+                  <button
+                    onClick={addModalidade}
+                    className="flex items-center justify-center gap-2 px-4 py-2 bg-zinc-950 dark:bg-white text-white dark:text-black text-xs font-bold rounded-xl transition-all shadow-sm min-h-[38px]"
+                  >
+                    <Plus size={15} /> Adicionar Método
                   </button>
                 </div>
 
-                <div className="mb-10 p-6 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 rounded-2xl">
-                  <CustomSelect 
-                    label="Modalidade Padrão (Fallback)" 
-                    value={campos.modalidade_padrao} 
-                    onChange={(v) => setCampos({ ...campos, modalidade_padrao: v })} 
-                    options={campos.modalidades_opcoes.map((m) => ({ value: m.nome, label: m.nome }))}
+                <div className="mb-6 p-4 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 rounded-2xl">
+                  <CustomSelect
+                    label="Modalidade Padrão"
+                    value={campos.modalidade_padrao}
+                    onChange={(v) => setCampos({ ...campos, modalidade_padrao: v })}
+                    options={campos.modalidades_opcoes.map((m) => ({
+                      value: m.nome,
+                      label: m.nome
+                    }))}
                   />
-                  <p className="text-xs font-bold text-blue-700/80 dark:text-blue-400 uppercase tracking-widest mt-3">
-                    A modalidade acima será aplicada automaticamente caso a etapa de seleção esteja oculta.
-                  </p>
                 </div>
 
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {campos.modalidades_opcoes.map((mod) => (
-                    <div key={mod.id} className="p-6 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-3xl flex flex-col md:flex-row gap-6 items-start md:items-center justify-between">
-                      <div className="flex-1 w-full grid md:grid-cols-2 gap-4">
-                        <TextInput label="Nome da Modalidade" value={mod.nome} onChange={(e) => updateModalidade(mod.id, "nome", e.target.value)} />
+                    <div
+                      key={mod.id}
+                      className="p-4 sm:p-5 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl flex flex-col md:flex-row gap-4 items-start md:items-center justify-between"
+                    >
+                      <div className="flex-1 w-full grid sm:grid-cols-2 gap-3">
+                        <TextInput
+                          label="Nome da Opção"
+                          value={mod.nome}
+                          onChange={(e) => updateModalidade(mod.id, "nome", e.target.value)}
+                        />
                         {mod.exige_senha && (
-                          <TextInput label="Senha Exigida para Liberar" value={mod.senha || ""} onChange={(e) => updateModalidade(mod.id, "senha", e.target.value)} />
+                          <TextInput
+                            label="Senha Exigida"
+                            value={mod.senha || ""}
+                            onChange={(e) => updateModalidade(mod.id, "senha", e.target.value)}
+                          />
                         )}
                       </div>
-                      <div className="flex items-center gap-6 w-full md:w-auto justify-between md:justify-end">
-                        <ToggleSwitch checked={mod.exige_senha} onChange={(v) => updateModalidade(mod.id, "exige_senha", v)} label="Exigir Senha" />
-                        <button onClick={() => removeModalidade(mod.id)} className="w-10 h-10 rounded-full flex items-center justify-center text-zinc-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+                      <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
+                        <ToggleSwitch
+                          checked={mod.exige_senha}
+                          onChange={(v) => updateModalidade(mod.id, "exige_senha", v)}
+                          label="Exigir Senha"
+                        />
+                        <button
+                          onClick={() => removeModalidade(mod.id)}
+                          className="p-2 rounded-xl text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                        >
                           <Trash2 size={16} />
                         </button>
                       </div>
@@ -398,321 +832,141 @@ export default function PersonalizacaoView({ subTab = "jornada", setSubTab, show
             </motion.div>
           )}
 
-          {/* ==========================================
-              TAB 3: MENSAGENS AUTOMÁTICAS & NICHO/IDADE
-              ========================================== */}
+          {/* TAB 4: MENSAGENS WHATSAPP */}
           {subTab === "mensagens" && (
-            <motion.div key="mensagens" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={spring} className="space-y-8">
-              <section className="bg-white dark:bg-[#111] border border-zinc-200/80 dark:border-zinc-800 p-8 rounded-[2.5rem] shadow-sm">
-                
-                {/* CONFIGURAÇÃO ERP */}
-                <div className="mb-8 p-6 bg-purple-50/50 dark:bg-purple-950/20 border border-purple-100 dark:border-purple-900/40 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div>
-                    <h4 className="text-sm font-black text-purple-900 dark:text-purple-300 flex items-center gap-2">
-                      <Sparkles size={16} className="text-purple-600 dark:text-purple-400" />
-                      Geração de Mensagens para Atendimentos Importados do ERP
-                    </h4>
-                    <p className="text-xs text-purple-700/80 dark:text-purple-400/80 mt-1">
-                      Quando ativo, novos atendimentos sincronizados pelo ERP Medicalsys geram mensagens em rascunho.
-                    </p>
-                  </div>
-                  <ToggleSwitch
-                    checked={Boolean(campos.enviar_mensagens_importados_erp)}
-                    onChange={(v) => setCampos({ ...campos, enviar_mensagens_importados_erp: v })}
-                    label={campos.enviar_mensagens_importados_erp ? "Geração Ativada" : "Geração Pausada"}
-                  />
-                </div>
-
-                {/* FILTROS DE PESQUISA */}
-                <div className="p-6 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-3xl mb-8 space-y-4">
-                  <h4 className="text-xs font-bold uppercase tracking-widest text-zinc-400 flex items-center gap-2">
-                    <Filter size={14} /> Filtrar Mensagens Cadastradas
-                  </h4>
-                  <div className="grid md:grid-cols-2 gap-4">
+            <motion.div
+              key="mensagens"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={spring}
+              className="space-y-6"
+            >
+              <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm">
+                <div className="p-4 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl mb-6 space-y-3">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+                    <Filter size={13} /> Filtros de Automação
+                  </span>
+                  <div className="grid sm:grid-cols-2 gap-3">
                     <CustomSelect
-                      label="Filtrar por Nicho / Especialidade"
+                      label="Nicho / Especialidade"
                       value={filterEspecialidade}
                       onChange={setFilterEspecialidade}
                       options={[
-                        { value: "Todas", label: "Todas as Especialidades e Serviços" },
+                        { value: "Todas", label: "Todas as Especialidades" },
                         ...especialidadesUnicas.map((e) => ({ value: e, label: e }))
                       ]}
                     />
 
                     <CustomSelect
-                      label="Filtrar por Categoria / Gatilho"
+                      label="Categoria / Gatilho"
                       value={filterGatilho}
                       onChange={setFilterGatilho}
-                      options={[
-                        { value: "Todos", label: "Todas as Categorias" },
-                        ...gatilhoOptions
-                      ]}
+                      options={[{ value: "Todos", label: "Todas as Categorias" }, ...gatilhoOptions]}
                     />
                   </div>
                 </div>
 
-                <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-8 gap-4 border-b border-zinc-100 dark:border-zinc-800 pb-6">
-                  <div>
-                    <h3 className="text-lg font-black text-zinc-900 dark:text-white flex items-center gap-2">
-                      <MessageSquare size={18} className="text-green-500" /> Automações de WhatsApp ({regrasFiltradas.length})
-                    </h3>
-                  </div>
-                  <button onClick={adicionarNovaRegra} className="flex items-center justify-center gap-2 px-5 py-3 bg-zinc-900 dark:bg-white text-white dark:text-black text-xs font-bold uppercase tracking-widest rounded-xl hover:bg-black transition-transform shadow-md">
-                    <Plus size={16} /> Adicionar Mensagem
+                <div className="flex justify-between items-center mb-6 border-b border-zinc-100 dark:border-white/5 pb-4">
+                  <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">
+                    <MessageSquare size={17} strokeWidth={1.5} className="text-emerald-500" />{" "}
+                    Automações de WhatsApp ({regrasFiltradas.length})
+                  </h3>
+                  <button
+                    onClick={adicionarNovaRegra}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-zinc-950 dark:bg-white text-white dark:text-black text-xs font-bold rounded-xl transition-all shadow-sm min-h-[38px]"
+                  >
+                    <Plus size={15} /> Nova Mensagem
                   </button>
                 </div>
 
-                <div className="space-y-6">
+                <div className="space-y-5">
                   <AnimatePresence>
                     {regrasFiltradas.length === 0 ? (
-                      <div className="text-center py-12 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-3xl bg-zinc-50 dark:bg-zinc-900">
-                        <div className="w-16 h-16 bg-white dark:bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
-                          <MessageSquare size={24} className="text-zinc-300 dark:text-zinc-600" />
-                        </div>
-                        <h4 className="text-zinc-900 dark:text-white font-bold mb-1">Nenhuma automação encontrada</h4>
-                        <p className="text-zinc-500 text-sm">Ajuste os filtros de pesquisa acima para visualizar outras regras.</p>
+                      <div className="text-center py-12 border border-dashed border-zinc-200 dark:border-zinc-800 rounded-2xl text-zinc-400 text-xs">
+                        Nenhuma mensagem encontrada com os filtros selecionados.
                       </div>
                     ) : (
                       regrasFiltradas.map((regra, index) => (
-                        <motion.div key={regra.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-zinc-50/50 dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800 rounded-[1.75rem] p-6 relative group flex flex-col lg:flex-row gap-8">
-                          
-                          <button onClick={() => removerRegra(regra.id)} className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white dark:bg-zinc-800 border border-red-100 flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors shadow-sm z-10">
-                            <Trash2 size={14} />
+                        <motion.div
+                          key={regra.id}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.98 }}
+                          className="bg-zinc-50/60 dark:bg-zinc-900/50 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl p-5 relative flex flex-col lg:flex-row gap-6"
+                        >
+                          <button
+                            onClick={() => removerRegra(regra.id)}
+                            className="absolute top-4 right-4 p-1.5 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                          >
+                            <Trash2 size={15} />
                           </button>
 
-                          <div className="flex-1 space-y-5">
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className="w-6 h-6 rounded-full bg-zinc-900 dark:bg-white text-white dark:text-black flex items-center justify-center text-xs font-bold">{index + 1}</span>
-                              <h4 className="font-semibold text-zinc-900 dark:text-white text-sm">Critérios de Disparo da Mensagem</h4>
+                          <div className="flex-1 space-y-4">
+                            <div className="flex items-center gap-2">
+                              <span className="w-5 h-5 rounded-full bg-zinc-950 dark:bg-white text-white dark:text-black flex items-center justify-center text-[10px] font-bold">
+                                {index + 1}
+                              </span>
+                              <h4 className="font-bold text-xs text-zinc-950 dark:text-white">
+                                Critérios de Disparo
+                              </h4>
                             </div>
-                            
-                            {/* ALVO: NICHO / TIPO / ESPECIALIDADE */}
+
                             <CustomSelect
-                              label="Nicho / Atendimento que receberá a mensagem"
-                              value={regra.alvo || (regra.especialidade === "Todas" ? "Todas" : `especialidade:${regra.especialidade}`)}
+                              label="Nicho / Atendimento"
+                              value={
+                                regra.alvo ||
+                                (regra.especialidade === "Todas"
+                                  ? "Todas"
+                                  : `especialidade:${regra.especialidade}`)
+                              }
                               onChange={(v) => atualizarRegra(regra.id, "alvo", v)}
                               options={alvoOptions}
                             />
 
-                            {/* FILTRO DE IDADE DO PACIENTE */}
-                            <div className="p-4 bg-zinc-100/70 dark:bg-zinc-800/40 rounded-2xl border border-zinc-200/60 dark:border-zinc-800 space-y-3">
-                              <div className="flex items-center justify-between">
-                                <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-1.5">
-                                  <UserCheck size={13} /> Filtro de Faixa Etária (Idade)
-                                </span>
-                              </div>
-                              
+                            <div className="grid sm:grid-cols-2 gap-3">
                               <CustomSelect
-                                label="Critério de Idade do Paciente"
-                                value={regra.filtro_idade_tipo || "todas"}
-                                onChange={(v) => atualizarRegra(regra.id, "filtro_idade_tipo", v)}
-                                options={[
-                                  { value: "todas", label: "Todas as idades (Sem restrição)" },
-                                  { value: "maior_que", label: "Apenas pacientes com idade maior ou igual a (>= X anos)" },
-                                  { value: "menor_que", label: "Apenas pacientes com idade menor ou igual a (<= X anos)" },
-                                  { value: "faixa", label: "Apenas pacientes dentro de uma faixa etária (De X a Y anos)" }
-                                ]}
+                                label="Gatilho"
+                                value={regra.gatilho}
+                                onChange={(v) => atualizarRegra(regra.id, "gatilho", v)}
+                                options={gatilhoOptions}
                               />
 
-                              {regra.filtro_idade_tipo === "maior_que" && (
-                                <div>
-                                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">Idade Mínima (Anos)</label>
-                                  <input
+                              {regra.gatilho === "agendado" && (
+                                <div className="grid grid-cols-2 gap-2">
+                                  <TextInput
                                     type="number"
-                                    min="0"
-                                    max="120"
-                                    value={regra.idade_minima ?? 65}
-                                    onChange={(e) => atualizarRegra(regra.id, "idade_minima", Number(e.target.value))}
-                                    placeholder="Ex: 65"
-                                    className="w-full px-4 py-2.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none"
+                                    label="Dias Antes"
+                                    value={regra.dias_antes ?? 1}
+                                    onChange={(e) =>
+                                      atualizarRegra(regra.id, "dias_antes", e.target.value)
+                                    }
                                   />
-                                  <p className="text-[10px] text-purple-600 dark:text-purple-400 mt-1 font-medium">
-                                    💡 A mensagem será enviada apenas para pacientes com {regra.idade_minima ?? 65} anos ou mais.
-                                  </p>
-                                </div>
-                              )}
-
-                              {regra.filtro_idade_tipo === "menor_que" && (
-                                <div>
-                                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">Idade Máxima (Anos)</label>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    max="120"
-                                    value={regra.idade_maxima ?? 18}
-                                    onChange={(e) => atualizarRegra(regra.id, "idade_maxima", Number(e.target.value))}
-                                    placeholder="Ex: 18"
-                                    className="w-full px-4 py-2.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none"
+                                  <TextInput
+                                    type="time"
+                                    label="Hora Envio"
+                                    value={regra.hora_envio || "08:00"}
+                                    onChange={(e) =>
+                                      atualizarRegra(regra.id, "hora_envio", e.target.value)
+                                    }
                                   />
-                                </div>
-                              )}
-
-                              {regra.filtro_idade_tipo === "faixa" && (
-                                <div className="grid grid-cols-2 gap-3">
-                                  <div>
-                                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">De (Anos)</label>
-                                    <input
-                                      type="number"
-                                      value={regra.idade_minima ?? 60}
-                                      onChange={(e) => atualizarRegra(regra.id, "idade_minima", Number(e.target.value))}
-                                      className="w-full px-4 py-2.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">Até (Anos)</label>
-                                    <input
-                                      type="number"
-                                      value={regra.idade_maxima ?? 80}
-                                      onChange={(e) => atualizarRegra(regra.id, "idade_maxima", Number(e.target.value))}
-                                      className="w-full px-4 py-2.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none"
-                                    />
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                            
-                            {/* GATILHO */}
-                            <div className="grid grid-cols-2 gap-4">
-                              <div className="col-span-2">
-                                <CustomSelect label="Gatilho / Categoria da Mensagem" value={regra.gatilho} onChange={(v) => atualizarRegra(regra.id, "gatilho", v)} options={gatilhoOptions} />
-                              </div>
-                              
-                              {regra.gatilho === "pos_atendimento" ? (
-                                <div className="col-span-2 space-y-4 p-4 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 rounded-2xl">
-                                  <CustomSelect
-                                    label="Momento de Referência do Envio"
-                                    value={regra.referencia_pos || "termino"}
-                                    onChange={(v) => atualizarRegra(regra.id, "referencia_pos", v)}
-                                    options={[
-                                      { value: "termino", label: "A partir do Término do Atendimento / Exame (Considera Duração)" },
-                                      { value: "inicio", label: "A partir do Horário de Início Marcado" },
-                                      { value: "dias_depois", label: "Dias Depois em Horário Fixo (Ex.: 1 dia após às 08:00)" }
-                                    ]}
-                                  />
-
-                                  {regra.referencia_pos === "dias_depois" ? (
-                                    <div className="grid grid-cols-2 gap-3">
-                                      <div>
-                                        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1 mb-1.5 block">Quantidade de Dias</label>
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          max="30"
-                                          value={regra.dias_depois || 1}
-                                          onChange={(e) => atualizarRegra(regra.id, "dias_depois", e.target.value)}
-                                          className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-sm font-medium outline-none"
-                                        />
-                                      </div>
-                                      <div>
-                                        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1 mb-1.5 block">Hora de Envio</label>
-                                        <input
-                                          type="time"
-                                          value={regra.hora_envio || "08:00"}
-                                          onChange={(e) => atualizarRegra(regra.id, "hora_envio", e.target.value)}
-                                          className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-sm font-medium outline-none"
-                                        />
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div className="space-y-3">
-                                      <div className="grid grid-cols-2 gap-3">
-                                        <div>
-                                          <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1 mb-1.5 block">Tempo de Espera</label>
-                                          <input
-                                            type="number"
-                                            min="0"
-                                            value={regra.offset_valor ?? 0}
-                                            onChange={(e) => atualizarRegra(regra.id, "offset_valor", Number(e.target.value))}
-                                            className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-sm font-medium outline-none"
-                                          />
-                                        </div>
-                                        <div>
-                                          <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1 mb-1.5 block">Unidade de Tempo</label>
-                                          <select
-                                            value={regra.offset_unidade || "minutos"}
-                                            onChange={(e) => atualizarRegra(regra.id, "offset_unidade", e.target.value)}
-                                            className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-sm font-medium outline-none text-zinc-800 dark:text-zinc-200"
-                                          >
-                                            <option value="minutos">Minutos</option>
-                                            <option value="horas">Horas</option>
-                                            <option value="segundos">Segundos</option>
-                                          </select>
-                                        </div>
-                                      </div>
-
-                                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                                        <span className="text-[10px] text-zinc-400 font-bold uppercase mr-1">Atalhos:</span>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            atualizarRegra(regra.id, "referencia_pos", "termino");
-                                            atualizarRegra(regra.id, "offset_valor", 0);
-                                            atualizarRegra(regra.id, "offset_unidade", "minutos");
-                                          }}
-                                          className="px-2 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 text-[10px] font-bold rounded-lg hover:bg-zinc-100"
-                                        >
-                                          Ao terminar (0 min)
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            atualizarRegra(regra.id, "referencia_pos", "termino");
-                                            atualizarRegra(regra.id, "offset_valor", 20);
-                                            atualizarRegra(regra.id, "offset_unidade", "minutos");
-                                          }}
-                                          className="px-2 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 text-[10px] font-bold rounded-lg hover:bg-zinc-100"
-                                        >
-                                          20 min após término
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            atualizarRegra(regra.id, "referencia_pos", "termino");
-                                            atualizarRegra(regra.id, "offset_valor", 1);
-                                            atualizarRegra(regra.id, "offset_unidade", "horas");
-                                          }}
-                                          className="px-2 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 text-[10px] font-bold rounded-lg hover:bg-zinc-100"
-                                        >
-                                          1 hora após término
-                                        </button>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              ) : regra.gatilho === "agendado" ? (
-                                <>
-                                  <div>
-                                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1 mb-1.5 block">Dias Antes</label>
-                                    <input type="number" min="0" max="30" value={regra.dias_antes ?? 1} onChange={(e) => atualizarRegra(regra.id, "dias_antes", e.target.value)} className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-sm font-medium outline-none" />
-                                  </div>
-                                  <div>
-                                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1 mb-1.5 block">Hora de Envio</label>
-                                    <input type="time" value={regra.hora_envio || "08:00"} onChange={(e) => atualizarRegra(regra.id, "hora_envio", e.target.value)} className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-sm font-medium outline-none" />
-                                  </div>
-                                </>
-                              ) : (
-                                <div className="col-span-2 p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/40 rounded-xl flex items-center gap-3">
-                                  <Zap size={20} className="text-amber-500" />
-                                  <p className="text-xs font-bold text-amber-700 dark:text-amber-300">
-                                    A mensagem será enviada no momento exato em que o evento ocorrer ({gatilhoOptions.find((g) => g.value === regra.gatilho)?.label}).
-                                  </p>
                                 </div>
                               )}
                             </div>
                           </div>
 
-                          <div className="flex-1 flex flex-col justify-end space-y-3">
+                          <div className="flex-1 flex flex-col justify-between space-y-3">
                             <div>
-                              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1 mb-2 block">
-                                Inserir Variáveis Dinâmicas no Texto:
-                              </label>
-                              <div className="flex flex-wrap gap-1.5">
+                              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-1.5">
+                                Variáveis Disponíveis:
+                              </span>
+                              <div className="flex flex-wrap gap-1">
                                 {variaveisDisponiveis.map((v) => (
                                   <button
                                     key={v.tag}
                                     type="button"
                                     onClick={() => inserirVariavelNaRegra(regra.id, v.tag)}
-                                    className="px-2.5 py-1 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 rounded-lg font-mono text-[11px] font-bold transition-all shadow-sm"
+                                    className="px-2 py-0.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded text-[10px] font-mono font-bold"
                                     title={v.desc}
                                   >
                                     + {v.tag}
@@ -721,17 +975,17 @@ export default function PersonalizacaoView({ subTab = "jornada", setSubTab, show
                               </div>
                             </div>
 
-                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1 block">Texto da Mensagem</label>
-                            <div className="bg-[#E1F6CB] dark:bg-[#1a2e1c] p-5 rounded-3xl rounded-tr-sm shadow-sm relative border border-[#c1e89e] dark:border-[#2f4d22]">
+                            <div className="bg-emerald-50/70 dark:bg-emerald-950/20 p-3.5 rounded-xl border border-emerald-200/60 dark:border-emerald-900/40">
                               <textarea
                                 value={regra.mensagem}
-                                onChange={(e) => atualizarRegra(regra.id, "mensagem", e.target.value)}
-                                placeholder="Digite aqui o que o paciente vai receber..."
-                                className="w-full bg-transparent text-sm font-medium text-[#111B21] dark:text-zinc-100 outline-none min-h-[160px] resize-none custom-scrollbar placeholder:text-[#5e7769]"
+                                onChange={(e) =>
+                                  atualizarRegra(regra.id, "mensagem", e.target.value)
+                                }
+                                placeholder="Texto da mensagem..."
+                                className="w-full bg-transparent text-xs font-medium text-zinc-900 dark:text-zinc-100 outline-none min-h-[100px] resize-none custom-scrollbar"
                               />
                             </div>
                           </div>
-
                         </motion.div>
                       ))
                     )}
@@ -740,10 +994,8 @@ export default function PersonalizacaoView({ subTab = "jornada", setSubTab, show
               </section>
             </motion.div>
           )}
-
         </AnimatePresence>
       </div>
-
     </motion.div>
   );
 }

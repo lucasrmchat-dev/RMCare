@@ -1,40 +1,51 @@
 'use client';
+
 import { useEffect, useState } from 'react';
 import { usePathname, useParams } from 'next/navigation';
 import { House, CalendarDays, CalendarSearch, Moon, Sun } from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
+import { playDopamineSound, triggerHaptic } from '@/lib/dopamine';
 
-// FÍSICA MOTION DESIGN (Apple Spring)
-const liquidSpring = { type: "spring", stiffness: 400, damping: 30, mass: 0.8 };
+const liquidSpring = { type: 'spring', stiffness: 420, damping: 30, mass: 0.8 };
 
-const DockItem = ({ href, icon: Icon, activeMatch }) => {
+const DockItem = ({ href, icon: Icon, label, activeMatch }) => {
   const pathname = usePathname();
   const isAtivo = activeMatch ? pathname === activeMatch : pathname === href;
 
   return (
-    <Link href={href} className="relative flex items-center justify-center w-[54px] h-[54px] outline-none group z-10 shrink-0">
+    <Link
+      href={href}
+      aria-label={label}
+      onClick={() => {
+        playDopamineSound('click');
+        triggerHaptic('light');
+      }}
+      className="relative flex items-center justify-center min-w-[46px] min-h-[46px] w-[46px] h-[46px] outline-none group z-10 shrink-0 rounded-full focus-visible:ring-2 focus-visible:ring-[#9FC131]"
+    >
       {isAtivo && (
-        <motion.div 
-          layoutId="mobile-dock-active-circle" 
-          transition={liquidSpring} 
-          className="absolute inset-0 bg-black/5 dark:bg-white/10 rounded-full shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)] dark:shadow-[inset_0_1px_2px_rgba(255,255,255,0.05)] border border-black/5 dark:border-white/5 -z-10" 
+        <motion.div
+          layoutId="mobile-dock-active-pill"
+          transition={liquidSpring}
+          className="absolute inset-0 bg-black/5 dark:bg-white/10 rounded-full shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_2px_rgba(255,255,255,0.06)] border border-black/5 dark:border-white/10 -z-10"
         />
       )}
-      
-      <motion.div 
+
+      <motion.div
         layout
-        whileTap={{ scale: 0.8 }}
-        animate={{ scale: isAtivo ? 1.05 : 1 }} 
-        transition={{ type: "spring", stiffness: 500, damping: 20 }}
+        whileTap={{ scale: 0.85 }}
+        animate={{ scale: isAtivo ? 1.05 : 1 }}
+        transition={{ type: 'spring', stiffness: 500, damping: 22 }}
         className="relative z-10 flex items-center justify-center"
       >
-        <Icon 
-          size={22} 
-          strokeWidth={isAtivo ? 2 : 1.5} 
+        <Icon
+          size={19}
+          strokeWidth={isAtivo ? 1.75 : 1.35}
           className={`transition-colors duration-300 ${
-            isAtivo ? "text-zinc-900 dark:text-white drop-shadow-sm" : "text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-600 dark:group-hover:text-zinc-300"
-          }`} 
+            isAtivo
+              ? 'text-zinc-950 dark:text-white drop-shadow-sm'
+              : 'text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-700 dark:group-hover:text-zinc-300'
+          }`}
         />
       </motion.div>
     </Link>
@@ -44,16 +55,19 @@ const DockItem = ({ href, icon: Icon, activeMatch }) => {
 export default function Navbar() {
   const [isDark, setIsDark] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [lastSlug, setLastSlug] = useState("");
-  
+  const [lastSlug, setLastSlug] = useState('');
+
+  const pathname = usePathname();
   const params = useParams();
   const currentSlug = params?.slug;
+
+  const isAgendamentoFlow = pathname?.includes('/agendamentos');
 
   useEffect(() => {
     setMounted(true);
     const savedTheme = localStorage.getItem('rmagenda_theme') || localStorage.getItem('theme');
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    
+
     if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
       setIsDark(true);
       document.documentElement.classList.add('dark');
@@ -65,12 +79,15 @@ export default function Navbar() {
     if (currentSlug) {
       setLastSlug(currentSlug);
     } else {
-      const savedSlug = localStorage.getItem('rmagenda_last_slug') || localStorage.getItem('rmcare_last_slug');
+      const savedSlug =
+        localStorage.getItem('rmagenda_last_slug') || localStorage.getItem('rmcare_last_slug');
       if (savedSlug) setLastSlug(savedSlug);
     }
   }, [currentSlug]);
 
   const toggleTheme = () => {
+    playDopamineSound('click');
+    triggerHaptic('light');
     const nextState = !isDark;
     setIsDark(nextState);
     if (nextState) {
@@ -86,33 +103,53 @@ export default function Navbar() {
 
   if (!mounted) return null;
 
-  const agendamentoHref = lastSlug ? `/${lastSlug}/agendamentos` : "/agendamento";
+  const agendamentoHref = lastSlug ? `/${lastSlug}/agendamentos` : '/';
 
   return (
-    <div className="md:hidden fixed bottom-6 left-0 right-0 z-[99999] flex justify-center pointer-events-none px-4">
-      <motion.div 
+    <nav
+      aria-label="Navegação Principal"
+      className={`md:hidden fixed ${
+        isAgendamentoFlow ? 'bottom-[86px]' : 'bottom-5'
+      } left-0 right-0 z-[99999] flex justify-center pointer-events-none px-4 transition-all duration-300`}
+    >
+      <motion.div
         layout
         transition={liquidSpring}
-        className="relative flex items-center p-2 rounded-full bg-white/70 dark:bg-[#111111]/70 backdrop-blur-[40px] saturate-[1.8] border border-zinc-200/80 dark:border-white/10 shadow-[0_20px_50px_-10px_rgba(0,0,0,0.1),inset_0_1px_0_rgba(255,255,255,0.8)] dark:shadow-[0_20px_50px_-10px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.05)] pointer-events-auto"
+        className="relative flex items-center p-1.5 rounded-full bg-white/60 dark:bg-[#0c0c0e]/65 backdrop-blur-[40px] saturate-[1.8] border border-zinc-200/60 dark:border-white/[0.08] shadow-[0_15px_40px_-10px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.7)] dark:shadow-[0_15px_40px_-10px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.06)] pointer-events-auto gap-1"
       >
-        
-        <DockItem href="/" icon={House} />
-        <DockItem href={agendamentoHref} icon={CalendarDays} activeMatch={lastSlug ? `/${lastSlug}/agendamentos` : null} />
-        <DockItem href="/consultar" icon={CalendarSearch} />
-        
-        <motion.div layout className="w-[1px] h-6 bg-zinc-300/50 dark:bg-zinc-700/50 mx-2 shrink-0 rounded-full" />
-        
-        <motion.button 
-          layout
-          onClick={toggleTheme} 
-          className="relative flex items-center justify-center w-[54px] h-[54px] outline-none group z-10 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors duration-300 shrink-0"
-        >
-           <motion.div whileTap={{ scale: 0.8 }} transition={{ type: "spring", stiffness: 400, damping: 15 }} className="relative z-10 flex flex-col items-center">
-              {isDark ? <Sun size={20} strokeWidth={1.5} className="text-zinc-400 group-hover:text-white transition-colors" /> : <Moon size={20} strokeWidth={1.5} className="text-zinc-400 group-hover:text-zinc-900 transition-colors" />}
-           </motion.div>
-        </motion.button>
+        <DockItem href="/" icon={House} label="Início" />
+        <DockItem
+          href={agendamentoHref}
+          icon={CalendarDays}
+          label="Agendamentos"
+          activeMatch={lastSlug ? `/${lastSlug}/agendamentos` : null}
+        />
+        <DockItem href="/consultar" icon={CalendarSearch} label="Consultar" />
 
+        <div className="w-[1px] h-5 bg-zinc-300/60 dark:bg-zinc-700/60 mx-1 shrink-0 rounded-full" />
+
+        <motion.button
+          layout
+          onClick={toggleTheme}
+          aria-label={isDark ? 'Mudar para Tema Claro' : 'Mudar para Tema Noturno'}
+          whileTap={{ scale: 0.85 }}
+          className="relative flex items-center justify-center min-w-[42px] min-h-[42px] w-[42px] h-[42px] outline-none group z-10 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors duration-300 shrink-0"
+        >
+          {isDark ? (
+            <Sun
+              size={17}
+              strokeWidth={1.5}
+              className="text-amber-400 group-hover:text-amber-300 transition-colors"
+            />
+          ) : (
+            <Moon
+              size={17}
+              strokeWidth={1.5}
+              className="text-zinc-500 group-hover:text-zinc-900 transition-colors"
+            />
+          )}
+        </motion.button>
       </motion.div>
-    </div>
+    </nav>
   );
 }

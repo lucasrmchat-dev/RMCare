@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { getMessageSchedule } from "@/lib/appointmentRules";
 import { supabase } from "@/lib/supabase";
 
@@ -22,14 +23,21 @@ export const masks = {
   cardExpiry: (v = "") => v.replace(/\D/g, "").replace(/(\d{2})(\d)/, "$1/$2").substring(0, 5)
 };
 
-export const schema = {
-  cpf: (v) => v.replace(/\D/g, "").length === 11,
-  nome: (v) => (v || "").trim().length >= 2,
-  sobrenome: (v) => (v || "").trim().length >= 2,
-  telefone_whatsapp: (v) => v.replace(/\D/g, "").length >= 10,
-  email: (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
-  data_nascimento: (v) => helpers.isValidDate(v)
-};
+export const schema = z.object({
+  cpf: z.string().optional().or(z.literal("")),
+  nome: z.string().min(2, "Nome é obrigatório"),
+  sobrenome: z.string().optional().or(z.literal("")),
+  telefone_whatsapp: z.string().optional().or(z.literal("")),
+  email: z.string().optional().or(z.literal("")),
+  data_nascimento: z.string().optional().or(z.literal("")),
+  tipo_servico: z.string().optional().or(z.literal("")),
+  especialidade: z.string().optional().or(z.literal("")),
+  medico_profissional: z.string().optional().or(z.literal("")),
+  subtipo_exame: z.string().optional().or(z.literal("")),
+  modalidade: z.string().optional().or(z.literal("")),
+  data_agendamento: z.string().optional().or(z.literal("")),
+  horario_agendamento: z.string().optional().or(z.literal(""))
+});
 
 export const parseTemplate = (tpl, data) => {
   if (!tpl) return "";

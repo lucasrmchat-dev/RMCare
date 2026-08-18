@@ -1,9 +1,12 @@
 "use client"; 
+
 import { useEffect, useRef } from "react"; 
 import { motion } from "framer-motion"; 
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Activity, Clock3, Check } from "lucide-react"; 
 import { useAgendamento } from "../context"; 
 import { helpers, calcularDataLimite } from "../utils"; 
+import { playDopamineSound, triggerHaptic } from "@/lib/dopamine";
+import { SkeletonSlots } from "@/components/SkeletonLoaders";
 
 export default function ModuleAgenda() {     
     const { formData, setValue, calendarMonth, setCalendarMonth, selectedSrv, bloqueioExtraCalculado, agenda, timeSlotsRef, regrasGlobais } = useAgendamento();     
@@ -16,12 +19,10 @@ export default function ModuleAgenda() {
     
     const diaSelecionado = getDiaSemana(formData.data_agendamento);     
     
-    // 1. Hierarquia de Regras: Regras específicas do profissional selecionado (override das regras gerais)
     const rMedico = (regrasGlobais || []).filter(r => r.servico_id && r.servico_id === selectedSrv?.id && r.ativo !== false);     
     const rGeral = (regrasGlobais || []).filter(r => !r.servico_id && r.ativo !== false);     
     const regrasAplicaveis = rMedico.length > 0 ? rMedico : rGeral;          
     
-    // 2. Filtro robusto de validação: cruza a regra com a especialidade e modalidade
     const isRuleValidForCurrentSelection = (r) => {
         if (!r.tipos_permitidos || !Array.isArray(r.tipos_permitidos) || r.tipos_permitidos.length === 0) {
             return true;
@@ -36,12 +37,10 @@ export default function ModuleAgenda() {
             if (!tp || tp === "todos" || tp === "todas") return true;
             if (tp === tipoServicoStr) return true;
             
-            // Especialidade exata ou parcial
             if (especialidadeStr !== "") {
                 if (tp === especialidadeStr || tp.includes(especialidadeStr) || especialidadeStr.includes(tp)) return true;
             }
 
-            // Modalidade (ex: Particular / Convênio)
             if (modalidadeStr !== "") {
                 if (tp.includes(modalidadeStr)) return true;
             }
@@ -54,7 +53,6 @@ export default function ModuleAgenda() {
         });
     };
 
-    // Filtramos apenas as regras que de fato servem para o que o paciente está agendando
     const regrasAplicaveisEValidas = regrasAplicaveis.filter(isRuleValidForCurrentSelection);
     
     const aplicarBloqueioTemporario = (limite) => {
@@ -64,7 +62,6 @@ export default function ModuleAgenda() {
         return bloqueadoAte > limite ? bloqueadoAte : limite;
     };
     
-    // 3. Regras estritas aplicáveis para o dia clicado     
     const regrasDoDia = regrasAplicaveisEValidas.filter(r => {
         const diasArray = (r.dias_semana || []).map(d => parseInt(d, 10));
         return diasArray.includes(diaSelecionado);
@@ -73,7 +70,6 @@ export default function ModuleAgenda() {
     const isDiaPermitidoPelasRegras = (dataStr) => {       
         const diaWeek = getDiaSemana(dataStr);              
         
-        // Se há regras específicas válidas para este profissional, libera ESTRITAMENTE os dias dele
         if (regrasAplicaveisEValidas.length > 0) {         
             return regrasAplicaveisEValidas.some(r => {
                 const diasArray = (r.dias_semana || []).map(d => parseInt(d, 10));
@@ -81,12 +77,10 @@ export default function ModuleAgenda() {
             });       
         }              
         
-        // Se o médico TEM regras cadastradas no banco mas nenhuma serve para a especialidade atual, bloqueia o dia
         if (rMedico.length > 0) {
             return false;
         }
 
-        // Se o médico não tem regras específicas e existem regras gerais da clínica
         if (rGeral.length > 0) {
             return rGeral.some(r => {
                 const diasArray = (r.dias_semana || []).map(d => parseInt(d, 10));
@@ -94,11 +88,9 @@ export default function ModuleAgenda() {
             });
         }
 
-        // Fallback: Se a clínica estiver zerada sem nenhuma regra cadastrada
         return [1, 2, 3, 4, 5].includes(diaWeek);      
     };     
     
-    // AUTO AVANÇO INTELIGENTE 
     const lastEvaluatedSrvId = useRef('uninitialized');     
     
     useEffect(() => {         
@@ -209,37 +201,54 @@ export default function ModuleAgenda() {
     }     
     
     return (         
-        <motion.div initial="hidden" animate="show" exit="exit" variants={{hidden:{opacity:0},show:{opacity:1,transition:{staggerChildren:.08}},exit:{opacity:0,y:-8}}} className="max-w-4xl mx-auto">             
+        <motion.div initial="hidden" animate="show" exit="exit" variants={{hidden:{opacity:0},show:{opacity:1,transition:{staggerChildren:.08}},exit:{opacity:0,y:-8}}} className="max-w-4xl mx-auto text-left">             
             <motion.div variants={{hidden:{opacity:0,y:14},show:{opacity:1,y:0}}} className="mb-6 md:mb-8">
-                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold mb-3">
-                    <CalendarIcon size={13}/> Escolha sua vaga
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 text-xs font-bold mb-3 shadow-sm">
+                    <CalendarIcon size={14} strokeWidth={2} /> Seleção de Data e Horário
                 </div>
-                <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">Qual o melhor momento?</h2>
-                <p className="text-zinc-500 text-sm md:text-base mt-2">Selecione o dia e, em seguida, um horário disponível.</p>
+                <h2 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-zinc-950 dark:text-white leading-tight">Qual o melhor dia para você?</h2>
+                <p className="text-zinc-500 dark:text-zinc-400 text-xs sm:text-sm mt-1.5 leading-relaxed">Selecione a data no calendário e, em seguida, escolha um dos horários disponíveis.</p>
                 {selectedSrv?.agendamento_bloqueado_ate && (
-                    <p className="mt-3 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
-                        Agenda disponível após {new Date(`${selectedSrv.agendamento_bloqueado_ate}T12:00:00`).toLocaleDateString("pt-BR")}{selectedSrv.motivo_bloqueio_agenda ? ` · ${selectedSrv.motivo_bloqueio_agenda}` : ""}
+                    <p className="mt-3 text-xs font-bold text-amber-800 dark:text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-2xl px-4 py-3">
+                        Agenda liberada a partir de {new Date(`${selectedSrv.agendamento_bloqueado_ate}T12:00:00`).toLocaleDateString("pt-BR")}{selectedSrv.motivo_bloqueio_agenda ? ` · ${selectedSrv.motivo_bloqueio_agenda}` : ""}
                     </p>
                 )}
             </motion.div>             
 
             <motion.div variants={{hidden:{opacity:0,y:18},show:{opacity:1,y:0}}} className="flex flex-col md:flex-row gap-5 md:gap-8">                                  
-                <div className="w-full md:w-1/2 rounded-[1.75rem] border border-zinc-200/80 dark:border-zinc-800 p-4 md:p-5 bg-white dark:bg-[#0d0d0d] shadow-sm">                     
+                
+                <div className="w-full md:w-1/2 rounded-[2rem] border border-zinc-200/80 dark:border-white/10 p-5 md:p-6 bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl shadow-sm">                     
                     <div className="flex justify-between items-center mb-6">
-                        <button onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))} className="p-1.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors">
-                            <ChevronLeft size={16}/>
+                        <button
+                          onClick={() => {
+                            playDopamineSound('click');
+                            setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1));
+                          }}
+                          aria-label="Mês anterior"
+                          className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center"
+                        >
+                            <ChevronLeft size={18} strokeWidth={2.5}/>
                         </button>
-                        <h3 className="font-medium text-sm capitalize">{calendarMonth.toLocaleString('pt-BR', { month: 'long', year: 'numeric' })}</h3>
-                        <button onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))} className="p-1.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors">
-                            <ChevronRight size={16}/>
+                        <h3 className="font-extrabold text-sm sm:text-base capitalize text-zinc-900 dark:text-white">
+                          {calendarMonth.toLocaleString('pt-BR', { month: 'long', year: 'numeric' })}
+                        </h3>
+                        <button
+                          onClick={() => {
+                            playDopamineSound('click');
+                            setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1));
+                          }}
+                          aria-label="Próximo mês"
+                          className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center"
+                        >
+                            <ChevronRight size={18} strokeWidth={2.5}/>
                         </button>
                     </div>                     
                     
-                    <div className="grid grid-cols-7 gap-1 text-center mb-2">
-                        {['D','S','T','Q','Q','S','S'].map((d,i)=><div key={i} className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">{d}</div>)}
+                    <div className="grid grid-cols-7 gap-1 text-center mb-2.5">
+                        {['D','S','T','Q','Q','S','S'].map((d,i)=><div key={i} className="text-[11px] font-extrabold text-zinc-400 uppercase tracking-wider">{d}</div>)}
                     </div>                     
                     
-                    <div className="grid grid-cols-7 gap-1 md:gap-1.5">                         
+                    <div className="grid grid-cols-7 gap-1.5 md:gap-2">                         
                         {Array.from({ length: new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1).getDay() }).map((_, i) => <div key={`e-${i}`} className="aspect-square"/>)}                         
                         {Array.from({ length: new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate() }).map((_, i) => {                             
                             const d = i + 1, y = calendarMonth.getFullYear(), m = calendarMonth.getMonth();                             
@@ -259,66 +268,100 @@ export default function ModuleAgenda() {
                             
                             return (                                 
                                 <motion.button
-                                    whileTap={{scale:.88}}
+                                    whileTap={!isPastOrBlocked ? { scale: 0.88 } : {}}
                                     key={d}                                      
                                     disabled={isPastOrBlocked}                                      
                                     onClick={() => {                                          
+                                        playDopamineSound("select");
+                                        triggerHaptic("light");
                                         if (formData.data_agendamento !== dateStr) setValue("horario_agendamento", "");
                                         setValue("data_agendamento", dateStr);                                          
-                                        setTimeout(() => { timeSlotsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 150);                                      
+                                        setTimeout(() => { 
+                                          timeSlotsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' }); 
+                                        }, 100);                                      
                                     }}                                      
-                                    className={`relative aspect-square rounded-xl md:rounded-2xl text-sm transition-colors duration-200 ${isPastOrBlocked ? "opacity-25 cursor-not-allowed text-zinc-400 dark:text-zinc-600" : isSel ? "bg-zinc-900 text-white dark:bg-white dark:text-black font-bold shadow-lg" : "hover:bg-zinc-100 dark:hover:bg-zinc-800 font-medium"}`}                                 
+                                    className={`relative aspect-square rounded-2xl text-xs sm:text-sm transition-all duration-200 min-h-[40px] flex items-center justify-center ${
+                                      isPastOrBlocked
+                                        ? "opacity-20 cursor-not-allowed text-zinc-400 dark:text-zinc-600"
+                                        : isSel
+                                        ? "bg-zinc-950 text-white dark:bg-white dark:text-black font-black shadow-lg shadow-black/10 dark:shadow-white/10 ring-2 ring-[#9FC131] scale-105"
+                                        : "hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-semibold"
+                                    }`}                                 
                                 >                                     
                                     {d}                                 
-                                    {isSel && <motion.span initial={{scale:0}} animate={{scale:1}} className="absolute -right-1 -top-1 w-4 h-4 rounded-full bg-[#9FC131] text-black flex items-center justify-center"><Check size={10}/></motion.span>}
+                                    {isSel && (
+                                      <motion.span
+                                        initial={{ scale: 0 }}
+                                        animate={{ scale: 1 }}
+                                        className="absolute -right-1 -top-1 w-4 h-4 rounded-full bg-[#9FC131] text-black flex items-center justify-center shadow-sm"
+                                      >
+                                        <Check size={10} strokeWidth={3} />
+                                      </motion.span>
+                                    )}
                                 </motion.button>                             
                             );                         
                         })}                     
                     </div>                 
                 </div>                                  
                 
-                <div className="w-full md:w-1/2 rounded-[1.75rem] border border-zinc-200/80 dark:border-zinc-800 p-4 md:p-5 bg-white dark:bg-[#0d0d0d] shadow-sm" ref={timeSlotsRef}>                     
+                <div className="w-full md:w-1/2 rounded-[2rem] border border-zinc-200/80 dark:border-white/10 p-5 md:p-6 bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl shadow-sm flex flex-col justify-between scroll-mt-20" ref={timeSlotsRef}>                     
                     {formData.data_agendamento ? (                         
                         <div>                             
-                            <div className="flex justify-between border-b border-zinc-200 dark:border-zinc-800 pb-4 mb-4 pt-4 md:pt-0">                                 
-                                <h4 className="font-medium text-sm flex items-center gap-2">                                   
-                                    <Clock3 size={16} className="text-zinc-400" /> Horários disponíveis                                 
+                            <div className="flex justify-between items-center border-b border-zinc-200/80 dark:border-white/10 pb-4 mb-4">                                 
+                                <h4 className="font-bold text-sm flex items-center gap-2 text-zinc-900 dark:text-white">                                   
+                                    <Clock3 size={16} className="text-[#9FC131]" /> Horários Disponíveis                                 
                                 </h4>                                 
-                                <span className="text-xs text-zinc-400 font-medium">                                   
+                                <span className="text-xs text-zinc-500 dark:text-zinc-400 font-bold capitalize">                                   
                                     {new Date(formData.data_agendamento + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short' })}                                 
                                 </span>                             
                             </div>                             
                             
                             {agenda.buscando ? (                                 
-                                <div className="py-12 flex flex-col items-center justify-center text-zinc-400 text-xs">                                     
-                                    <Activity className="animate-spin mb-2" size={18} /> Buscando horários...                                 
+                                <div className="py-6">
+                                  <SkeletonSlots />
                                 </div>                             
                             ) : slotsRender.length === 0 ? (                                 
-                                <div className="py-12 text-center text-zinc-400 text-xs">                                     
-                                    Nenhum horário disponível para esta data.                             
+                                <div className="py-12 text-center text-zinc-400 text-xs font-medium border border-dashed rounded-2xl border-zinc-200 dark:border-zinc-800 p-6">                                     
+                                    Nenhum horário disponível para esta data. Selecione outro dia no calendário.                             
                                 </div>                             
                             ) : (                                 
-                                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-[300px] overflow-y-auto pr-1">                                     
+                                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5 max-h-[320px] overflow-y-auto custom-scrollbar pr-1 py-1">                                     
                                     {slotsRender.map(({ h, off }) => {                                         
                                         const isSel = formData.horario_agendamento === h;                                         
                                         return (                                             
-                                            <button                                                 
+                                            <motion.button
+                                                whileHover={!off ? { scale: 1.04 } : {}}
+                                                whileTap={!off ? { scale: 0.95 } : {}}
                                                 key={h}                                                 
                                                 disabled={off}                                                 
-                                                onClick={() => setValue("horario_agendamento", h)}                                                 
-                                                className={`py-3 px-2 rounded-xl text-xs font-semibold transition-all ${off ? "opacity-30 cursor-not-allowed bg-zinc-100 dark:bg-zinc-800/50 text-zinc-400 line-through" : isSel ? "bg-[#9FC131] text-black shadow-md font-bold scale-105" : "bg-zinc-50 dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 hover:border-zinc-400 text-zinc-800 dark:text-zinc-200"}`}                                             
+                                                onClick={() => {
+                                                  playDopamineSound("select");
+                                                  triggerHaptic("medium");
+                                                  setValue("horario_agendamento", h);
+                                                }}                                                 
+                                                className={`min-h-[48px] py-3 px-2 rounded-2xl text-xs font-bold transition-all flex items-center justify-center ${
+                                                  off
+                                                    ? "opacity-25 cursor-not-allowed bg-zinc-100 dark:bg-zinc-900 text-zinc-400 line-through"
+                                                    : isSel
+                                                    ? "bg-[#9FC131] text-black shadow-lg shadow-[#9FC131]/20 font-black ring-2 ring-[#9FC131] scale-105"
+                                                    : "bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 hover:border-[#9FC131] text-zinc-800 dark:text-zinc-200"
+                                                }`}                                             
                                             >                                                 
                                                 {h}                                             
-                                            </button>                                         
+                                            </motion.button>                                         
                                         );                                     
                                     })}                                 
                                 </div>                             
                             )}                         
                         </div>                     
                     ) : (                         
-                        <div className="h-full flex flex-col items-center justify-center text-center p-8 text-zinc-400">                             
-                            <CalendarIcon size={32} className="mb-3 opacity-30" />                             
-                            <p className="text-sm font-medium">Selecione uma data no calendário para visualizar os horários.</p>                         
+                        <div className="h-full min-h-[220px] flex flex-col items-center justify-center text-center p-8 text-zinc-400">                             
+                            <div className="w-14 h-14 rounded-2xl bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center mb-3 text-zinc-400">
+                              <CalendarIcon size={26} strokeWidth={1.5} />
+                            </div>
+                            <p className="text-xs sm:text-sm font-semibold text-zinc-600 dark:text-zinc-400 max-w-xs">
+                              Selecione uma data no calendário ao lado para visualizar os horários de atendimento.
+                            </p>                         
                         </div>                     
                     )}                 
                 </div>             

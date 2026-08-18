@@ -5,36 +5,49 @@
 
 /* 2. Cores do Modo Claro padrão */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #fafafa;
+  --foreground: #09090b;
+  --brand-primary: #8aa822;
+  --brand-glow: rgba(159, 193, 49, 0.25);
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(228, 228, 231, 0.8);
+  --glass-specular: rgba(255, 255, 255, 0.85);
+  --glass-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.08);
 }
 
-/* 3. A MÁGICA: Cores do Modo Escuro vinculadas à classe .dark gerada pelo botão */
+/* 3. Cores do Modo Escuro vinculadas à classe .dark */
 .dark {
-  --background: #090D16; /* Tom escuro premium profundo, combinando com seu app */
-  --foreground: #ededed;
+  --background: #060a12;
+  --foreground: #f4f4f5;
+  --brand-primary: #9fc131;
+  --brand-glow: rgba(159, 193, 49, 0.2);
+  --glass-bg: rgba(12, 12, 16, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-specular: rgba(255, 255, 255, 0.06);
+  --glass-shadow: 0 25px 60px -12px rgba(0, 0, 0, 0.7);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: var(--font-geist-mono), monospace;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-  /* Transição suave para o fundo da página ao clicar no botão */
-  transition: background-color 0.5s ease, color 0.5s ease; 
+  font-family: var(--font-sans);
+  transition: background-color 0.4s ease, color 0.4s ease;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 html, body {
   overscroll-behavior-y: none;
 }
 
-button, a, input, textarea {
+button, a, input, textarea, select {
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -42,10 +55,70 @@ button, a {
   touch-action: manipulation;
 }
 
+:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
+}
+
+.liquid-glass {
+  background-color: var(--glass-bg);
+  backdrop-filter: blur(36px) saturate(1.8);
+  -webkit-backdrop-filter: blur(36px) saturate(1.8);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-specular);
+}
+
+.liquid-glass-subtle {
+  background-color: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(20px) saturate(1.5);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  border: 1px solid var(--glass-border);
+}
+.dark .liquid-glass-subtle {
+  background-color: rgba(20, 20, 26, 0.4);
+  backdrop-filter: blur(20px) saturate(1.5);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.hairline-border {
+  border-width: 1px;
+  border-color: rgba(228, 228, 231, 0.7);
+}
+.dark .hairline-border {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(161, 161, 170, 0.3);
+  border-radius: 9999px;
+}
+.custom-scrollbar:hover::-webkit-scrollbar-thumb {
+  background: rgba(161, 161, 170, 0.5);
+}
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+}
+.dark .custom-scrollbar:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+}
+
 @media (max-width: 767px) {
   body {
     min-height: 100dvh;
-    overflow: hidden;
   }
 }
 

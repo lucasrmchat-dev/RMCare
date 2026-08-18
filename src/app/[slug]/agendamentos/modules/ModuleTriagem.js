@@ -1,74 +1,108 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { HelpCircle, CheckCircle2 } from "lucide-react";
+import { ClipboardCheck, Check } from "lucide-react";
 import { useAgendamento } from "../context";
+import { playDopamineSound, triggerHaptic } from "@/lib/dopamine";
 
 export default function ModuleTriagem() {
   const { perguntasAtuais, respostasTriagem, setRespostasTriagem } = useAgendamento();
 
-  const handleOptionClick = (perguntaId, opcao, isObrigatoria) => {
-    // Se a pergunta for opcional e o paciente clicar na mesma opção selecionada, desmarca
-    if (isObrigatoria === false && respostasTriagem[perguntaId]?.id === opcao.id) {
-      setRespostasTriagem((prev) => {
-        const copy = { ...prev };
-        delete copy[perguntaId];
-        return copy;
-      });
-      return;
-    }
-    setRespostasTriagem((prev) => ({ ...prev, [perguntaId]: opcao }));
+  const handleSelectOption = (perguntaId, opcao) => {
+    playDopamineSound("select");
+    triggerHaptic("light");
+    setRespostasTriagem((prev) => ({
+      ...prev,
+      [perguntaId]: opcao
+    }));
   };
 
+  const respondidasCount = Object.keys(respostasTriagem).length;
+  const totalCount = perguntasAtuais.length;
+
   return (
-    <motion.div initial="hidden" animate="show" variants={{show:{transition:{staggerChildren:.08}}}} className="max-w-xl mx-auto space-y-6">
-      <motion.div variants={{hidden:{opacity:0,y:12},show:{opacity:1,y:0}}}>
-        <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">Antes de escolher o horário</h2>
-        <p className="text-zinc-500 text-sm md:text-base mt-2">Estas respostas ajudam a oferecer datas seguras para o seu atendimento.</p>
-      </motion.div>
-      
-      <div className="space-y-6 mt-6">
-        {perguntasAtuais.map((pergunta) => {
-          const isObrigatoria = pergunta.obrigatoria !== false;
+    <motion.div
+      initial="hidden"
+      animate="show"
+      exit="exit"
+      variants={{
+        hidden: { opacity: 0, y: 15 },
+        show: { opacity: 1, y: 0, transition: { staggerChildren: 0.08 } },
+        exit: { opacity: 0, y: -10 }
+      }}
+      className="max-w-xl mx-auto space-y-6 text-left"
+    >
+      <div className="mb-6">
+        <div className="flex items-center justify-between gap-4 mb-3">
+          <div className="w-11 h-11 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/50 dark:border-emerald-800/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-sm">
+            <ClipboardCheck size={21} strokeWidth={2} />
+          </div>
+          <span className="text-xs font-bold text-zinc-500 bg-zinc-100 dark:bg-zinc-800/60 px-3 py-1 rounded-full border border-zinc-200/60 dark:border-zinc-700/60">
+            {respondidasCount} de {totalCount} respondida(s)
+          </span>
+        </div>
+
+        <h2 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-zinc-950 dark:text-white leading-tight">
+          Cuidados e Orientações
+        </h2>
+        <p className="text-zinc-500 dark:text-zinc-400 text-xs sm:text-sm mt-1.5 leading-relaxed">
+          Responda a estas breves perguntas para personalizarmos os cuidados antes do seu atendimento.
+        </p>
+      </div>
+
+      <div className="space-y-6">
+        {perguntasAtuais.map((pergunta, pIdx) => {
+          const selecionada = respostasTriagem[pergunta.id];
+
           return (
             <motion.div
-              variants={{hidden:{opacity:0,y:14},show:{opacity:1,y:0}}}
               key={pergunta.id}
-              className="p-5 md:p-6 bg-white dark:bg-[#111111]/80 border border-zinc-200/80 dark:border-zinc-800/80 rounded-3xl shadow-sm space-y-4"
+              variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}
+              className="p-5 sm:p-6 bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-xl border border-zinc-200/80 dark:border-white/10 rounded-3xl shadow-sm space-y-4"
             >
-              <div className="flex items-start justify-between gap-3">
-                <h4 className="font-medium text-sm flex items-start gap-2 text-zinc-900 dark:text-white">
-                  <HelpCircle size={18} className="text-zinc-400 shrink-0 mt-0.5" /> 
-                  <span>{pergunta.pergunta}</span>
-                </h4>
-                {!isObrigatoria ? (
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 bg-zinc-100 dark:bg-zinc-800 px-2.5 py-0.5 rounded-md flex-shrink-0">
-                    Opcional
-                  </span>
-                ) : (
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-red-500 bg-red-50 dark:bg-red-950/40 px-2.5 py-0.5 rounded-md flex-shrink-0">
-                    Obrigatória
-                  </span>
-                )}
+              <div className="flex items-start gap-3">
+                <span className="w-6 h-6 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+                  {pIdx + 1}
+                </span>
+                <div>
+                  <h3 className="font-extrabold text-sm sm:text-base text-zinc-950 dark:text-white leading-snug">
+                    {pergunta.titulo || pergunta.texto_pergunta || pergunta.enunciado}
+                  </h3>
+                  {pergunta.descricao && (
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 leading-relaxed">
+                      {pergunta.descricao}
+                    </p>
+                  )}
+                </div>
               </div>
 
-              <div className="grid gap-2">
-                {pergunta.opcoes.map((opcao) => {
-                  const isSelected = respostasTriagem[pergunta.id]?.id === opcao.id;
+              <div className="grid gap-2.5 pt-1 pl-9">
+                {(pergunta.opcoes || []).map((opcao) => {
+                  const isChecked = selecionada?.id === opcao.id || selecionada === opcao.id || selecionada === opcao.texto;
                   return (
-                    <button 
-                      key={opcao.id} 
+                    <motion.button
+                      key={opcao.id || opcao.texto}
+                      whileHover={{ scale: 1.01 }}
+                      whileTap={{ scale: 0.98 }}
                       type="button"
-                      onClick={() => handleOptionClick(pergunta.id, opcao, isObrigatoria)}
-                      className={`min-h-12 p-3.5 text-sm text-left border rounded-2xl transition-all flex items-center justify-between ${
-                        isSelected
-                          ? "bg-zinc-900 text-white border-zinc-900 dark:bg-white dark:text-black dark:border-white shadow-md"
-                          : "bg-zinc-50 dark:bg-black border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600 text-zinc-800 dark:text-zinc-200"
+                      onClick={() => handleSelectOption(pergunta.id, opcao)}
+                      className={`w-full min-h-[48px] p-3.5 sm:p-4 rounded-2xl border text-left flex items-center justify-between gap-3 transition-all ${
+                        isChecked
+                          ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white font-bold shadow-md"
+                          : "bg-zinc-50/70 dark:bg-zinc-900/50 border-zinc-200/80 dark:border-zinc-800 hover:border-zinc-300 text-zinc-800 dark:text-zinc-200 font-medium"
                       }`}
                     >
-                      <span>{opcao.texto_opcao}</span>
-                      {isSelected && <CheckCircle2 size={16} className="text-white dark:text-black flex-shrink-0" />}
-                    </button>
+                      <span className="text-xs sm:text-sm">{opcao.texto || opcao.nome || opcao.label}</span>
+                      <div
+                        className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
+                          isChecked
+                            ? "bg-[#9FC131] text-black"
+                            : "border-2 border-zinc-300 dark:border-zinc-700"
+                        }`}
+                      >
+                        {isChecked && <Check size={12} strokeWidth={3} />}
+                      </div>
+                    </motion.button>
                   );
                 })}
               </div>
