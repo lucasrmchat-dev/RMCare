@@ -385,9 +385,10 @@ export default function EquipeView({
   const [categoriasList, setCategoriasList] = useState(["Consultas", "Exames"]);
   const [novaCategoria, setNovaCategoria] = useState("");
 
-  // Especialidades estruturadas: [{ nome: "Cardiologia", categoria: "Consultas" }, ...]
+  // Especialidades estruturadas: [{ nome: "Nutricionista", categoria: "Consultas", codigo_uri: "8" }, ...]
   const [especialidadesCategorizadas, setEspecialidadesCategorizadas] = useState([]);
   const [novaEspecialidadeNome, setNovaEspecialidadeNome] = useState("");
+  const [novaEspecialidadeCodigoUri, setNovaEspecialidadeCodigoUri] = useState("");
   const [novaEspecialidadeCat, setNovaEspecialidadeCat] = useState("Consultas");
   const [filtroCategoria, setFiltroCategoria] = useState("Todas");
 
@@ -424,7 +425,8 @@ export default function EquipeView({
                   );
                   mapCategorias.set(espName.toLowerCase(), {
                     nome: espName,
-                    categoria: isExame ? "Exames" : "Consultas"
+                    categoria: isExame ? "Exames" : "Consultas",
+                    codigo_uri: null
                   });
                 });
             }
@@ -441,20 +443,22 @@ export default function EquipeView({
                 );
                 mapCategorias.set(nameClean.toLowerCase(), {
                   nome: nameClean,
-                  categoria: isExame ? "Exames" : "Consultas"
+                  categoria: isExame ? "Exames" : "Consultas",
+                  codigo_uri: null
                 });
               }
             });
           }
 
-          // C. Especialidades já categorizadas pelo usuário (prevalecem na categoria)
+          // C. Especialidades já categorizadas pelo usuário (prevalecem na categoria e no codigo_uri)
           if (Array.isArray(conf.especialidades_categorizadas)) {
             conf.especialidades_categorizadas.forEach((item) => {
               if (item?.nome && String(item.nome).trim()) {
                 const nameClean = String(item.nome).trim();
                 mapCategorias.set(nameClean.toLowerCase(), {
                   nome: nameClean,
-                  categoria: item.categoria || "Consultas"
+                  categoria: item.categoria || "Consultas",
+                  codigo_uri: item.codigo_uri ? String(item.codigo_uri).trim() : null
                 });
               }
             });
@@ -467,7 +471,8 @@ export default function EquipeView({
                 const isExame = /(colonoscopia|endoscopia|ultrassom|exame)/i.test(baseName);
                 mapCategorias.set(baseName.toLowerCase(), {
                   nome: baseName,
-                  categoria: isExame ? "Exames" : "Consultas"
+                  categoria: isExame ? "Exames" : "Consultas",
+                  codigo_uri: null
                 });
               }
             );
@@ -625,13 +630,15 @@ export default function EquipeView({
 
     const novaEsp = {
       nome: nomeLimpo,
+      codigo_uri: novaEspecialidadeCodigoUri.trim() || null,
       categoria: novaEspecialidadeCat || categoriasList[0] || "Consultas"
     };
     const updatedEsps = [...especialidadesCategorizadas, novaEsp];
     setEspecialidadesCategorizadas(updatedEsps);
     setNovaEspecialidadeNome("");
+    setNovaEspecialidadeCodigoUri("");
     await persistirCategoriasEEspecialidades(categoriasList, updatedEsps);
-    showToast(`Especialidade "${nomeLimpo}" cadastrada em "${novaEsp.categoria}"!`);
+    showToast(`Especialidade "${nomeLimpo}" cadastrada com sucesso!`);
   };
 
   const handleChangeEspecialidadeCategoria = async (espNome, novaCat) => {
@@ -641,6 +648,14 @@ export default function EquipeView({
     setEspecialidadesCategorizadas(updatedEsps);
     await persistirCategoriasEEspecialidades(categoriasList, updatedEsps);
     showToast(`"${espNome}" agora está em "${novaCat}".`);
+  };
+
+  const handleChangeEspecialidadeUri = async (espNome, novoUri) => {
+    const updatedEsps = especialidadesCategorizadas.map((e) =>
+      e.nome === espNome ? { ...e, codigo_uri: novoUri.trim() || null } : e
+    );
+    setEspecialidadesCategorizadas(updatedEsps);
+    await persistirCategoriasEEspecialidades(categoriasList, updatedEsps);
   };
 
   const handleRemoveEspecialidade = async (espNome) => {
@@ -834,7 +849,7 @@ export default function EquipeView({
                       <Layers size={18} className="text-emerald-500" strokeWidth={1.5} /> Especialidades & Classificação
                     </h3>
                     <p className="text-xs text-zinc-500 mt-0.5">
-                      Cadastre as especialidades médicas ou exames e vincule-os à respectiva categoria de atendimento.
+                      Cadastre as especialidades médicas ou exames, atribua um Código URI para links diretos e vincule à respectiva categoria.
                     </p>
                   </div>
 
@@ -858,18 +873,29 @@ export default function EquipeView({
 
                 {/* FORMULÁRIO DE NOVA ESPECIALIDADE */}
                 <div className="grid sm:grid-cols-12 gap-3 p-4 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl">
-                  <div className="sm:col-span-6">
+                  <div className="sm:col-span-5">
                     <input
                       type="text"
                       value={novaEspecialidadeNome}
                       onChange={(e) => setNovaEspecialidadeNome(e.target.value)}
-                      placeholder="Nome da especialidade (ex: Colonoscopia, Cardiologia...)"
+                      placeholder="Nome da especialidade (ex: Nutricionista, Colonoscopia...)"
                       className="w-full px-4 py-2.5 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none focus:border-[#9FC131]"
                       onKeyDown={(e) => e.key === "Enter" && handleAddEspecialidade()}
                     />
                   </div>
 
-                  <div className="sm:col-span-4">
+                  <div className="sm:col-span-3">
+                    <input
+                      type="text"
+                      value={novaEspecialidadeCodigoUri}
+                      onChange={(e) => setNovaEspecialidadeCodigoUri(e.target.value)}
+                      placeholder="Código URI / ID (Ex: 8 ou 1)"
+                      className="w-full px-4 py-2.5 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs font-mono outline-none focus:border-[#9FC131]"
+                      onKeyDown={(e) => e.key === "Enter" && handleAddEspecialidade()}
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
                     <select
                       value={novaEspecialidadeCat}
                       onChange={(e) => setNovaEspecialidadeCat(e.target.value)}
@@ -905,19 +931,55 @@ export default function EquipeView({
                     especialidadesFiltradas.map((esp) => (
                       <div
                         key={esp.nome}
-                        className="p-3.5 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl flex items-center justify-between gap-2 group hover:border-zinc-300 dark:hover:border-zinc-700 transition-all shadow-sm"
+                        className="p-3.5 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl flex flex-col justify-between gap-3 group hover:border-zinc-300 dark:hover:border-zinc-700 transition-all shadow-sm"
                       >
-                        <div className="min-w-0 flex-1">
-                          <h4 className="font-bold text-xs text-zinc-950 dark:text-white truncate">
-                            {esp.nome}
-                          </h4>
-                          <div className="mt-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-bold text-xs text-zinc-950 dark:text-white truncate">
+                                {esp.nome}
+                              </h4>
+                              {esp.codigo_uri && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 text-[10px] font-mono font-bold rounded border border-purple-200/60 dark:border-purple-900/40 shrink-0">
+                                  #{esp.codigo_uri}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => handleRemoveEspecialidade(esp.nome)}
+                            className="p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition-colors shrink-0"
+                            title="Excluir especialidade"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-zinc-100 dark:border-white/5">
+                          <div>
+                            <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider block mb-0.5">
+                              Código URI
+                            </label>
+                            <input
+                              type="text"
+                              defaultValue={esp.codigo_uri || ""}
+                              onBlur={(e) => handleChangeEspecialidadeUri(esp.nome, e.target.value)}
+                              placeholder="Ex: 8"
+                              className="w-full text-xs font-mono font-bold bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-lg px-2 py-1 outline-none text-zinc-800 dark:text-zinc-200 focus:border-[#9FC131]"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider block mb-0.5">
+                              Categoria
+                            </label>
                             <select
                               value={esp.categoria}
                               onChange={(e) =>
                                 handleChangeEspecialidadeCategoria(esp.nome, e.target.value)
                               }
-                              className="text-[10px] font-extrabold uppercase tracking-wider bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-md px-2 py-0.5 outline-none text-zinc-700 dark:text-zinc-300 cursor-pointer"
+                              className="w-full text-[10px] font-extrabold uppercase tracking-wider bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-lg px-2 py-1.5 outline-none text-zinc-700 dark:text-zinc-300 cursor-pointer"
                             >
                               {categoriasList.map((c) => (
                                 <option key={c} value={c}>
@@ -927,14 +989,6 @@ export default function EquipeView({
                             </select>
                           </div>
                         </div>
-
-                        <button
-                          onClick={() => handleRemoveEspecialidade(esp.nome)}
-                          className="p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition-colors"
-                          title="Excluir especialidade"
-                        >
-                          <Trash2 size={14} />
-                        </button>
                       </div>
                     ))
                   )}

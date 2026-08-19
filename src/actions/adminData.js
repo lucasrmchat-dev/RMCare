@@ -580,6 +580,7 @@ export async function actionAtualizarRegraAgenda(id, regra) {
   const admin = await getAdminLogado(true);
   const allowed = {
     servico_id: regra.servico_id || null,
+    especialidade: regra.especialidade || null,
     dias_semana: regra.dias_semana,
     hora_inicio: regra.hora_inicio,
     hora_fim: regra.hora_fim,
@@ -913,4 +914,61 @@ export async function actionSalvarCatalogoEnfermidades(catalogo) {
     .eq("id", admin.empresa_id);
 
   return { success: true, catalogo: cleanList };
+}
+
+/* ==========================================
+   LOGS E AUDITORIA DE DISPAROS DE MENSAGENS WHATSAPP
+   ========================================== */
+export async function actionListarHistoricoMensagensAdmin() {
+  const admin = await getAdminLogado(true);
+  const { data, error } = await supabaseAdmin
+    .from("fila_mensagens")
+    .select("*")
+    .eq("empresa_id", admin.empresa_id)
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  if (error) throw error;
+  return data || [];
+}
+
+export async function actionDispararMensagemManualAdmin(id) {
+  const admin = await getAdminLogado(true);
+  const { data: msg, error: errFetch } = await supabaseAdmin
+    .from("fila_mensagens")
+    .select("*")
+    .eq("id", id)
+    .eq("empresa_id", admin.empresa_id)
+    .single();
+
+  if (errFetch || !msg) throw new Error("Mensagem não encontrada.");
+
+  const { data: emp } = await supabaseAdmin
+    .from("empresas")
+    .select("rmchat_webhook_url, config_chaves")
+    .eq("id", admin.empresa_id)
+    .single();
+
+  const urlWebhook = emp?.rmchat_webhook_url || emp?.config_chaves?.rmchat_webhook_url;
+  if (!urlWebhook) throw new Error("URL de Webhook do WhatsApp não configurada.");
+
+  const payload = {
+    name: msg.nome_paciente || "Paciente",
+    number: (msg.telefone_whatsapp || "").replace(/\D/g, ""),
+    texto: msg.mensagem
+  };
+
+  const res = await fetch(urlWebhook, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  if (!res.ok) {
+    await supabaseAdmin.from("fila_mensagens").update({ status: "falha" }).eq("id", id);
+    throw new Error(`Falha ao disparar para o WhatsApp: status ${res.status}`);
+  }
+
+  await supabaseAdmin.from("fila_mensagens").update({ status: "enviado" }).eq("id", id);
+  return { success: true };
 }

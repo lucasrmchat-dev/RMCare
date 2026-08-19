@@ -444,7 +444,48 @@ export default function AgendamentoPremium() {
         let urlSrvId = null;
         let foundSrv = null;
 
-        // 1. Resolução Estrita do Médico / Especialista por Código URI, Número de Especialista, ID ou Nome
+        // 1. Resolução da Especialidade a partir de searchParams (?especialidade=1 ou ?especialidade=8 ou ?especialidade=Nutricionista)
+        let resolvedEspFromUrl = null;
+        if (espRaw && espRaw.trim() !== "") {
+          const cleanEspInput = String(espRaw).trim();
+          const confCategorizadas = empresaDados?.config_campos?.especialidades_categorizadas || [];
+
+          // 1º: Busca exata pelo Código URI / ID configurado na especialidade (ex: codigo_uri === "1" ou "8")
+          const matchByUri = confCategorizadas.find(
+            (e) => e.codigo_uri && String(e.codigo_uri).trim().toLowerCase() === cleanEspInput.toLowerCase()
+          );
+
+          if (matchByUri) {
+            resolvedEspFromUrl = matchByUri.nome;
+          } else {
+            // 2º: Busca pelo nome da especialidade nas categorizadas ou serviços
+            const todasEspsClinica = [
+              ...confCategorizadas.map((e) => e.nome),
+              ...(servicosDB || []).filter((s) => s.especialidade).flatMap((s) => s.especialidade.split(",").map((e) => e.trim()))
+            ].filter(Boolean);
+            const listaUnicaEsps = [...new Set(todasEspsClinica)];
+
+            const matchByNome = listaUnicaEsps.find(
+              (e) => e.toLowerCase() === cleanEspInput.toLowerCase() || e.toLowerCase().includes(cleanEspInput.toLowerCase())
+            );
+
+            if (matchByNome) {
+              resolvedEspFromUrl = matchByNome;
+            } else if (/^\d+$/.test(cleanEspInput)) {
+              // 3º: Fallback para índice numérico
+              const indexEsp = parseInt(cleanEspInput, 10) - 1;
+              if (indexEsp >= 0 && indexEsp < confCategorizadas.length) {
+                resolvedEspFromUrl = confCategorizadas[indexEsp].nome;
+              } else if (indexEsp >= 0 && indexEsp < listaUnicaEsps.length) {
+                resolvedEspFromUrl = listaUnicaEsps[indexEsp];
+              }
+            } else {
+              resolvedEspFromUrl = cleanEspInput;
+            }
+          }
+        }
+
+        // 2. Resolução Estrita do Médico / Especialista por Código URI, Número de Especialista, ID ou Nome
         if (medicoUrl && medicoUrl.trim() !== "") {
           const cleanTarget = String(medicoUrl).trim().toLowerCase();
 
@@ -468,56 +509,55 @@ export default function AgendamentoPremium() {
           }
 
           if (foundSrv) {
-            const espDoMedico = foundSrv.especialidade ? foundSrv.especialidade.split(",")[0].trim() : "";
-            const isExame = foundSrv.tipo === "Exame" || /(exame|colonoscopia|endoscopia|ultrassom)/i.test(espDoMedico);
+            urlSrvId = foundSrv.id;
+
+            // Especialidades vinculadas a este profissional
+            const medicoEsps = foundSrv.especialidade
+              ? foundSrv.especialidade.split(",").map((e) => e.trim()).filter(Boolean)
+              : [];
+
+            // Se a URL especificou uma especialidade (ex: Gastroenterologista) e o médico a atende, respeita!
+            let especialidadeFinal = "";
+            if (resolvedEspFromUrl && (medicoEsps.some((e) => e.toLowerCase().includes(resolvedEspFromUrl.toLowerCase()) || resolvedEspFromUrl.toLowerCase().includes(e.toLowerCase())) || medicoEsps.length === 0)) {
+              especialidadeFinal = resolvedEspFromUrl;
+            } else if (medicoEsps.length > 0) {
+              especialidadeFinal = medicoEsps[0];
+            } else {
+              especialidadeFinal = resolvedEspFromUrl || "Consulta";
+            }
+
+            // Descobre estritamente se a especialidade final é Exame ou Consulta
+            const confCategorizadas = empresaDados?.config_campos?.especialidades_categorizadas || [];
+            const matchCatObj = confCategorizadas.find((c) => c.nome && c.nome.toLowerCase().trim() === especialidadeFinal.toLowerCase().trim());
+            let isExame = false;
+            if (matchCatObj?.categoria) {
+              isExame = matchCatObj.categoria.toLowerCase().includes("exame");
+            } else {
+              isExame = /(exame|colonoscopia|endoscopia|ultrassom|tomografia|ressonancia|raio-x|biopsia)/i.test(especialidadeFinal);
+            }
             const tipo = isExame ? "Exame" : "Consulta";
 
             setValue("tipo_servico", tipo);
-            setValue("medico_profissional", isExame ? "" : foundSrv.nome);
-            setValue("subtipo_exame", isExame ? (espDoMedico || foundSrv.nome) : "");
-            if (espDoMedico) {
-              setValue("especialidade", espDoMedico);
-            }
-            urlSrvId = foundSrv.id;
+            setValue("especialidade", especialidadeFinal);
+            setValue("medico_profissional", foundSrv.nome);
+            setValue("subtipo_exame", isExame ? especialidadeFinal : "");
           } else if (!/^\d+$/.test(medicoUrl)) {
             setValue("medico_profissional", medicoUrl);
           }
-        }
-
-        // 2. Resolução da Especialidade (quando não definida pelo médico)
-        if (!foundSrv && espRaw && espRaw.trim() !== "") {
-          const cleanEsp = String(espRaw).trim().toLowerCase();
-          
-          // Busca especialidade cadastrada nas categorias da clínica
-          const matchEspObj = (empresaDados?.config_campos?.especialidades_categorizadas || []).find(
-            (c) => c.nome && c.nome.toLowerCase().trim() === cleanEsp
-          );
-
-          let resolvedEsp = matchEspObj ? matchEspObj.nome : null;
-
-          if (!resolvedEsp) {
-            const matchSrv = (servicosDB || []).find(
-              (s) =>
-                s.ativo !== false &&
-                (String(s.codigo_uri || "").trim().toLowerCase() === cleanEsp ||
-                 String(s.numero_especialista || "").trim() === cleanEsp ||
-                 (s.especialidade && s.especialidade.toLowerCase().includes(cleanEsp)))
-            );
-            if (matchSrv?.especialidade) {
-              resolvedEsp = matchSrv.especialidade.split(",")[0].trim();
-            } else if (!/^\d+$/.test(espRaw)) {
-              resolvedEsp = espRaw;
-            }
+        } else if (resolvedEspFromUrl) {
+          const confCategorizadas = empresaDados?.config_campos?.especialidades_categorizadas || [];
+          const matchCatObj = confCategorizadas.find((c) => c.nome && c.nome.toLowerCase().trim() === resolvedEspFromUrl.toLowerCase().trim());
+          let isExame = false;
+          if (matchCatObj?.categoria) {
+            isExame = matchCatObj.categoria.toLowerCase().includes("exame");
+          } else {
+            isExame = /(exame|colonoscopia|endoscopia|ultrassom|tomografia|ressonancia|raio-x|biopsia)/i.test(resolvedEspFromUrl);
           }
 
-          if (resolvedEsp) {
-            const isExame = /(exame|colonoscopia|endoscopia|ultrassom)/i.test(resolvedEsp);
-            setValue("especialidade", resolvedEsp);
-            setValue("tipo_servico", isExame ? "Exame" : "Consulta");
-            if (isExame) {
-              setValue("subtipo_exame", resolvedEsp);
-            }
-          }
+          setValue("especialidade", resolvedEspFromUrl);
+          setValue("tipo_servico", isExame ? "Exame" : "Consulta");
+          setValue("medico_profissional", "");
+          setValue("subtipo_exame", isExame ? resolvedEspFromUrl : "");
         }
 
         const hasCpf = !!(cpfUrl && cpfUrl.trim() !== "");

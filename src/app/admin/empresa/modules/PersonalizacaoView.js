@@ -32,7 +32,9 @@ import {
 import {
   fetchAdminCustomization,
   actionSalvarCustomization,
-  actionSalvarLogoEmpresa
+  actionSalvarLogoEmpresa,
+  actionListarHistoricoMensagensAdmin,
+  actionDispararMensagemManualAdmin
 } from "@/actions/adminData";
 
 const PALETAS_PRESETS = [
@@ -90,6 +92,42 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
   const [regrasMensagens, setRegrasMensagens] = useState([]);
   const [filterEspecialidade, setFilterEspecialidade] = useState("Todas");
   const [filterGatilho, setFilterGatilho] = useState("Todos");
+
+  const [historicoMensagens, setHistoricoMensagens] = useState([]);
+  const [loadingHistorico, setLoadingHistorico] = useState(false);
+  const [disparandoId, setDisparandoId] = useState(null);
+  const [mensagemVisualizar, setMensagemVisualizar] = useState(null);
+
+  const carregarHistorico = async () => {
+    setLoadingHistorico(true);
+    try {
+      const data = await actionListarHistoricoMensagensAdmin();
+      setHistoricoMensagens(data || []);
+    } catch (e) {
+      console.error("Erro ao listar histórico de mensagens:", e);
+    } finally {
+      setLoadingHistorico(false);
+    }
+  };
+
+  useEffect(() => {
+    if (subTab === "historico_mensagens") {
+      carregarHistorico();
+    }
+  }, [subTab]);
+
+  const handleDispararAgora = async (id) => {
+    setDisparandoId(id);
+    try {
+      await actionDispararMensagemManualAdmin(id);
+      showToast("Mensagem disparada com sucesso para o WhatsApp!");
+      carregarHistorico();
+    } catch (e) {
+      showToast(`Erro ao disparar: ${e.message}`, "error");
+    } finally {
+      setDisparandoId(null);
+    }
+  };
 
   // Carregar dados salvos
   useEffect(() => {
@@ -405,6 +443,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
               {subTab === "aparencia" && "Design, Cores & Escala"}
               {subTab === "modalidades" && "Formas de Atendimento & Coberturas"}
               {subTab === "mensagens" && "Automações de Mensagens WhatsApp"}
+              {subTab === "historico_mensagens" && "Histórico & Auditoria de Mensagens WhatsApp"}
             </h2>
             <p className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">
               Configurações salvas diretamente no perfil desta clínica.
@@ -1164,6 +1203,175 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                   </AnimatePresence>
                 </div>
               </section>
+            </motion.div>
+          )}
+
+          {/* TAB 5: HISTÓRICO & LOGS DE MENSAGENS */}
+          {subTab === "historico_mensagens" && (
+            <motion.div
+              key="historico_mensagens"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={spring}
+              className="space-y-6"
+            >
+              <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm">
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-6 gap-4 border-b border-zinc-100 dark:border-white/5 pb-4">
+                  <div>
+                    <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">
+                      <MessageSquare size={18} strokeWidth={1.5} className="text-emerald-500" />
+                      Histórico e Fila de Disparos WhatsApp ({historicoMensagens.length})
+                    </h3>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      Acompanhe em tempo real todas as mensagens enviadas, programadas ou com falha.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={carregarHistorico}
+                    disabled={loadingHistorico}
+                    className="flex items-center justify-center gap-2 px-4 py-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 text-xs font-bold rounded-xl transition-all min-h-[38px]"
+                  >
+                    {loadingHistorico ? "Atualizando..." : "Atualizar Logs"}
+                  </button>
+                </div>
+
+                {loadingHistorico ? (
+                  <div className="py-16 text-center text-xs text-zinc-400">
+                    Carregando histórico de mensagens...
+                  </div>
+                ) : historicoMensagens.length === 0 ? (
+                  <div className="text-center py-16 border border-dashed border-zinc-200 dark:border-zinc-800 rounded-2xl text-zinc-400 text-xs">
+                    Nenhuma mensagem registrada na fila até o momento.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-2xl border border-zinc-200/80 dark:border-zinc-800 bg-white/40 dark:bg-black/20">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b border-zinc-200/80 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-900/60 font-bold uppercase tracking-wider text-zinc-400 text-[10px]">
+                          <th className="p-3.5">Status</th>
+                          <th className="p-3.5">Paciente</th>
+                          <th className="p-3.5">WhatsApp</th>
+                          <th className="p-3.5">Gatilho</th>
+                          <th className="p-3.5">Data / Hora</th>
+                          <th className="p-3.5">Conteúdo</th>
+                          <th className="p-3.5 text-right">Ação</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60 font-medium">
+                        {historicoMensagens.map((item) => {
+                          const statusColor =
+                            item.status === "enviado"
+                              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200/50"
+                              : item.status === "falha"
+                              ? "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300 border-red-200/50"
+                              : item.status === "rascunho"
+                              ? "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border-amber-200/50"
+                              : "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border-blue-200/50";
+
+                          return (
+                            <tr key={item.id} className="hover:bg-zinc-50/60 dark:hover:bg-zinc-900/40 transition-colors">
+                              <td className="p-3.5">
+                                <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider border ${statusColor}`}>
+                                  {item.status}
+                                </span>
+                              </td>
+                              <td className="p-3.5 font-bold text-zinc-900 dark:text-white">
+                                {item.nome_paciente || "Paciente"}
+                              </td>
+                              <td className="p-3.5 font-mono text-zinc-600 dark:text-zinc-400">
+                                {item.telefone_whatsapp || "-"}
+                              </td>
+                              <td className="p-3.5 text-zinc-700 dark:text-zinc-300 font-semibold">
+                                {item.gatilho}
+                              </td>
+                              <td className="p-3.5 text-zinc-500 text-[11px]">
+                                {item.data_hora_programada
+                                  ? new Date(item.data_hora_programada).toLocaleString("pt-BR")
+                                  : item.created_at
+                                  ? new Date(item.created_at).toLocaleString("pt-BR")
+                                  : "-"}
+                              </td>
+                              <td className="p-3.5 max-w-xs truncate text-zinc-600 dark:text-zinc-400">
+                                <span title={item.mensagem} className="truncate block">
+                                  {item.mensagem}
+                                </span>
+                              </td>
+                              <td className="p-3.5 text-right space-x-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setMensagemVisualizar(item)}
+                                  className="px-2.5 py-1 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 rounded-lg text-[11px] font-bold"
+                                >
+                                  Ver
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDispararAgora(item.id)}
+                                  disabled={disparandoId === item.id}
+                                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold"
+                                >
+                                  {disparandoId === item.id ? "Enviando..." : "Disparar"}
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+
+              {/* MODAL PARA VISUALIZAR TEXTO COMPLETO DA MENSAGEM */}
+              <AnimatePresence>
+                {mensagemVisualizar && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+                  >
+                    <div className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
+                      <div className="flex justify-between items-center border-b border-zinc-100 dark:border-zinc-800 pb-3">
+                        <h4 className="font-bold text-sm text-zinc-950 dark:text-white">
+                          Mensagem para {mensagemVisualizar.nome_paciente}
+                        </h4>
+                        <button
+                          type="button"
+                          onClick={() => setMensagemVisualizar(null)}
+                          className="text-zinc-400 hover:text-zinc-950 dark:hover:text-white font-bold"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <div className="p-4 bg-zinc-50 dark:bg-zinc-900/60 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 text-xs font-mono whitespace-pre-wrap text-zinc-800 dark:text-zinc-200 max-h-80 overflow-y-auto">
+                        {mensagemVisualizar.mensagem}
+                      </div>
+                      <div className="flex justify-end gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setMensagemVisualizar(null)}
+                          className="px-4 py-2 rounded-xl text-xs font-bold bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300"
+                        >
+                          Fechar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleDispararAgora(mensagemVisualizar.id);
+                            setMensagemVisualizar(null);
+                          }}
+                          className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
+                        >
+                          Disparar Novamente
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           )}
         </AnimatePresence>

@@ -194,7 +194,8 @@ export default function EmpresaAdmin() {
           { id: "jornada", label: "Identificação & Logo" },
           { id: "aparencia", label: "Design & Cores" },
           { id: "modalidades", label: "Modalidades" },
-          { id: "mensagens", label: "Mensagens WhatsApp" }
+          { id: "mensagens", label: "Mensagens WhatsApp" },
+          { id: "historico_mensagens", label: "Histórico de Envios" }
         ]
       },
       {
