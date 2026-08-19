@@ -154,16 +154,52 @@ export default function AgendamentoPremium() {
           localStorage.setItem("rmagenda_last_slug", slug);
 
           const conf = empresa.config_campos || {};
-          let jornada = buildJourney(conf, false);
 
+          const [{ data: srvs }, { data: pergs }, { data: ops }, { data: regrasDB }] =
+            await Promise.all([
+              supabase.from("servicos").select("*").eq("ativo", true).eq("empresa_id", empresa.id),
+              supabase.from("perguntas_triagem").select("*").eq("ativa", true).eq("empresa_id", empresa.id),
+              supabase.from("opcoes_triagem").select("*"),
+              supabase.from("regras_agenda").select("*").eq("ativo", true).eq("empresa_id", empresa.id)
+            ]);
+
+          const srvsAtivos = (srvs || []).filter((s) => s.ativo !== false);
+          setServicosDB(srvsAtivos);
+          if (regrasDB) setRegrasGlobais(regrasDB);
+          if (pergs && ops) {
+            const pergsFull = pergs.map((p) => ({
+              ...p,
+              opcoes: ops.filter((o) => o.pergunta_id === p.id)
+            }));
+            setPerguntasDB(pergsFull);
+          }
+
+          // Leitura dos Parâmetros de URL (Smart Link)
+          const nomeUrlRaw = searchParams.get("nome");
+          const sobrenomeUrlRaw = searchParams.get("sobrenome");
+          const cpfUrl = searchParams.get("cpf");
+          const medicoUrl = searchParams.get("medico") || searchParams.get("especialista");
+          const wppUrl = searchParams.get("whatsapp");
+          const emailUrl = searchParams.get("email");
+          const nascUrl = searchParams.get("nascimento");
+          const espRaw = searchParams.get("especialidade");
           const urlModalidadeRaw = searchParams.get("modalidade");
-          let urlModalidade = null;
+          const hideFlag = searchParams.get("hide") === "true";
 
+          let limpaWpp = wppUrl ? wppUrl.replace(/\D/g, "") : "";
+          if (limpaWpp.startsWith("55") && (limpaWpp.length === 12 || limpaWpp.length === 13)) {
+            limpaWpp = limpaWpp.substring(2);
+          }
+
+          const cpfValid = cpfUrl && cpfUrl.replace(/\D/g, "").length === 11;
+          const telValid = limpaWpp.length >= 10;
+          const isSmartLinkComDados = !!(nomeUrlRaw && (cpfValid || telValid));
+
+          // 1. Resolução da Modalidade
+          let urlModalidade = null;
           if (urlModalidadeRaw) {
             const cleanMod = String(urlModalidadeRaw).trim().toLowerCase();
             const modalidadesOpcoes = conf.modalidades_opcoes || [];
-
-            // 1. Busca por código URI ou ID cadastrado na clínica
             const matchMod = modalidadesOpcoes.find(
               (m) =>
                 (m.codigo_uri && String(m.codigo_uri).trim().toLowerCase() === cleanMod) ||
@@ -174,7 +210,6 @@ export default function AgendamentoPremium() {
             if (matchMod) {
               urlModalidade = matchMod.nome;
             } else {
-              // 2. Fallbacks clássicos
               const mapaMod = { 1: "Convênio", 2: "Particular", 3: "Retorno", "1": "Convênio", "2": "Particular", "3": "Retorno" };
               urlModalidade = mapaMod[urlModalidadeRaw] || urlModalidadeRaw;
             }
@@ -184,37 +219,181 @@ export default function AgendamentoPremium() {
               setValue("tipo_servico", "Retorno");
             }
           }
-          const hideFlag = searchParams.get("hide") === "true";
 
           if (urlModalidade) {
             setValue("modalidade", urlModalidade);
-            if (hideFlag) jornada = jornada.filter((m) => m !== "modalidade");
           } else if (conf.ocultar_modalidade) {
             setValue("modalidade", conf.modalidade_padrao || "Convênio");
           } else {
             setValue("modalidade", conf.modalidade_padrao || "Particular");
           }
 
-          setModulosAtivos(jornada);
-
-          const [{ data: srvs }, { data: pergs }, { data: ops }, { data: regrasDB }] =
-            await Promise.all([
-              supabase.from("servicos").select("*").eq("ativo", true).eq("empresa_id", empresa.id),
-              supabase.from("perguntas_triagem").select("*").eq("ativa", true).eq("empresa_id", empresa.id),
-              supabase.from("opcoes_triagem").select("*"),
-              supabase.from("regras_agenda").select("*").eq("ativo", true).eq("empresa_id", empresa.id)
-            ]);
-
-          if (srvs) setServicosDB(srvs);
-          if (regrasDB) setRegrasGlobais(regrasDB);
-          if (pergs && ops) {
-            const pergsFull = pergs.map((p) => ({
-              ...p,
-              opcoes: ops.filter((o) => o.pergunta_id === p.id)
-            }));
-            setPerguntasDB(pergsFull);
+          // 2. Preenchimento dos dados do paciente recebidos na URL
+          if (nomeUrlRaw) {
+            setValue("nome", nomeUrlRaw);
+            if (sobrenomeUrlRaw) {
+              setValue("sobrenome", sobrenomeUrlRaw);
+            } else {
+              const parts = nomeUrlRaw.trim().split(" ");
+              setValue("nome", parts[0] || "");
+              setValue("sobrenome", parts.slice(1).join(" ") || "");
+            }
           }
 
+          if (cpfUrl) setValue("cpf", masks.cpf(cpfUrl));
+          if (limpaWpp) setValue("telefone_whatsapp", masks.phone(limpaWpp));
+          if (emailUrl) setValue("email", emailUrl);
+          if (nascUrl) setValue("data_nascimento", masks.date(nascUrl));
+
+          // 3. Resolução da Especialidade da URL
+          let resolvedEspFromUrl = null;
+          if (espRaw && espRaw.trim() !== "") {
+            const cleanEspInput = String(espRaw).trim();
+            const confCategorizadas = conf.especialidades_categorizadas || [];
+
+            // A. Busca exata por código URI ou ID da especialidade
+            const matchByUri = confCategorizadas.find(
+              (e) => e.codigo_uri && String(e.codigo_uri).trim().toLowerCase() === cleanEspInput.toLowerCase()
+            );
+
+            if (matchByUri) {
+              resolvedEspFromUrl = matchByUri.nome;
+            } else {
+              // B. Busca por nome nas especialidades
+              const matchByNome = confCategorizadas.find(
+                (e) => e.nome && e.nome.toLowerCase().trim() === cleanEspInput.toLowerCase()
+              );
+              if (matchByNome) {
+                resolvedEspFromUrl = matchByNome.nome;
+              } else {
+                resolvedEspFromUrl = cleanEspInput;
+              }
+            }
+          }
+
+          // 4. Resolução Estrita do Médico por Código URI / Número nos Serviços ATIVOS
+          let foundSrv = null;
+          let urlSrvId = null;
+
+          if (medicoUrl && medicoUrl.trim() !== "") {
+            const cleanTarget = String(medicoUrl).trim().toLowerCase();
+
+            // A. Busca estrita por codigo_uri, numero_especialista ou id nos serviços ATIVOS
+            foundSrv = srvsAtivos.find(
+              (s) =>
+                s.ativo !== false &&
+                (String(s.codigo_uri || "").trim().toLowerCase() === cleanTarget ||
+                 String(s.numero_especialista || "").trim() === cleanTarget ||
+                 String(s.id || "").trim() === cleanTarget)
+            );
+
+            // B. Busca por nome exato do médico ativo
+            if (!foundSrv) {
+              const cleanUrlMedico = cleanTarget.replace(/dra\.|dr\./g, "").trim();
+              foundSrv = srvsAtivos.find((s) => {
+                if (s.ativo === false) return false;
+                const cleanDbNome = (s.nome || "").toLowerCase().replace(/dra\.|dr\./g, "").trim();
+                return cleanDbNome.includes(cleanUrlMedico) || cleanUrlMedico.includes(cleanDbNome);
+              });
+            }
+
+            if (foundSrv) {
+              urlSrvId = foundSrv.id;
+              const medicoEsps = foundSrv.especialidade
+                ? foundSrv.especialidade.split(",").map((e) => e.trim()).filter(Boolean)
+                : [];
+
+              let especialidadeFinal = resolvedEspFromUrl || (medicoEsps.length > 0 ? medicoEsps[0] : "Consulta");
+
+              const confCategorizadas = conf.especialidades_categorizadas || [];
+              const matchCatObj = confCategorizadas.find((c) => c.nome && c.nome.toLowerCase().trim() === especialidadeFinal.toLowerCase().trim());
+              let isExame = false;
+              if (matchCatObj?.categoria) {
+                isExame = matchCatObj.categoria.toLowerCase().includes("exame");
+              } else {
+                isExame = /(exame|colonoscopia|endoscopia|ultrassom|tomografia|ressonancia|raio-x|biopsia)/i.test(especialidadeFinal);
+              }
+              const tipo = isExame ? "Exame" : "Consulta";
+
+              setValue("tipo_servico", tipo);
+              setValue("especialidade", especialidadeFinal);
+              setValue("medico_profissional", foundSrv.nome);
+              setValue("subtipo_exame", isExame ? especialidadeFinal : "");
+            }
+          } else if (resolvedEspFromUrl) {
+            const confCategorizadas = conf.especialidades_categorizadas || [];
+            const matchCatObj = confCategorizadas.find((c) => c.nome && c.nome.toLowerCase().trim() === resolvedEspFromUrl.toLowerCase().trim());
+            let isExame = false;
+            if (matchCatObj?.categoria) {
+              isExame = matchCatObj.categoria.toLowerCase().includes("exame");
+            } else {
+              isExame = /(exame|colonoscopia|endoscopia|ultrassom|tomografia|ressonancia|raio-x|biopsia)/i.test(resolvedEspFromUrl);
+            }
+
+            setValue("especialidade", resolvedEspFromUrl);
+            setValue("tipo_servico", isExame ? "Exame" : "Consulta");
+            setValue("medico_profissional", "");
+            setValue("subtipo_exame", isExame ? resolvedEspFromUrl : "");
+          }
+
+          // 5. Construção Inteligente da Jornada
+          const hasPerguntas = urlSrvId ? (pergs || []).some((p) => p.servico_id === urlSrvId) : false;
+          let jornada = buildJourney(conf, hasPerguntas);
+
+          if (isSmartLinkComDados) {
+            // Em Smart Links com dados de paciente, remove telas iniciais redundantes
+            jornada = jornada.filter((m) => m !== "boas_vindas" && m !== "identificacao");
+
+            if ((foundSrv || resolvedEspFromUrl) && hideFlag) {
+              jornada = jornada.filter((m) => m !== "especialidade");
+            }
+
+            if (urlModalidade && hideFlag) {
+              jornada = jornada.filter((m) => m !== "modalidade");
+            }
+
+            // Determina a etapa exata de pouso
+            let targetStep = "agenda";
+            if (jornada.includes("triagem") && hasPerguntas) {
+              targetStep = "triagem";
+            } else if (jornada.includes("modalidade") && !urlModalidade) {
+              targetStep = "modalidade";
+            } else if (jornada.includes("especialidade") && !foundSrv && !resolvedEspFromUrl) {
+              targetStep = "especialidade";
+            } else {
+              targetStep = "agenda";
+            }
+
+            setModulosAtivos(jornada);
+            const targetIdx = Math.max(0, jornada.indexOf(targetStep));
+            setCurrentStepIndex(targetIdx);
+            currentStepRef.current = targetIdx;
+            setMinStepIndex(targetIdx);
+
+            setFlags({
+              cpfUrl: !!cpfUrl,
+              nomeUrl: !!nomeUrlRaw,
+              sobrenomeUrl: !!sobrenomeUrlRaw,
+              telUrl: !!limpaWpp,
+              emailUrl: !!emailUrl,
+              nascUrl: !!nascUrl,
+              unlockedAll: false,
+              exibirConfUri: false,
+              confirmouUri: true
+            });
+
+            setContext({
+              isSmartLink: true,
+              personalizedName: nomeUrlRaw ? nomeUrlRaw.trim().split(" ")[0] : "",
+              dataUltimaConsulta: null,
+              userFound: false,
+              checkingUser: false
+            });
+          } else {
+            setModulosAtivos(jornada);
+          }
+
+          // 6. Suporte a Reagendamento
           const rescheduleId = searchParams.get("reagendar");
           const rescheduleToken = searchParams.get("token");
           if (rescheduleId && rescheduleToken) {
@@ -245,43 +424,6 @@ export default function AgendamentoPremium() {
             setCurrentStepIndex(agendaIndex >= 0 ? agendaIndex : 0);
             setMinStepIndex(Math.max(0, jornada.indexOf("especialidade")));
           }
-
-          if (!searchParams.toString() && typeof window !== "undefined") {
-            try {
-              const saved = JSON.parse(
-                localStorage.getItem(`rmagenda_jornada:${slug}`) ||
-                  localStorage.getItem(`rmcare_jornada:${slug}`) ||
-                  "null"
-              );
-              if (isDraftFresh(saved)) {
-                restoringDraftRef.current = true;
-                reset(saved.formData || {});
-                setRespostasTriagem(saved.respostasTriagem || {});
-                const savedServiceName =
-                  saved.formData?.tipo_servico === "Exame"
-                    ? saved.formData?.subtipo_exame
-                    : saved.formData?.medico_profissional;
-                const savedService = srvs?.find((service) => service.nome === savedServiceName);
-                const hasQuestions = pergs?.some(
-                  (question) => !question.servico_id || question.servico_id === savedService?.id
-                );
-                const restoredJourney = buildJourney(conf, hasQuestions);
-                setModulosAtivos(restoredJourney);
-                const restoredIndex = restoredJourney.indexOf(saved.step);
-                if (restoredIndex >= 0 && saved.step !== "concluido")
-                  setCurrentStepIndex(restoredIndex);
-                setIslandMessage("Continuamos de onde você parou.");
-                setIslandState("success");
-                setTimeout(() => setIslandState("default"), 2400);
-              } else {
-                localStorage.removeItem(`rmagenda_jornada:${slug}`);
-                localStorage.removeItem(`rmcare_jornada:${slug}`);
-              }
-            } catch {
-              localStorage.removeItem(`rmagenda_jornada:${slug}`);
-              localStorage.removeItem(`rmcare_jornada:${slug}`);
-            }
-          }
         } catch (err) {
           console.error("Erro ao carregar dados:", err);
         } finally {
@@ -311,19 +453,19 @@ export default function AgendamentoPremium() {
 
       const cleanTarget = String(nomeProfissional).trim().toLowerCase();
 
-      // 1. Busca por nome exato
+      // 1. Busca exata por código URI, número de especialista ou ID
       let srv = servicosDB.find(
-        (s) => s.ativo !== false && s.nome.trim().toLowerCase() === cleanTarget
+        (s) =>
+          s.ativo !== false &&
+          (String(s.codigo_uri || "").trim().toLowerCase() === cleanTarget ||
+           String(s.numero_especialista || "").trim() === cleanTarget ||
+           String(s.id || "").trim() === cleanTarget)
       );
 
-      // 2. Busca por código URI, número de especialista ou ID
+      // 2. Busca por nome exato
       if (!srv) {
         srv = servicosDB.find(
-          (s) =>
-            s.ativo !== false &&
-            (String(s.codigo_uri || "").trim().toLowerCase() === cleanTarget ||
-             String(s.numero_especialista || "").trim() === cleanTarget ||
-             String(s.id || "").trim() === cleanTarget)
+          (s) => s.ativo !== false && s.nome.trim().toLowerCase() === cleanTarget
         );
       }
 
@@ -379,21 +521,7 @@ export default function AgendamentoPremium() {
     });
 
     useEffect(() => {
-      if (loadingConfig || !empresaDados) return;
-      setModulosAtivos((previous) => {
-        const currentKey = previous[currentStepRef.current];
-        const triageEnabled =
-          empresaDados.config_campos?.ocultar_triagem !== true && perguntasAtuais.length > 0;
-        const next = buildJourney(empresaDados.config_campos || {}, triageEnabled);
-        if (next.join("|") === previous.join("|")) return previous;
-        const nextIndex = next.indexOf(currentKey);
-        if (nextIndex >= 0) queueMicrotask(() => setCurrentStepIndex(nextIndex));
-        return next;
-      });
-    }, [perguntasAtuais.length, loadingConfig, empresaDados]);
-
-    useEffect(() => {
-      if (!draftKey || loadingConfig || !empresaDados) return;
+      if (!draftKey || loadingConfig || !empresaDados || context.isSmartLink) return;
       const step = modulosAtivos[currentStepIndex];
       if (step === "concluido") {
         localStorage.removeItem(draftKey);
@@ -412,7 +540,7 @@ export default function AgendamentoPremium() {
         );
       }, 250);
       return () => clearTimeout(timeout);
-    }, [draftKey, loadingConfig, empresaDados, currentStepIndex, modulosAtivos, formData, respostasTriagem]);
+    }, [draftKey, loadingConfig, empresaDados, currentStepIndex, modulosAtivos, formData, respostasTriagem, context.isSmartLink]);
 
     const showIsland = (msg, type = "error") => {
       setIslandMessage(msg);
@@ -427,219 +555,6 @@ export default function AgendamentoPremium() {
         timeoutRef.current = setTimeout(() => setIslandState("default"), 3000);
       }
     };
-
-    useEffect(() => {
-      if (!empresaDados || loadingConfig) return;
-
-      const nomeUrlRaw = searchParams.get("nome");
-      const sobrenomeUrlRaw = searchParams.get("sobrenome");
-      const cpfUrl = searchParams.get("cpf");
-      const medicoUrl = searchParams.get("medico") || searchParams.get("especialista");
-      const wppUrl = searchParams.get("whatsapp");
-      const emailUrl = searchParams.get("email");
-      const nascUrl = searchParams.get("nascimento");
-      const espRaw = searchParams.get("especialidade");
-      const hideFlag = searchParams.get("hide") === "true";
-
-      if (
-        (nomeUrlRaw !== null || cpfUrl !== null || medicoUrl !== null || wppUrl !== null || espRaw !== null) &&
-        !context.isSmartLink
-      ) {
-        if (nomeUrlRaw) {
-          setValue("nome", nomeUrlRaw);
-          if (sobrenomeUrlRaw) {
-            setValue("sobrenome", sobrenomeUrlRaw);
-          } else {
-            const parts = nomeUrlRaw.trim().split(" ");
-            setValue("nome", parts[0] || "");
-            setValue("sobrenome", parts.slice(1).join(" ") || "");
-          }
-        }
-
-        if (cpfUrl) setValue("cpf", masks.cpf(cpfUrl));
-
-        let limpaWpp = wppUrl ? wppUrl.replace(/\D/g, "") : "";
-        if (limpaWpp.startsWith("55") && (limpaWpp.length === 12 || limpaWpp.length === 13))
-          limpaWpp = limpaWpp.substring(2);
-        if (limpaWpp) setValue("telefone_whatsapp", masks.phone(limpaWpp));
-
-        if (emailUrl) setValue("email", emailUrl);
-        if (nascUrl) setValue("data_nascimento", masks.date(nascUrl));
-
-        let urlSrvId = null;
-        let foundSrv = null;
-
-        // 1. Resolução da Especialidade a partir de searchParams (?especialidade=1 ou ?especialidade=8 ou ?especialidade=Nutricionista)
-        let resolvedEspFromUrl = null;
-        if (espRaw && espRaw.trim() !== "") {
-          const cleanEspInput = String(espRaw).trim();
-          const confCategorizadas = empresaDados?.config_campos?.especialidades_categorizadas || [];
-
-          // 1º: Busca exata pelo Código URI / ID configurado na especialidade (ex: codigo_uri === "1" ou "8")
-          const matchByUri = confCategorizadas.find(
-            (e) => e.codigo_uri && String(e.codigo_uri).trim().toLowerCase() === cleanEspInput.toLowerCase()
-          );
-
-          if (matchByUri) {
-            resolvedEspFromUrl = matchByUri.nome;
-          } else {
-            // 2º: Busca pelo nome da especialidade nas categorizadas ou serviços
-            const todasEspsClinica = [
-              ...confCategorizadas.map((e) => e.nome),
-              ...(servicosDB || []).filter((s) => s.especialidade).flatMap((s) => s.especialidade.split(",").map((e) => e.trim()))
-            ].filter(Boolean);
-            const listaUnicaEsps = [...new Set(todasEspsClinica)];
-
-            const matchByNome = listaUnicaEsps.find(
-              (e) => e.toLowerCase() === cleanEspInput.toLowerCase() || e.toLowerCase().includes(cleanEspInput.toLowerCase())
-            );
-
-            if (matchByNome) {
-              resolvedEspFromUrl = matchByNome;
-            } else if (/^\d+$/.test(cleanEspInput)) {
-              // 3º: Fallback para índice numérico
-              const indexEsp = parseInt(cleanEspInput, 10) - 1;
-              if (indexEsp >= 0 && indexEsp < confCategorizadas.length) {
-                resolvedEspFromUrl = confCategorizadas[indexEsp].nome;
-              } else if (indexEsp >= 0 && indexEsp < listaUnicaEsps.length) {
-                resolvedEspFromUrl = listaUnicaEsps[indexEsp];
-              }
-            } else {
-              resolvedEspFromUrl = cleanEspInput;
-            }
-          }
-        }
-
-        // 2. Resolução Estrita do Médico / Especialista por Código URI, Número de Especialista, ID ou Nome
-        if (medicoUrl && medicoUrl.trim() !== "") {
-          const cleanTarget = String(medicoUrl).trim().toLowerCase();
-
-          // A. Busca exata por código URI, número de especialista ou ID nos serviços ATIVOS
-          foundSrv = (servicosDB || []).find(
-            (s) =>
-              s.ativo !== false &&
-              (String(s.codigo_uri || "").trim().toLowerCase() === cleanTarget ||
-               String(s.numero_especialista || "").trim() === cleanTarget ||
-               String(s.id || "").trim() === cleanTarget)
-          );
-
-          // B. Busca por nome do profissional
-          if (!foundSrv) {
-            const cleanUrlMedico = cleanTarget.replace(/dra\.|dr\./g, "").trim();
-            foundSrv = (servicosDB || []).find((s) => {
-              if (s.ativo === false) return false;
-              const cleanDbNome = (s.nome || "").toLowerCase().replace(/dra\.|dr\./g, "").trim();
-              return cleanDbNome.includes(cleanUrlMedico) || cleanUrlMedico.includes(cleanDbNome);
-            });
-          }
-
-          if (foundSrv) {
-            urlSrvId = foundSrv.id;
-
-            // Especialidades vinculadas a este profissional
-            const medicoEsps = foundSrv.especialidade
-              ? foundSrv.especialidade.split(",").map((e) => e.trim()).filter(Boolean)
-              : [];
-
-            // Se a URL especificou uma especialidade (ex: Gastroenterologista) e o médico a atende, respeita!
-            let especialidadeFinal = "";
-            if (resolvedEspFromUrl && (medicoEsps.some((e) => e.toLowerCase().includes(resolvedEspFromUrl.toLowerCase()) || resolvedEspFromUrl.toLowerCase().includes(e.toLowerCase())) || medicoEsps.length === 0)) {
-              especialidadeFinal = resolvedEspFromUrl;
-            } else if (medicoEsps.length > 0) {
-              especialidadeFinal = medicoEsps[0];
-            } else {
-              especialidadeFinal = resolvedEspFromUrl || "Consulta";
-            }
-
-            // Descobre estritamente se a especialidade final é Exame ou Consulta
-            const confCategorizadas = empresaDados?.config_campos?.especialidades_categorizadas || [];
-            const matchCatObj = confCategorizadas.find((c) => c.nome && c.nome.toLowerCase().trim() === especialidadeFinal.toLowerCase().trim());
-            let isExame = false;
-            if (matchCatObj?.categoria) {
-              isExame = matchCatObj.categoria.toLowerCase().includes("exame");
-            } else {
-              isExame = /(exame|colonoscopia|endoscopia|ultrassom|tomografia|ressonancia|raio-x|biopsia)/i.test(especialidadeFinal);
-            }
-            const tipo = isExame ? "Exame" : "Consulta";
-
-            setValue("tipo_servico", tipo);
-            setValue("especialidade", especialidadeFinal);
-            setValue("medico_profissional", foundSrv.nome);
-            setValue("subtipo_exame", isExame ? especialidadeFinal : "");
-          } else {
-            setValue("medico_profissional", "");
-            showIsland("Especialista do link não encontrado ou inativo. Por favor, selecione na lista.", "error");
-          }
-        } else if (resolvedEspFromUrl) {
-          const confCategorizadas = empresaDados?.config_campos?.especialidades_categorizadas || [];
-          const matchCatObj = confCategorizadas.find((c) => c.nome && c.nome.toLowerCase().trim() === resolvedEspFromUrl.toLowerCase().trim());
-          let isExame = false;
-          if (matchCatObj?.categoria) {
-            isExame = matchCatObj.categoria.toLowerCase().includes("exame");
-          } else {
-            isExame = /(exame|colonoscopia|endoscopia|ultrassom|tomografia|ressonancia|raio-x|biopsia)/i.test(resolvedEspFromUrl);
-          }
-
-          setValue("especialidade", resolvedEspFromUrl);
-          setValue("tipo_servico", isExame ? "Exame" : "Consulta");
-          setValue("medico_profissional", "");
-          setValue("subtipo_exame", isExame ? resolvedEspFromUrl : "");
-        }
-
-        const hasCpf = !!(cpfUrl && cpfUrl.trim() !== "");
-        const hasTel = !!(limpaWpp && limpaWpp.trim() !== "");
-        const hasMedico = !!(medicoUrl && medicoUrl.trim() !== "");
-
-        setFlags((f) => ({
-          ...f,
-          cpfUrl: hasCpf,
-          nomeUrl: !!nomeUrlRaw,
-          sobrenomeUrl: !!nomeUrlRaw,
-          telUrl: hasTel,
-          emailUrl: !!emailUrl,
-          nascUrl: !!nascUrl,
-          exibirConfUri: hasMedico && !hideFlag
-        }));
-
-        setContext((c) => ({
-          ...c,
-          isSmartLink: true,
-          personalizedName: nomeUrlRaw ? nomeUrlRaw.trim().split(" ")[0] : ""
-        }));
-
-        const hasPerguntas = urlSrvId ? perguntasDB.some((p) => p.servico_id === urlSrvId) : false;
-        const cpfValid = cpfUrl && cpfUrl.replace(/\D/g, "").length === 11;
-        const telValid = limpaWpp.length >= 10;
-
-        const canSkipIdentificacao = cpfValid && telValid && !!nomeUrlRaw;
-
-        if (canSkipIdentificacao) {
-          let jumpTo = "especialidade";
-
-          if (hasMedico || resolvedEspFromUrl) {
-            if (modulosAtivos.includes("triagem") && hasPerguntas) {
-              jumpTo = "triagem";
-            } else if (modulosAtivos.includes("modalidade") && !searchParams.get("modalidade")) {
-              jumpTo = "modalidade";
-            } else {
-              jumpTo = "agenda";
-            }
-          }
-
-          const jumpIndex = modulosAtivos.indexOf(jumpTo);
-          if (jumpIndex !== -1) {
-            setCurrentStepIndex(jumpIndex);
-            setMinStepIndex(jumpIndex);
-          }
-        } else {
-          const jumpIndex = modulosAtivos.indexOf("identificacao");
-          if (jumpIndex !== -1) {
-            setCurrentStepIndex(jumpIndex);
-            setMinStepIndex(jumpIndex);
-          }
-        }
-      }
-    }, [searchParams, context.isSmartLink, servicosDB, perguntasDB, setValue, loadingConfig, modulosAtivos, empresaDados]);
 
     const lastCheckedCpfRef = useRef("");
 
