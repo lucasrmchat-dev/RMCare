@@ -157,8 +157,33 @@ export default function AgendamentoPremium() {
           let jornada = buildJourney(conf, false);
 
           const urlModalidadeRaw = searchParams.get("modalidade");
-          const mapaMod = { 1: "Convênio", 2: "Particular" };
-          const urlModalidade = mapaMod[urlModalidadeRaw] || urlModalidadeRaw;
+          let urlModalidade = null;
+
+          if (urlModalidadeRaw) {
+            const cleanMod = String(urlModalidadeRaw).trim().toLowerCase();
+            const modalidadesOpcoes = conf.modalidades_opcoes || [];
+
+            // 1. Busca por código URI ou ID cadastrado na clínica
+            const matchMod = modalidadesOpcoes.find(
+              (m) =>
+                (m.codigo_uri && String(m.codigo_uri).trim().toLowerCase() === cleanMod) ||
+                (m.id && String(m.id).trim().toLowerCase() === cleanMod) ||
+                (m.nome && m.nome.trim().toLowerCase() === cleanMod)
+            );
+
+            if (matchMod) {
+              urlModalidade = matchMod.nome;
+            } else {
+              // 2. Fallbacks clássicos
+              const mapaMod = { 1: "Convênio", 2: "Particular", 3: "Retorno", "1": "Convênio", "2": "Particular", "3": "Retorno" };
+              urlModalidade = mapaMod[urlModalidadeRaw] || urlModalidadeRaw;
+            }
+
+            if (urlModalidadeRaw === "3" || (urlModalidade && urlModalidade.toLowerCase() === "retorno")) {
+              urlModalidade = "Retorno";
+              setValue("tipo_servico", "Retorno");
+            }
+          }
           const hideFlag = searchParams.get("hide") === "true";
 
           if (urlModalidade) {
@@ -541,8 +566,9 @@ export default function AgendamentoPremium() {
             setValue("especialidade", especialidadeFinal);
             setValue("medico_profissional", foundSrv.nome);
             setValue("subtipo_exame", isExame ? especialidadeFinal : "");
-          } else if (!/^\d+$/.test(medicoUrl)) {
-            setValue("medico_profissional", medicoUrl);
+          } else {
+            setValue("medico_profissional", "");
+            showIsland("Especialista do link não encontrado ou inativo. Por favor, selecione na lista.", "error");
           }
         } else if (resolvedEspFromUrl) {
           const confCategorizadas = empresaDados?.config_campos?.especialidades_categorizadas || [];
@@ -590,10 +616,14 @@ export default function AgendamentoPremium() {
         if (canSkipIdentificacao) {
           let jumpTo = "especialidade";
 
-          if (hasMedico && hideFlag) {
-            if (modulosAtivos.includes("triagem") && hasPerguntas) jumpTo = "triagem";
-            else if (modulosAtivos.includes("modalidade")) jumpTo = "modalidade";
-            else jumpTo = "agenda";
+          if (hasMedico || resolvedEspFromUrl) {
+            if (modulosAtivos.includes("triagem") && hasPerguntas) {
+              jumpTo = "triagem";
+            } else if (modulosAtivos.includes("modalidade") && !searchParams.get("modalidade")) {
+              jumpTo = "modalidade";
+            } else {
+              jumpTo = "agenda";
+            }
           }
 
           const jumpIndex = modulosAtivos.indexOf(jumpTo);
@@ -621,11 +651,16 @@ export default function AgendamentoPremium() {
       lastCheckedCpfRef.current = cleanCpfInput;
 
       try {
-        let { data } = await supabase
+        let query = supabase
           .from("pacientes")
           .select("*")
-          .eq("cpf", cleanCpfInput)
-          .maybeSingle();
+          .eq("cpf", cleanCpfInput);
+
+        if (empresaDados?.id) {
+          query = query.eq("empresa_id", empresaDados.id);
+        }
+
+        let { data } = await query.maybeSingle();
 
         if (data) {
           if (data.nome_completo) {
@@ -1299,6 +1334,9 @@ export default function AgendamentoPremium() {
             localStorage.removeItem(k);
           }
         });
+
+        window.location.href = `/${slug}/agendamentos`;
+        return;
       }
 
       reset({
@@ -1344,10 +1382,6 @@ export default function AgendamentoPremium() {
       setCurrentStepIndex(0);
       setMinStepIndex(0);
       setIslandState("default");
-
-      if (typeof window !== "undefined") {
-        window.history.replaceState({}, document.title, window.location.pathname);
-      }
     };
 
     const contextValue = {
@@ -1441,7 +1475,7 @@ export default function AgendamentoPremium() {
     return (
       <AgendamentoContext.Provider value={contextValue}>
         {/* CABEÇALHO DYNAMIC ISLAND */}
-        <div className="absolute top-3 md:top-6 left-0 right-0 w-full z-[9999] px-4 flex justify-center pointer-events-none">
+        <div className="absolute top-16 md:top-6 left-0 right-0 w-full z-[9999] px-4 flex justify-center pointer-events-none">
           <motion.div
             layout
             transition={{ type: "spring", stiffness: 450, damping: 30 }}
@@ -1574,19 +1608,6 @@ export default function AgendamentoPremium() {
                   ) : null}
 
                   <div className="flex items-center gap-2.5 pl-2 border-l border-zinc-200/80 dark:border-white/10">
-                    {logoUrl ? (
-                      <div className="w-8 h-8 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 p-0.5 flex items-center justify-center shadow-sm overflow-hidden shrink-0">
-                        <img
-                          src={logoUrl}
-                          alt={empresaDados?.nome || "Clínica"}
-                          className="max-h-full max-w-full object-contain"
-                        />
-                      </div>
-                    ) : (
-                      <div className="w-8 h-8 rounded-xl bg-zinc-950 dark:bg-white text-white dark:text-black flex items-center justify-center shadow-sm shrink-0 font-bold">
-                        <Activity size={14} strokeWidth={2} />
-                      </div>
-                    )}
                     <span className="font-bold text-xs text-zinc-900 dark:text-zinc-100 truncate max-w-[220px]">
                       {empresaDados?.nome}
                     </span>

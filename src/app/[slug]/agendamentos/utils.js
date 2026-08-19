@@ -66,7 +66,7 @@ export const dispararPushRmChat = async (telefone, nome, mensagem, urlWebhook, c
       urlWebhook: urlWebhook || null
     };
 
-    console.log("📡 [DISPARO WHATSAPP] Solicitando envio...", {
+    console.log("📡 [DISPARO WHATSAPP] Enviando requisição para /api/disparar-webhook...", {
       paciente: nome,
       telefone: telefone
     });
@@ -87,7 +87,7 @@ export const dispararPushRmChat = async (telefone, nome, mensagem, urlWebhook, c
       return false;
     }
 
-    console.log("✅ [DISPARO WHATSAPP SUCESSO] Mensagem entregue!", result);
+    console.log("✅ [DISPARO WHATSAPP SUCESSO] Mensagem entregue com sucesso!", result);
     return true;
   } catch (err) {
     console.error("❌ [DISPARO WHATSAPP ERRO CRÍTICO]:", err);
@@ -201,39 +201,57 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
   const categoriaEfetiva = classificarAtendimento(formData, empresaDados);
   const isExame = categoriaEfetiva === "Exames";
 
-  // 2. RESOLUÇÃO COMPLETA DO NOME DO PROFISSIONAL
-  let nomeProfissionalOficial = (medico_profissional || "").trim();
+  // 2. RESOLUÇÃO COMPLETA DO NOME DO PROFISSIONAL (BUSCANDO APENAS SERVIÇOS ATIVOS DA CLÍNICA)
+  let nomeProfissionalOficial = medico_profissional || "";
 
-  // Verifica se o profissional recebido é um nome real ou código/número
-  const isNumeroOuId = !nomeProfissionalOficial || /^\d+$/.test(nomeProfissionalOficial) || nomeProfissionalOficial.length < 3;
-
-  if (isNumeroOuId && empresaDados?.id) {
-    try {
-      // Busca apenas especialistas ATIVOS na clínica
+  try {
+    if (empresaDados?.id) {
       const { data: servicosClinica } = await supabase
         .from("servicos")
         .select("id, nome, codigo_uri, numero_especialista, especialidade, tipo, ativo")
         .eq("empresa_id", empresaDados.id)
-        .eq("ativo", true);
+        .neq("ativo", false);
 
       if (Array.isArray(servicosClinica) && servicosClinica.length > 0) {
-        // A. Busca pelo código URI ou número de especialista (ex: medico=8)
+        const cleanTarget = String(nomeProfissionalOficial).trim().toLowerCase();
+
+        // A. Busca exata por código URI (ex: codigo_uri === "8" ou numero_especialista === 8)
         let srvEncontrado = servicosClinica.find(
           (s) =>
-            (nomeProfissionalOficial && (s.id === nomeProfissionalOficial || String(s.codigo_uri) === String(nomeProfissionalOficial) || String(s.numero_especialista) === String(nomeProfissionalOficial))) ||
-            (subtipo_exame && (s.id === subtipo_exame || String(s.codigo_uri) === String(subtipo_exame) || String(s.numero_especialista) === String(subtipo_exame)))
+            cleanTarget &&
+            (String(s.codigo_uri || "").trim().toLowerCase() === cleanTarget ||
+             String(s.numero_especialista || "").trim() === cleanTarget ||
+             String(s.id || "").trim() === cleanTarget)
         );
+
+        // B. Se não achou e o nome recebido for número ou vazio, busca pelo nome do profissional ativo
+        if (!srvEncontrado && nomeProfissionalOficial && !/^\d+$/.test(nomeProfissionalOficial)) {
+          const cleanInput = nomeProfissionalOficial.toLowerCase().replace(/dra\.|dr\./g, "").trim();
+          srvEncontrado = servicosClinica.find((s) => {
+            const cleanSrv = (s.nome || "").toLowerCase().replace(/dra\.|dr\./g, "").trim();
+            return cleanSrv.includes(cleanInput) || cleanInput.includes(cleanSrv);
+          });
+        }
+
+        // C. Se ainda não achou e tem especialidade informada
+        if (!srvEncontrado && especialidade) {
+          srvEncontrado = servicosClinica.find((s) => {
+            const espSrv = (s.especialidade || "").toLowerCase();
+            const espAlvo = especialidade.toLowerCase().trim();
+            return espSrv.includes(espAlvo) || espAlvo.includes(espSrv);
+          });
+        }
 
         if (srvEncontrado?.nome) {
           nomeProfissionalOficial = srvEncontrado.nome;
         }
       }
-    } catch (errResolve) {
-      console.warn("Aviso ao resolver código do profissional:", errResolve);
     }
+  } catch (errResolve) {
+    console.warn("Aviso ao resolver nome do profissional:", errResolve);
   }
 
-  // Se o profissional ainda for um número puro (ex: "8"), limpa para não exibir número
+  // Se o profissional ainda for um número puro (ex: "8"), limpa para não exibir número feio
   if (/^\d+$/.test(nomeProfissionalOficial)) {
     nomeProfissionalOficial = "";
   }
@@ -242,18 +260,26 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
   const dataFormatada = data_agendamento ? data_agendamento.split("-").reverse().join("/") : "";
   const idadePaciente = calcularIdade(data_nascimento);
 
-  const nomeExameFormatado = subtipo_exame || especialidade || "Exame";
-  const nomeEspecialistaFormatado = nomeProfissionalOficial || (isExame ? "Corpo Clínico" : (especialidade || "Especialista Clínico"));
-  const servicoFormatado = isExame ? nomeExameFormatado : nomeEspecialistaFormatado;
+  // Nome do procedimento / exame (ex: Colonoscopia, Endoscopia)
+  const nomeProcedimento = subtipo_exame || especialidade || (isExame ? "Exame" : "Consulta");
+
+  // Nome do médico / especialista responsável (ex: Tiago Lima, Maria Aparecida Gouveia)
+  const nomeEspecialista = nomeProfissionalOficial || (isExame ? "Corpo Clínico" : (especialidade || "Especialista Clínico"));
+
+  // Para garantir que "{servico}" nunca repita "Colonoscopia com Colonoscopia":
+  // Se o template disser "Seu exame com {servico}", "{servico}" refere-se ao Especialista quando houver profissional definido!
+  const servicoValor = nomeProfissionalOficial || nomeProcedimento;
 
   const vars = {
     nome: (nome || "").trim(),
-    servico: servicoFormatado,
-    especialista: nomeEspecialistaFormatado,
-    medico: nomeEspecialistaFormatado,
-    profissional: nomeEspecialistaFormatado,
-    especialidade: especialidade || (isExame ? nomeExameFormatado : "Consulta"),
-    subtipo_exame: isExame ? nomeExameFormatado : "",
+    servico: servicoValor,
+    especialista: nomeEspecialista,
+    medico: nomeEspecialista,
+    profissional: nomeEspecialista,
+    procedimento: nomeProcedimento,
+    exame: isExame ? nomeProcedimento : "",
+    subtipo_exame: isExame ? nomeProcedimento : "",
+    especialidade: especialidade || nomeProcedimento,
     categoria: categoriaEfetiva,
     tipo_servico: isExame ? "Exame" : "Consulta",
     enfermidade: (Array.isArray(formData?.enfermidades) && formData.enfermidades.length > 0) ? formData.enfermidades.join(", ") : "",
@@ -271,7 +297,8 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
     isExame,
     profissional: vars.especialista,
     servico: vars.servico,
-    especialidade: vars.especialidade
+    especialidade: vars.especialidade,
+    procedimento: vars.procedimento
   });
 
   // 4. REGRAS DE MENSAGENS CONFIGURADAS
@@ -298,13 +325,19 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
     const alvo = (regra.alvo || (regra.especialidade === "Todas" ? "Todas" : `especialidade:${regra.especialidade}`)).trim();
     console.log(`🔍 [Regra #${idx + 1}] Gatilho: "${regra.gatilho}" | Alvo: "${alvo}"`);
 
-    // Filtro de gatilho específico
+    // Regras com gatilho "remarcado" ou "cancelado" NÃO devem disparar na hora do agendamento novo
+    if (!gatilhoFiltro && ["remarcado", "cancelado"].includes(regra.gatilho)) {
+      console.log(`⏩ [Regra #${idx + 1}] Ignorada: gatilho (${regra.gatilho}) só deve disparar em ação explícita de ${regra.gatilho}.`);
+      continue;
+    }
+
+    // Filtro de gatilho específico quando passado
     if (gatilhoFiltro && regra.gatilho !== gatilhoFiltro) {
       console.log(`⏩ [Regra #${idx + 1}] Ignorada por gatilho (${regra.gatilho} !== ${gatilhoFiltro})`);
       continue;
     }
 
-    // 5. TRAVA DE DEDUPLICAÇÃO TEMPORAL (60 segundos)
+    // 5. TRAVA DE DEDUPLICAÇÃO TEMPORAL (60 segundos por chave única)
     const dedupKey = `${agendamentoId || telefone_whatsapp}_${regra.id || idx}_${regra.gatilho}_${data_agendamento}_${horario_agendamento}`;
     const ultimoEnvio = mensagensProcessadasHistorico.get(dedupKey);
     const agoraMs = Date.now();
@@ -314,20 +347,23 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
       continue;
     }
 
-    // 6. VALIDAÇÃO ESTRITA DE ALVO (SEM VAZAMENTO ENTRE EXAMES E CONSULTAS)
+    // 6. VALIDAÇÃO ESTRITA E ISOLADA DE ALVO (SEM CASAMENTO CRUZADO INDESEJADO)
     let alvoValido = false;
 
+    // Helper de normalização (remove acentos, símbolos e espaços)
+    const norm = (s) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
     if (!alvo || alvo === "Todas" || alvo === "todos") {
-      // Se for regra global "Todas", não envia mensagens que contenham preparo de exame (PICOPREP, etc.) para consultas!
+      // Se for regra global "Todas", bloqueia envio de mensagens de preparo de exame (PICOPREP, etc.) para consultas!
       const msgLower = (regra.mensagem || "").toLowerCase();
       const contemPreparoExame = /(picoprep|laxante|lavagem|colonoscopia|endoscopia|jejum absoluto|laudo de exame)/i.test(msgLower);
       if (contemPreparoExame && !isExame) {
-        console.log(`⛔ [Regra #${idx + 1}] BLOQUEADA: Regra com preparo de exame não pode ser enviada para consulta.`);
+        console.log(`⛔ [Regra #${idx + 1}] BLOQUEADA: Regra global com preparo de exame não pode ser enviada para consulta.`);
         continue;
       }
       alvoValido = true;
     } else if (alvo.startsWith("categoria:")) {
-      const targetCat = alvo.replace("categoria:", "").toLowerCase().trim();
+      const targetCat = norm(alvo.replace("categoria:", ""));
       const isTargetExame = targetCat.includes("exame");
       const isTargetConsulta = targetCat.includes("consulta");
 
@@ -340,32 +376,29 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
         continue;
       }
     } else if (alvo.startsWith("tipo:")) {
-      const targetTipo = alvo.replace("tipo:", "").toLowerCase().trim();
+      const targetTipo = norm(alvo.replace("tipo:", ""));
       if (targetTipo.includes("exame") && isExame) alvoValido = true;
       else if (targetTipo.includes("consulta") && !isExame) alvoValido = true;
       else continue;
     } else if (alvo.startsWith("especialidade:")) {
-      const targetEsp = alvo.replace("especialidade:", "").toLowerCase().trim();
-      const currEsp = (especialidade || "").toLowerCase().trim();
-      const currSub = (subtipo_exame || "").toLowerCase().trim();
+      const targetEsp = norm(alvo.replace("especialidade:", ""));
+      const currEsp = norm(especialidade);
+      const currSub = norm(subtipo_exame);
 
-      // Casamento estrito de especialidade
-      if (currEsp && (currEsp === targetEsp || currEsp.includes(targetEsp) || targetEsp.includes(currEsp))) {
-        alvoValido = true;
-      } else if (isExame && currSub && (currSub === targetEsp || currSub.includes(targetEsp) || targetEsp.includes(currSub))) {
+      // Casamento ESTRITO e EXATO (evita que "Colonoscopia" case com "Endoscopia + Colonoscopia")
+      if (currEsp === targetEsp || (isExame && currSub === targetEsp)) {
         alvoValido = true;
       } else {
         console.log(`⛔ [Regra #${idx + 1}] BLOQUEADA POR ESPECIALIDADE: Esperada="${targetEsp}", Atual="${currEsp}".`);
         continue;
       }
     } else if (alvo.startsWith("servico:")) {
-      const targetSrv = alvo.replace("servico:", "").toLowerCase().trim();
-      const currProf = (nomeProfissionalOficial || "").toLowerCase().trim();
-      const currSub = (subtipo_exame || "").toLowerCase().trim();
+      const targetSrv = norm(alvo.replace("servico:", ""));
+      const currProf = norm(nomeProfissionalOficial);
+      const currSub = norm(subtipo_exame);
 
-      if (currProf && (currProf.includes(targetSrv) || targetSrv.includes(currProf))) {
-        alvoValido = true;
-      } else if (isExame && currSub && (currSub.includes(targetSrv) || targetSrv.includes(currSub))) {
+      // Casamento ESTRITO por profissional ou exame
+      if (currProf === targetSrv || currProf.includes(targetSrv) || targetSrv.includes(currProf) || (isExame && currSub === targetSrv)) {
         alvoValido = true;
       } else {
         console.log(`⛔ [Regra #${idx + 1}] BLOQUEADA POR SERVIÇO: Esperado="${targetSrv}", Prof="${currProf}".`);
@@ -390,9 +423,9 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
     }
 
     if (regra.filtrar_enfermidade && regra.enfermidade_alvo) {
-      const targetEnf = regra.enfermidade_alvo.toLowerCase().trim();
+      const targetEnf = norm(regra.enfermidade_alvo);
       let pacienteEnfermidades = Array.isArray(formData?.enfermidades) ? formData.enfermidades : [];
-      const matchEnf = pacienteEnfermidades.some((e) => (e || "").toLowerCase().trim() === targetEnf);
+      const matchEnf = pacienteEnfermidades.some((e) => norm(e) === targetEnf);
       if (!matchEnf) continue;
     }
 

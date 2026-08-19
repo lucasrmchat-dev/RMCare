@@ -109,7 +109,7 @@ export default function Navbar() {
     <nav
       aria-label="Navegação Principal"
       className={`md:hidden fixed ${
-        isAgendamentoFlow ? 'bottom-[86px]' : 'bottom-5'
+        isAgendamentoFlow ? 'bottom-[74px]' : 'bottom-4'
       } left-0 right-0 z-[99999] flex justify-center pointer-events-none px-4 transition-all duration-300`}
     >
       <motion.div

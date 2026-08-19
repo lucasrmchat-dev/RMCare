@@ -65,8 +65,8 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
     logo_url: "",
     modalidade_padrao: "Particular",
     modalidades_opcoes: [
-      { id: "1", nome: "Particular", exige_senha: false, senha: "" },
-      { id: "2", nome: "Convênio", exige_senha: false, senha: "" }
+      { id: "1", codigo_uri: "1", nome: "Particular", exige_senha: false, senha: "" },
+      { id: "2", codigo_uri: "2", nome: "Convênio", exige_senha: false, senha: "" }
     ],
     categorias_atendimento: ["Consultas", "Exames"],
     especialidades_categorizadas: [],
@@ -92,6 +92,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
   const [regrasMensagens, setRegrasMensagens] = useState([]);
   const [filterEspecialidade, setFilterEspecialidade] = useState("Todas");
   const [filterGatilho, setFilterGatilho] = useState("Todos");
+  const [visualizacaoMensagens, setVisualizacaoMensagens] = useState("cards");
 
   const [historicoMensagens, setHistoricoMensagens] = useState([]);
   const [loadingHistorico, setLoadingHistorico] = useState(false);
@@ -228,7 +229,13 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
       ...prev,
       modalidades_opcoes: [
         ...prev.modalidades_opcoes,
-        { id: Date.now().toString(), nome: "Nova Modalidade", exige_senha: false, senha: "" }
+        {
+          id: Date.now().toString(),
+          codigo_uri: (prev.modalidades_opcoes.length + 1).toString(),
+          nome: "Nova Modalidade",
+          exige_senha: false,
+          senha: ""
+        }
       ]
     }));
   };
@@ -251,13 +258,22 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
 
   // Funções de Mensagens
   const adicionarNovaRegra = () => {
+    let alvoInicial = "Todas";
+    if (filterEspecialidade !== "Todas") {
+      alvoInicial = filterEspecialidade.startsWith("categoria:")
+        ? filterEspecialidade
+        : `especialidade:${filterEspecialidade}`;
+    }
+
+    const gatilhoInicial = filterGatilho !== "Todos" ? filterGatilho : "imediato";
+
     const novaRegra = {
       id: Date.now().toString(),
-      alvo: "Todas",
-      especialidade: "Todas",
+      alvo: alvoInicial,
+      especialidade: filterEspecialidade !== "Todas" ? filterEspecialidade : "Todas",
       filtrar_enfermidade: false,
       enfermidade_alvo: (campos.catalogo_enfermidades && campos.catalogo_enfermidades[0]) || "Refluxo",
-      gatilho: "imediato",
+      gatilho: gatilhoInicial,
       dias_antes: 1,
       hora_envio: "08:00",
       referencia_pos: "termino",
@@ -922,64 +938,92 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                       <ListChecks size={18} strokeWidth={1.5} /> Formas de Atendimento & Coberturas
                     </h3>
                     <p className="text-xs text-zinc-500 mt-1">
-                      Defina os métodos de cobertura aceitos e configure senhas para restrições.
+                      Defina os métodos de cobertura aceitos e configure os IDs numéricos para links diretos (Ex: ?modalidade=1 ou ?modalidade=2).
                     </p>
                   </div>
                   <button
                     onClick={addModalidade}
                     className="flex items-center justify-center gap-2 px-4 py-2 bg-zinc-950 dark:bg-white text-white dark:text-black text-xs font-bold rounded-xl transition-all shadow-sm min-h-[38px]"
                   >
-                    <Plus size={15} /> Adicionar Método
+                    <Plus size={15} /> Adicionar Modalidade
                   </button>
                 </div>
 
-                <div className="mb-6 p-4 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 rounded-2xl">
-                  <CustomSelect
-                    label="Modalidade Padrão"
-                    value={campos.modalidade_padrao}
-                    onChange={(v) => setCampos({ ...campos, modalidade_padrao: v })}
-                    options={campos.modalidades_opcoes.map((m) => ({
-                      value: m.nome,
-                      label: m.nome
-                    }))}
-                  />
+                <div className="mb-6 p-4 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex-1">
+                    <CustomSelect
+                      label="Modalidade Padrão Selecionada"
+                      value={campos.modalidade_padrao}
+                      onChange={(v) => setCampos({ ...campos, modalidade_padrao: v })}
+                      options={campos.modalidades_opcoes.map((m) => ({
+                        value: m.nome,
+                        label: `${m.nome} (${m.codigo_uri ? `ID URI: ${m.codigo_uri}` : `ID: ${m.id}`})`
+                      }))}
+                    />
+                  </div>
+                  <div className="text-[11px] text-blue-700 dark:text-blue-300 font-medium bg-blue-100/60 dark:bg-blue-900/40 p-3 rounded-xl">
+                    💡 <strong>Link Direto:</strong> Passe <code className="font-mono bg-white dark:bg-black px-1 py-0.5 rounded">?modalidade=ID</code> na URL para pré-selecionar a cobertura automaticamente.
+                  </div>
                 </div>
 
                 <div className="space-y-3">
-                  {campos.modalidades_opcoes.map((mod) => (
-                    <div
-                      key={mod.id}
-                      className="p-4 sm:p-5 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl flex flex-col md:flex-row gap-4 items-start md:items-center justify-between"
-                    >
-                      <div className="flex-1 w-full grid sm:grid-cols-2 gap-3">
-                        <TextInput
-                          label="Nome da Opção"
-                          value={mod.nome}
-                          onChange={(e) => updateModalidade(mod.id, "nome", e.target.value)}
-                        />
-                        {mod.exige_senha && (
+                  {campos.modalidades_opcoes.map((mod, index) => {
+                    const idExibicao = mod.codigo_uri || String(index + 1);
+                    return (
+                      <div
+                        key={mod.id}
+                        className="p-4 sm:p-5 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl flex flex-col md:flex-row gap-4 items-start md:items-center justify-between"
+                      >
+                        <div className="flex items-center gap-2 mb-2 md:mb-0">
+                          <span className="px-2.5 py-1 rounded-lg bg-zinc-950 text-white dark:bg-white dark:text-black font-mono text-[11px] font-extrabold whitespace-nowrap shadow-sm">
+                            # ID: {idExibicao}
+                          </span>
+                        </div>
+
+                        <div className="flex-1 w-full grid sm:grid-cols-3 gap-3">
                           <TextInput
-                            label="Senha Exigida"
-                            value={mod.senha || ""}
-                            onChange={(e) => updateModalidade(mod.id, "senha", e.target.value)}
+                            label="Nome da Modalidade / Cobertura"
+                            placeholder="Ex: Particular, Convênio Unimed"
+                            value={mod.nome}
+                            onChange={(e) => updateModalidade(mod.id, "nome", e.target.value)}
                           />
-                        )}
+                          <TextInput
+                            label="Código / ID na URI (URL)"
+                            placeholder="Ex: 1, 2, convenio"
+                            value={mod.codigo_uri || ""}
+                            onChange={(e) => updateModalidade(mod.id, "codigo_uri", e.target.value)}
+                          />
+                          {mod.exige_senha ? (
+                            <TextInput
+                              label="Senha Exigida"
+                              placeholder="Senha de acesso"
+                              value={mod.senha || ""}
+                              onChange={(e) => updateModalidade(mod.id, "senha", e.target.value)}
+                            />
+                          ) : (
+                            <div className="hidden sm:flex items-center text-[10px] text-zinc-400 font-mono">
+                              Link: ?modalidade={idExibicao}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
+                          <ToggleSwitch
+                            checked={mod.exige_senha}
+                            onChange={(v) => updateModalidade(mod.id, "exige_senha", v)}
+                            label="Exigir Senha"
+                          />
+                          <button
+                            onClick={() => removeModalidade(mod.id)}
+                            className="p-2 rounded-xl text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                            title="Remover modalidade"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
-                        <ToggleSwitch
-                          checked={mod.exige_senha}
-                          onChange={(v) => updateModalidade(mod.id, "exige_senha", v)}
-                          label="Exigir Senha"
-                        />
-                        <button
-                          onClick={() => removeModalidade(mod.id)}
-                          className="p-2 rounded-xl text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </section>
             </motion.div>
@@ -1017,17 +1061,54 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                   </div>
                 </div>
 
-                <div className="flex justify-between items-center mb-6 border-b border-zinc-100 dark:border-white/5 pb-4">
-                  <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">
-                    <MessageSquare size={17} strokeWidth={1.5} className="text-emerald-500" />{" "}
-                    Automações de WhatsApp ({regrasFiltradas.length})
-                  </h3>
-                  <button
-                    onClick={adicionarNovaRegra}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-zinc-950 dark:bg-white text-white dark:text-black text-xs font-bold rounded-xl transition-all shadow-sm min-h-[38px]"
-                  >
-                    <Plus size={15} /> Nova Mensagem
-                  </button>
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b border-zinc-100 dark:border-white/5 pb-4 gap-3">
+                  <div>
+                    <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">
+                      <MessageSquare size={17} strokeWidth={1.5} className="text-emerald-500" />{" "}
+                      Automações de WhatsApp ({regrasFiltradas.length})
+                    </h3>
+                    <p className="text-xs text-zinc-500">
+                      Mensagens disparadas automaticamente conforme os gatilhos e regras configurados.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl border border-zinc-200/60 dark:border-zinc-700">
+                      <button
+                        type="button"
+                        onClick={() => setVisualizacaoMensagens("cards")}
+                        className={`p-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                          visualizacaoMensagens === "cards"
+                            ? "bg-white dark:bg-black text-zinc-950 dark:text-white shadow-sm"
+                            : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+                        }`}
+                        title="Visualização em Cards"
+                      >
+                        <LayoutGrid size={14} />
+                        <span className="hidden sm:inline">Cards</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setVisualizacaoMensagens("lista")}
+                        className={`p-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                          visualizacaoMensagens === "lista"
+                            ? "bg-white dark:bg-black text-zinc-950 dark:text-white shadow-sm"
+                            : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+                        }`}
+                        title="Visualização em Lista Compacta"
+                      >
+                        <ListChecks size={14} />
+                        <span className="hidden sm:inline">Lista</span>
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={adicionarNovaRegra}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-zinc-950 dark:bg-white text-white dark:text-black text-xs font-bold rounded-xl transition-all shadow-sm min-h-[38px]"
+                    >
+                      <Plus size={15} /> Nova Mensagem
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-5">

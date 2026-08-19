@@ -62,7 +62,7 @@ export default function ModuleConcluido() {
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ type: "spring", stiffness: 420, damping: 30 }}
-      className="flex flex-col items-center justify-center text-center max-w-lg mx-auto py-6"
+      className="flex flex-col items-center justify-center text-center max-w-lg mx-auto py-6 pb-32 sm:pb-12"
     >
       <motion.div
         initial={{ scale: 0, rotate: -20 }}

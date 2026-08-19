@@ -161,7 +161,7 @@ export async function actionCancelarAgendamentoAdmin(id, motivo = "Cancelado pel
   const admin = await getAdminLogado(true);
   const { data: appointment } = await supabaseAdmin
     .from("agendamentos")
-    .select("empresa_id")
+    .select("id, empresa_id, medico_profissional, data_agendamento, horario_agendamento")
     .eq("id", id)
     .eq("empresa_id", admin.empresa_id)
     .maybeSingle();
@@ -175,6 +175,20 @@ export async function actionCancelarAgendamentoAdmin(id, motivo = "Cancelado pel
     p_motivo: motivo
   });
   if (error) throw error;
+
+  // Dispara mensagem WhatsApp de Cancelamento
+  try {
+    const { dispararGatilhoServidor } = await import("@/lib/serverDisparo");
+    await dispararGatilhoServidor({
+      agendamentoId: id,
+      empresaId: admin.empresa_id,
+      gatilho: "cancelado",
+      motivo
+    });
+  } catch (errDisparo) {
+    console.error("Aviso ao disparar WhatsApp de cancelamento:", errDisparo);
+  }
+
   return data;
 }
 
@@ -201,12 +215,46 @@ export async function actionRemarcarAgendamentoAdmin(id, data, horario) {
   const admin = await getAdminLogado(true);
   const { data: appointment } = await supabaseAdmin
     .from("agendamentos")
-    .select("empresa_id")
+    .select("id, empresa_id, medico_profissional, subtipo_exame")
     .eq("id", id)
     .eq("empresa_id", admin.empresa_id)
     .maybeSingle();
 
   if (!appointment) throw new Error("Agendamento não encontrado.");
+
+  // 1. Verificação de conflito de horário (Anti-Double-Booking)
+  const { data: conflitos } = await supabaseAdmin
+    .from("agendamentos")
+    .select("id, medico_profissional, subtipo_exame")
+    .eq("empresa_id", admin.empresa_id)
+    .eq("data_agendamento", data)
+    .eq("horario_agendamento", horario)
+    .neq("id", id)
+    .neq("status_atendimento", "cancelado");
+
+  const profAlvo = (appointment.medico_profissional || appointment.subtipo_exame || "").trim().toLowerCase();
+  const temConflitoMesmoProf = (conflitos || []).some((c) => {
+    const cProf = (c.medico_profissional || c.subtipo_exame || "").trim().toLowerCase();
+    return cProf === profAlvo || cProf.includes(profAlvo) || profAlvo.includes(cProf);
+  });
+
+  const { data: bloqueios } = await supabaseAdmin
+    .from("bloqueios_horarios")
+    .select("id, medico_profissional")
+    .eq("empresa_id", admin.empresa_id)
+    .eq("data", data)
+    .eq("horario", horario);
+
+  const temBloqueio = (bloqueios || []).some((b) => {
+    if (!b.medico_profissional || b.medico_profissional === "Todos") return true;
+    const bProf = b.medico_profissional.trim().toLowerCase();
+    return bProf === profAlvo || bProf.includes(profAlvo) || profAlvo.includes(bProf);
+  });
+
+  if (temConflitoMesmoProf || temBloqueio) {
+    throw new Error("Este horário já está ocupado ou bloqueado para este profissional.");
+  }
+
   const { data: updated, error } = await supabaseAdmin.rpc("remarcar_agendamento", {
     p_agendamento_id: id,
     p_empresa_id: admin.empresa_id,
@@ -215,6 +263,21 @@ export async function actionRemarcarAgendamentoAdmin(id, data, horario) {
     p_novo_horario: horario
   });
   if (error) throw error;
+
+  // Dispara mensagem WhatsApp de Remarcação
+  try {
+    const { dispararGatilhoServidor } = await import("@/lib/serverDisparo");
+    await dispararGatilhoServidor({
+      agendamentoId: id,
+      empresaId: admin.empresa_id,
+      gatilho: "remarcado",
+      novaData: data,
+      novoHorario: horario
+    });
+  } catch (errDisparo) {
+    console.error("Aviso ao disparar WhatsApp de remarcação:", errDisparo);
+  }
+
   return updated;
 }
 

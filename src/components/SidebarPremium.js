@@ -179,15 +179,15 @@ export default function SidebarPremium({ isExpanded, setIsExpanded }) {
         <Link href="/" className="flex items-center group w-full outline-none">
           <div className="w-[52px] flex justify-center shrink-0">
             {empresaLogo ? (
-              <div className="w-11 h-11 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 p-1 flex items-center justify-center shadow-md overflow-hidden group-hover:scale-105 transition-transform">
+              <div className="w-11 h-11 rounded-full overflow-hidden flex items-center justify-center group-hover:scale-105 transition-transform shadow-md">
                 <img
                   src={empresaLogo}
                   alt={empresaNome}
-                  className="max-h-full max-w-full object-contain"
+                  className="w-full h-full object-cover rounded-full"
                 />
               </div>
             ) : (
-              <div className="w-11 h-11 bg-zinc-950 dark:bg-white rounded-2xl flex items-center justify-center shadow-md transition-transform duration-300 group-hover:scale-105">
+              <div className="w-11 h-11 bg-zinc-950 dark:bg-white rounded-full flex items-center justify-center shadow-md transition-transform duration-300 group-hover:scale-105">
                 <Activity
                   className="text-white dark:text-zinc-900"
                   size={20}
