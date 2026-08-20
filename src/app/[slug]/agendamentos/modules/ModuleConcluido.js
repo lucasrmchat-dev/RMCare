@@ -44,9 +44,11 @@ export default function ModuleConcluido() {
   };
 
   const wppNumero =
+    empresaDados?.config_campos?.whatsapp_atendimento ||
     empresaDados?.config_campos?.whatsapp_suporte ||
+    empresaDados?.whatsapp_atendimento ||
     empresaDados?.telefone ||
-    "5583999999999";
+    "";
   const dataFormatada = formData.data_agendamento
     ? formData.data_agendamento.split("-").reverse().join("/")
     : "";
@@ -216,7 +218,13 @@ export default function ModuleConcluido() {
           whileTap={{ scale: 0.97 }}
           onClick={() => {
             playDopamineSound("click");
-            window.open(`https://wa.me/${wppNumero.replace(/\D/g, "")}`, "_blank");
+            triggerHaptic("success");
+            const cleanNum = wppNumero.replace(/\D/g, "");
+            const clinicaNome = empresaDados?.nome ? ` na ${empresaDados.nome}` : "";
+            const msg = encodeURIComponent(
+              `Olá! Realizei meu agendamento de ${procedimentoNome} com ${profissionalNome} para o dia ${dataFormatada} às ${formData.horario_agendamento}h${clinicaNome}. (Paciente: ${formData.nome} ${formData.sobrenome})`
+            );
+            window.open(cleanNum ? `https://wa.me/${cleanNum}?text=${msg}` : `https://wa.me/?text=${msg}`, "_blank");
           }}
           className="w-full min-h-[50px] py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-600/20"
         >

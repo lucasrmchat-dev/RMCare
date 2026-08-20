@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   Trash2,
   Layers,
+  MessageCircle,
   PauseCircle,
   Search,
   Hash,
@@ -69,13 +70,17 @@ const ServicoCard = ({ srv, onEdit }) => {
             </span>
           )}
 
-          {!srv.ativo ? (
+          {srv.redirecionar_whatsapp || srv.status_agendamento === "whatsapp" ? (
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 text-[10px] font-black uppercase tracking-widest rounded-lg border border-purple-200/60 dark:border-purple-900/40">
+              <MessageCircle size={11} /> Ativo Parcial (WhatsApp)
+            </span>
+          ) : !srv.ativo || srv.status_agendamento === "inativo" ? (
             <span className="inline-flex items-center px-2.5 py-0.5 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 text-[10px] font-black uppercase tracking-widest rounded-lg">
               Inativo
             </span>
           ) : (
             <span className="inline-flex items-center px-2.5 py-0.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-[10px] font-black uppercase tracking-widest rounded-lg">
-              Ativo
+              Ativo na Agenda
             </span>
           )}
 
@@ -158,7 +163,9 @@ const ServicoForm = ({ initialData, onSave, onCancel, loading, especialidadesLis
     tipo_contagem_dias: initialData?.tipo_contagem_dias || "corridos",
     agendamento_bloqueado_ate: initialData?.agendamento_bloqueado_ate || "",
     motivo_bloqueio_agenda: initialData?.motivo_bloqueio_agenda || "",
-    ativo: initialData?.ativo !== false
+    status_agendamento: initialData?.status_agendamento || (initialData?.redirecionar_whatsapp ? "whatsapp" : initialData?.ativo !== false ? "ativo" : "inativo"),
+    redirecionar_whatsapp: Boolean(initialData?.redirecionar_whatsapp || initialData?.status_agendamento === "whatsapp"),
+    ativo: initialData?.ativo !== false && initialData?.status_agendamento !== "inativo"
   });
 
   const handleSubmit = (e) => {
@@ -269,12 +276,66 @@ const ServicoForm = ({ initialData, onSave, onCancel, loading, especialidadesLis
               </div>
             </div>
 
-            <div className="flex items-center h-full pt-2">
-              <ToggleSwitch
-                checked={formData.ativo}
-                onChange={(val) => setFormData({ ...formData, ativo: val })}
-                label="Cadastro Ativo na Agenda"
-              />
+            {/* STATUS DE DISPONIBILIDADE NA AGENDA */}
+            <div className="md:col-span-2 space-y-2 pt-2 border-t border-zinc-100 dark:border-white/5">
+              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
+                Status de Disponibilidade na Agenda
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, status_agendamento: "ativo", ativo: true, redirecionar_whatsapp: false })}
+                  className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between ${
+                    formData.status_agendamento === "ativo"
+                      ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 text-emerald-950 dark:text-emerald-200 shadow-sm ring-2 ring-emerald-500/30"
+                      : "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black">🟢 Ativo Online</span>
+                    {formData.status_agendamento === "ativo" && <CheckCircle2 size={15} className="text-emerald-600" />}
+                  </div>
+                  <span className="text-[10px] opacity-80 mt-1">Agendamento 100% online automático</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, status_agendamento: "whatsapp", ativo: true, redirecionar_whatsapp: true })}
+                  className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between ${
+                    formData.status_agendamento === "whatsapp"
+                      ? "bg-purple-50 dark:bg-purple-950/40 border-purple-500 text-purple-950 dark:text-purple-200 shadow-sm ring-2 ring-purple-500/30"
+                      : "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black">🟣 Ativo Parcial</span>
+                    {formData.status_agendamento === "whatsapp" && <CheckCircle2 size={15} className="text-purple-600" />}
+                  </div>
+                  <span className="text-[10px] opacity-80 mt-1">Redireciona para Atendente / WhatsApp</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, status_agendamento: "inativo", ativo: false, redirecionar_whatsapp: false })}
+                  className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between ${
+                    formData.status_agendamento === "inativo"
+                      ? "bg-red-50 dark:bg-red-950/40 border-red-500 text-red-950 dark:text-red-200 shadow-sm ring-2 ring-red-500/30"
+                      : "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black">🔴 Inativo</span>
+                    {formData.status_agendamento === "inativo" && <CheckCircle2 size={15} className="text-red-600" />}
+                  </div>
+                  <span className="text-[10px] opacity-80 mt-1">Oculto do portal de agendamento</span>
+                </button>
+              </div>
+
+              {formData.status_agendamento === "whatsapp" && (
+                <div className="p-3 bg-purple-50/70 dark:bg-purple-950/30 border border-purple-200/60 dark:border-purple-900/40 rounded-xl text-xs text-purple-900 dark:text-purple-300">
+                  💬 <strong>Como funciona o Ativo Parcial:</strong> O paciente poderá ver e clicar neste especialista, mas em vez de abrir o calendário, o sistema exibirá uma tela dedicada: <em>"Você está sendo redirecionado para um atendente"</em> e abrirá o WhatsApp da clínica com mensagem pré-preenchida com o nome do especialista e especialidade.
+                </div>
+              )}
             </div>
           </div>
         </section>
@@ -380,16 +441,16 @@ export default function EquipeView({
   const [isProcessing, setIsProcessing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Estados para Categorias e Especialidades
+  // Estados para Especialidades e Classificação
   const [empresaId, setEmpresaId] = useState(null);
-  const [categoriasList, setCategoriasList] = useState(["Consultas", "Exames"]);
-  const [novaCategoria, setNovaCategoria] = useState("");
+  const categoriasList = ["Consultas", "Exames"];
 
-  // Especialidades estruturadas: [{ nome: "Nutricionista", categoria: "Consultas", codigo_uri: "8" }, ...]
+  // Especialidades estruturadas: [{ nome: "Nutricionista", categoria: "Consultas", codigo_uri: "8", duracao_minutos: 30 }, ...]
   const [especialidadesCategorizadas, setEspecialidadesCategorizadas] = useState([]);
   const [novaEspecialidadeNome, setNovaEspecialidadeNome] = useState("");
   const [novaEspecialidadeCodigoUri, setNovaEspecialidadeCodigoUri] = useState("");
   const [novaEspecialidadeCat, setNovaEspecialidadeCat] = useState("Consultas");
+  const [novaEspecialidadeDuracao, setNovaEspecialidadeDuracao] = useState(30);
   const [filtroCategoria, setFiltroCategoria] = useState("Todas");
 
   // Carregar dados de forma inteligente agregando de todas as fontes
@@ -401,15 +462,7 @@ export default function EquipeView({
           setEmpresaId(emp.id);
           const conf = emp.config_campos || {};
 
-          // 1. Categorias
-          const savedCats =
-            Array.isArray(conf.categorias_atendimento) && conf.categorias_atendimento.length > 0
-              ? conf.categorias_atendimento
-              : ["Consultas", "Exames"];
-          setCategoriasList(savedCats);
-          setNovaEspecialidadeCat(savedCats[0] || "Consultas");
-
-          // 2. Mapeamento completo de especialidades
+          // Mapeamento completo de especialidades
           const mapCategorias = new Map();
 
           // A. Especialidades já cadastradas nos serviços (corpo clínico)
@@ -426,7 +479,8 @@ export default function EquipeView({
                   mapCategorias.set(espName.toLowerCase(), {
                     nome: espName,
                     categoria: isExame ? "Exames" : "Consultas",
-                    codigo_uri: null
+                    codigo_uri: null,
+                    duracao_minutos: 30
                   });
                 });
             }
@@ -444,13 +498,14 @@ export default function EquipeView({
                 mapCategorias.set(nameClean.toLowerCase(), {
                   nome: nameClean,
                   categoria: isExame ? "Exames" : "Consultas",
-                  codigo_uri: null
+                  codigo_uri: null,
+                  duracao_minutos: 30
                 });
               }
             });
           }
 
-          // C. Especialidades já categorizadas pelo usuário (prevalecem na categoria e no codigo_uri)
+          // C. Especialidades já categorizadas pelo usuário (prevalecem na categoria, codigo_uri e duracao)
           if (Array.isArray(conf.especialidades_categorizadas)) {
             conf.especialidades_categorizadas.forEach((item) => {
               if (item?.nome && String(item.nome).trim()) {
@@ -458,7 +513,8 @@ export default function EquipeView({
                 mapCategorias.set(nameClean.toLowerCase(), {
                   nome: nameClean,
                   categoria: item.categoria || "Consultas",
-                  codigo_uri: item.codigo_uri ? String(item.codigo_uri).trim() : null
+                  codigo_uri: item.codigo_uri ? String(item.codigo_uri).trim() : null,
+                  duracao_minutos: Number(item.duracao_minutos) || 30
                 });
               }
             });
@@ -466,13 +522,14 @@ export default function EquipeView({
 
           // D. Fallback base se estiver vazio
           if (mapCategorias.size === 0) {
-            ["Gastroenterologia", "Colonoscopia", "Endoscopia", "Psicologia", "Cardiologia"].forEach(
+            ["Nutricionista", "Gastroenterologista", "Colonoscopia", "Endoscopia", "Psicologia", "Cirurgia Geral"].forEach(
               (baseName) => {
                 const isExame = /(colonoscopia|endoscopia|ultrassom|exame)/i.test(baseName);
                 mapCategorias.set(baseName.toLowerCase(), {
                   nome: baseName,
                   categoria: isExame ? "Exames" : "Consultas",
-                  codigo_uri: null
+                  codigo_uri: null,
+                  duracao_minutos: 30
                 });
               }
             );
@@ -513,7 +570,9 @@ export default function EquipeView({
         especialidade:
           formData.especialidade.length > 0 ? formData.especialidade.join(", ") : null,
         tipo: "Profissional",
-        ativo: formData.ativo,
+        status_agendamento: formData.status_agendamento || (formData.redirecionar_whatsapp ? "whatsapp" : formData.ativo ? "ativo" : "inativo"),
+        redirecionar_whatsapp: Boolean(formData.redirecionar_whatsapp || formData.status_agendamento === "whatsapp"),
+        ativo: formData.status_agendamento !== "inativo" && formData.ativo !== false,
         tipo_contagem_dias: formData.tipo_contagem_dias || "corridos",
         preco: formData.preco ? parseFloat(formData.preco) : 0.0,
         dias_bloqueio_padrao: formData.dias_bloqueio_padrao
@@ -551,8 +610,8 @@ export default function EquipeView({
     }
   };
 
-  // Persistir Categorias e Especialidades
-  const persistirCategoriasEEspecialidades = async (novasCats, novasEsps) => {
+  // Persistir Especialidades
+  const persistirEspecialidades = async (novasEsps) => {
     if (!empresaId) return;
     try {
       const { data: emp } = await supabase
@@ -562,7 +621,6 @@ export default function EquipeView({
         .single();
       const updatedConfig = {
         ...(emp?.config_campos || {}),
-        categorias_atendimento: novasCats,
         especialidades_categorizadas: novasEsps
       };
 
@@ -580,45 +638,6 @@ export default function EquipeView({
     }
   };
 
-  // Ações de Categorias
-  const handleAddCategoria = async () => {
-    const nomeLimpo = novaCategoria.trim();
-    if (!nomeLimpo) return;
-    if (categoriasList.some((c) => c.toLowerCase() === nomeLimpo.toLowerCase())) {
-      showToast("Esta categoria já existe.", "error");
-      return;
-    }
-    const updated = [...categoriasList, nomeLimpo];
-    setCategoriasList(updated);
-    setNovaCategoria("");
-    await persistirCategoriasEEspecialidades(updated, especialidadesCategorizadas);
-    showToast(`Categoria "${nomeLimpo}" adicionada!`);
-  };
-
-  const handleRemoveCategoria = async (catNome) => {
-    if (categoriasList.length <= 1) {
-      showToast("Mantenha pelo menos uma categoria cadastrada.", "error");
-      return;
-    }
-    if (
-      !window.confirm(
-        `Excluir a categoria "${catNome}"? As especialidades dela serão movidas para a categoria padrão.`
-      )
-    )
-      return;
-
-    const fallbackCat = categoriasList.find((c) => c !== catNome) || "Geral";
-    const updatedCats = categoriasList.filter((c) => c !== catNome);
-    const updatedEsps = especialidadesCategorizadas.map((e) =>
-      e.categoria === catNome ? { ...e, categoria: fallbackCat } : e
-    );
-
-    setCategoriasList(updatedCats);
-    setEspecialidadesCategorizadas(updatedEsps);
-    await persistirCategoriasEEspecialidades(updatedCats, updatedEsps);
-    showToast(`Categoria "${catNome}" removida.`);
-  };
-
   // Ações de Especialidades
   const handleAddEspecialidade = async () => {
     const nomeLimpo = novaEspecialidadeNome.trim();
@@ -631,13 +650,14 @@ export default function EquipeView({
     const novaEsp = {
       nome: nomeLimpo,
       codigo_uri: novaEspecialidadeCodigoUri.trim() || null,
-      categoria: novaEspecialidadeCat || categoriasList[0] || "Consultas"
+      categoria: novaEspecialidadeCat || "Consultas",
+      duracao_minutos: Number(novaEspecialidadeDuracao) || 30
     };
     const updatedEsps = [...especialidadesCategorizadas, novaEsp];
     setEspecialidadesCategorizadas(updatedEsps);
     setNovaEspecialidadeNome("");
     setNovaEspecialidadeCodigoUri("");
-    await persistirCategoriasEEspecialidades(categoriasList, updatedEsps);
+    await persistirEspecialidades(updatedEsps);
     showToast(`Especialidade "${nomeLimpo}" cadastrada com sucesso!`);
   };
 
@@ -646,8 +666,8 @@ export default function EquipeView({
       e.nome === espNome ? { ...e, categoria: novaCat } : e
     );
     setEspecialidadesCategorizadas(updatedEsps);
-    await persistirCategoriasEEspecialidades(categoriasList, updatedEsps);
-    showToast(`"${espNome}" agora está em "${novaCat}".`);
+    await persistirEspecialidades(updatedEsps);
+    showToast(`"${espNome}" classificada em "${novaCat}".`);
   };
 
   const handleChangeEspecialidadeUri = async (espNome, novoUri) => {
@@ -655,14 +675,23 @@ export default function EquipeView({
       e.nome === espNome ? { ...e, codigo_uri: novoUri.trim() || null } : e
     );
     setEspecialidadesCategorizadas(updatedEsps);
-    await persistirCategoriasEEspecialidades(categoriasList, updatedEsps);
+    await persistirEspecialidades(updatedEsps);
+  };
+
+  const handleChangeEspecialidadeDuracao = async (espNome, novaDuracao) => {
+    const updatedEsps = especialidadesCategorizadas.map((e) =>
+      e.nome === espNome ? { ...e, duracao_minutos: Number(novaDuracao) || 30 } : e
+    );
+    setEspecialidadesCategorizadas(updatedEsps);
+    await persistirEspecialidades(updatedEsps);
+    showToast(`Duração de "${espNome}" atualizada para ${novaDuracao} min.`);
   };
 
   const handleRemoveEspecialidade = async (espNome) => {
     if (!window.confirm(`Excluir a especialidade "${espNome}"?`)) return;
     const updatedEsps = especialidadesCategorizadas.filter((e) => e.nome !== espNome);
     setEspecialidadesCategorizadas(updatedEsps);
-    await persistirCategoriasEEspecialidades(categoriasList, updatedEsps);
+    await persistirEspecialidades(updatedEsps);
     showToast(`Especialidade "${espNome}" removida.`);
   };
 
@@ -701,7 +730,7 @@ export default function EquipeView({
           <div>
             <h2 className="text-xl font-bold text-zinc-950 dark:text-white tracking-tight">
               {subTab === "corpo" && "Corpo Clínico & Especialistas"}
-              {subTab === "especialidades" && "Categorias & Especialidades"}
+              {subTab === "especialidades" && "Especialidades Médicas & Exames"}
               {subTab === "pausas" && "Especialistas com Agenda Pausada"}
               {subTab === "formulario" && "Cadastro de Especialista"}
             </h2>
@@ -788,74 +817,23 @@ export default function EquipeView({
             </div>
           )}
 
-          {/* SUB-ABA 2: CATEGORIAS & ESPECIALIDADES */}
+          {/* SUB-ABA 2: ESPECIALIDADES MÉDICAS & EXAMES */}
           {subTab === "especialidades" && (
             <div className="space-y-6">
-              {/* BLOCO 1: CATEGORIAS DE ATENDIMENTO */}
-              <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm space-y-5">
-                <div className="border-b border-zinc-100 dark:border-white/5 pb-3">
-                  <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">
-                    <FolderPlus size={18} className="text-blue-500" strokeWidth={1.5} /> Categorias de Atendimento
-                  </h3>
-                  <p className="text-xs text-zinc-500 mt-0.5">
-                    Crie categorias personalizadas (como Consultas, Exames, Procedimentos, etc.). Elas são usadas para agrupar especialidades e aparecem automaticamente no motor de mensagens.
-                  </p>
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <input
-                    type="text"
-                    value={novaCategoria}
-                    onChange={(e) => setNovaCategoria(e.target.value)}
-                    placeholder="Ex: Consultas, Exames, Procedimentos, Cirurgias..."
-                    className="flex-1 px-4 py-2.5 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs outline-none focus:border-[#9FC131]"
-                    onKeyDown={(e) => e.key === "Enter" && handleAddCategoria()}
-                  />
-                  <ButtonPrimary
-                    onClick={handleAddCategoria}
-                    disabled={!novaCategoria.trim()}
-                    icon={Plus}
-                    className="px-5 py-2.5 text-xs min-h-[38px] rounded-xl"
-                  >
-                    Adicionar Categoria
-                  </ButtonPrimary>
-                </div>
-
-                <div className="flex flex-wrap gap-2 pt-2">
-                  {categoriasList.map((cat) => (
-                    <div
-                      key={cat}
-                      className="px-3.5 py-1.5 bg-zinc-100 dark:bg-zinc-800/80 border border-zinc-200/80 dark:border-zinc-700 rounded-xl text-xs font-bold text-zinc-900 dark:text-white flex items-center gap-2 shadow-sm"
-                    >
-                      <Tag size={12} className="text-blue-500" />
-                      <span>{cat}</span>
-                      <button
-                        onClick={() => handleRemoveCategoria(cat)}
-                        className="text-zinc-400 hover:text-red-500 transition-colors p-0.5"
-                        title={`Excluir categoria "${cat}"`}
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              {/* BLOCO 2: ESPECIALIDADES CADASTRADAS E ASSOCIAÇÃO À CATEGORIA */}
               <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm space-y-6">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-100 dark:border-white/5 pb-4">
                   <div>
                     <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">
-                      <Layers size={18} className="text-emerald-500" strokeWidth={1.5} /> Especialidades & Classificação
+                      <Layers size={18} className="text-emerald-500" strokeWidth={1.5} /> Especialidades Médicas & Exames
                     </h3>
                     <p className="text-xs text-zinc-500 mt-0.5">
-                      Cadastre as especialidades médicas ou exames, atribua um Código URI para links diretos e vincule à respectiva categoria.
+                      Cadastre as especialidades atendidas na clínica, atribua um Código URI para links diretos e defina a categoria e duração padrão de cada atendimento.
                     </p>
                   </div>
 
                   {/* FILTRO POR CATEGORIA */}
                   <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar">
-                    {["Todas", ...categoriasList].map((cat) => (
+                    {["Todas", "Consultas", "Exames"].map((cat) => (
                       <button
                         key={cat}
                         onClick={() => setFiltroCategoria(cat)}
@@ -873,48 +851,75 @@ export default function EquipeView({
 
                 {/* FORMULÁRIO DE NOVA ESPECIALIDADE */}
                 <div className="grid sm:grid-cols-12 gap-3 p-4 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl">
-                  <div className="sm:col-span-5">
+                  <div className="sm:col-span-4">
+                    <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider block mb-1">
+                      Nome da Especialidade / Exame *
+                    </label>
                     <input
                       type="text"
                       value={novaEspecialidadeNome}
                       onChange={(e) => setNovaEspecialidadeNome(e.target.value)}
-                      placeholder="Nome da especialidade (ex: Nutricionista, Colonoscopia...)"
-                      className="w-full px-4 py-2.5 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none focus:border-[#9FC131]"
-                      onKeyDown={(e) => e.key === "Enter" && handleAddEspecialidade()}
-                    />
-                  </div>
-
-                  <div className="sm:col-span-3">
-                    <input
-                      type="text"
-                      value={novaEspecialidadeCodigoUri}
-                      onChange={(e) => setNovaEspecialidadeCodigoUri(e.target.value)}
-                      placeholder="Código URI / ID (Ex: 8 ou 1)"
-                      className="w-full px-4 py-2.5 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs font-mono outline-none focus:border-[#9FC131]"
+                      placeholder="Ex: Nutricionista, Colonoscopia..."
+                      className="w-full px-3.5 py-2 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none focus:border-[#9FC131] font-semibold text-zinc-900 dark:text-white"
                       onKeyDown={(e) => e.key === "Enter" && handleAddEspecialidade()}
                     />
                   </div>
 
                   <div className="sm:col-span-2">
+                    <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider block mb-1">
+                      Código URI (Opcional)
+                    </label>
+                    <input
+                      type="text"
+                      value={novaEspecialidadeCodigoUri}
+                      onChange={(e) => setNovaEspecialidadeCodigoUri(e.target.value)}
+                      placeholder="Ex: 8 ou nutri"
+                      className="w-full px-3 py-2 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs font-mono outline-none focus:border-[#9FC131] text-zinc-800 dark:text-zinc-200"
+                      onKeyDown={(e) => e.key === "Enter" && handleAddEspecialidade()}
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider block mb-1">
+                      Categoria
+                    </label>
                     <select
                       value={novaEspecialidadeCat}
                       onChange={(e) => setNovaEspecialidadeCat(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none text-zinc-800 dark:text-zinc-200 font-bold"
+                      className="w-full px-2.5 py-2 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none text-zinc-800 dark:text-zinc-200 font-bold"
                     >
-                      {categoriasList.map((c) => (
-                        <option key={c} value={c}>
-                          Categoria: {c}
-                        </option>
-                      ))}
+                      <option value="Consultas">Consultas</option>
+                      <option value="Exames">Exames</option>
                     </select>
                   </div>
 
-                  <div className="sm:col-span-2 flex items-center">
+                  <div className="sm:col-span-2">
+                    <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider block mb-1">
+                      Duração (Slot)
+                    </label>
+                    <select
+                      value={novaEspecialidadeDuracao}
+                      onChange={(e) => setNovaEspecialidadeDuracao(Number(e.target.value))}
+                      className="w-full px-2.5 py-2 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none text-zinc-800 dark:text-zinc-200 font-bold"
+                    >
+                      <option value={10}>10 min</option>
+                      <option value={15}>15 min</option>
+                      <option value={20}>20 min</option>
+                      <option value={30}>30 min</option>
+                      <option value={40}>40 min</option>
+                      <option value={45}>45 min</option>
+                      <option value={60}>60 min (1h)</option>
+                      <option value={90}>90 min</option>
+                      <option value={120}>120 min (2h)</option>
+                    </select>
+                  </div>
+
+                  <div className="sm:col-span-2 flex items-end">
                     <ButtonPrimary
                       onClick={handleAddEspecialidade}
                       disabled={!novaEspecialidadeNome.trim()}
                       icon={Plus}
-                      className="w-full py-2.5 text-xs min-h-[38px] rounded-xl justify-center"
+                      className="w-full py-2 text-xs min-h-[36px] rounded-xl justify-center"
                     >
                       Adicionar
                     </ButtonPrimary>
@@ -931,12 +936,12 @@ export default function EquipeView({
                     especialidadesFiltradas.map((esp) => (
                       <div
                         key={esp.nome}
-                        className="p-3.5 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl flex flex-col justify-between gap-3 group hover:border-zinc-300 dark:hover:border-zinc-700 transition-all shadow-sm"
+                        className="p-4 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl flex flex-col justify-between gap-3 group hover:border-zinc-300 dark:hover:border-zinc-700 transition-all shadow-sm"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <h4 className="font-bold text-xs text-zinc-950 dark:text-white truncate">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-bold text-sm text-zinc-950 dark:text-white truncate">
                                 {esp.nome}
                               </h4>
                               {esp.codigo_uri && (
@@ -956,7 +961,7 @@ export default function EquipeView({
                           </button>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-zinc-100 dark:border-white/5">
+                        <div className="grid grid-cols-3 gap-2 pt-2 border-t border-zinc-100 dark:border-white/5">
                           <div>
                             <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider block mb-0.5">
                               Código URI
@@ -975,17 +980,37 @@ export default function EquipeView({
                               Categoria
                             </label>
                             <select
-                              value={esp.categoria}
+                              value={esp.categoria || "Consultas"}
                               onChange={(e) =>
                                 handleChangeEspecialidadeCategoria(esp.nome, e.target.value)
                               }
                               className="w-full text-[10px] font-extrabold uppercase tracking-wider bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-lg px-2 py-1.5 outline-none text-zinc-700 dark:text-zinc-300 cursor-pointer"
                             >
-                              {categoriasList.map((c) => (
-                                <option key={c} value={c}>
-                                  {c}
-                                </option>
-                              ))}
+                              <option value="Consultas">Consultas</option>
+                              <option value="Exames">Exames</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider block mb-0.5">
+                              Duração
+                            </label>
+                            <select
+                              value={esp.duracao_minutos || 30}
+                              onChange={(e) =>
+                                handleChangeEspecialidadeDuracao(esp.nome, e.target.value)
+                              }
+                              className="w-full text-[10px] font-extrabold bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-lg px-2 py-1 outline-none text-blue-600 dark:text-blue-400 cursor-pointer"
+                            >
+                              <option value={10}>10 min</option>
+                              <option value={15}>15 min</option>
+                              <option value={20}>20 min</option>
+                              <option value={30}>30 min</option>
+                              <option value={40}>40 min</option>
+                              <option value={45}>45 min</option>
+                              <option value={60}>60 min</option>
+                              <option value={90}>90 min</option>
+                              <option value={120}>120 min</option>
                             </select>
                           </div>
                         </div>

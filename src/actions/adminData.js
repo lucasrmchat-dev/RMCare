@@ -344,11 +344,13 @@ export async function actionAtualizarServico(id, srvData) {
     codigo_uri: srvData.codigo_uri || null,
     numero_especialista: srvData.numero_especialista || null,
     tipo: srvData.tipo || "Profissional",
-    ativo: srvData.ativo,
-    preco: Number(srvData.preco),
-    dias_bloqueio_padrao: Number(srvData.dias_bloqueio_padrao),
-    tipo_contagem_dias: srvData.tipo_contagem_dias,
-    especialidade: srvData.especialidade,
+    ativo: srvData.ativo !== false,
+    status_agendamento: srvData.status_agendamento || (srvData.redirecionar_whatsapp ? "whatsapp" : srvData.ativo !== false ? "ativo" : "inativo"),
+    redirecionar_whatsapp: Boolean(srvData.redirecionar_whatsapp || srvData.status_agendamento === "whatsapp"),
+    preco: Number(srvData.preco) || 0.0,
+    dias_bloqueio_padrao: Number(srvData.dias_bloqueio_padrao) || 0,
+    tipo_contagem_dias: srvData.tipo_contagem_dias || "corridos",
+    especialidade: srvData.especialidade || null,
     agendamento_bloqueado_ate: srvData.agendamento_bloqueado_ate || null,
     motivo_bloqueio_agenda: srvData.motivo_bloqueio_agenda || null
   };
@@ -360,7 +362,7 @@ export async function actionAtualizarServico(id, srvData) {
     .eq("empresa_id", admin.empresa_id);
 
   // Fallback se as colunas codigo_uri ou numero_especialista ainda não existirem
-  if (error && (error.code === "42703" || error.message?.includes("column"))) {
+  if (error && (error.code === "42703" || error.code === "PGRST204" || error.message?.includes("column"))) {
     delete payload.codigo_uri;
     delete payload.numero_especialista;
     const retry = await supabaseAdmin
@@ -379,12 +381,18 @@ export async function actionCriarServico(payload) {
   const admin = await getAdminLogado(true);
 
   const insertData = { 
-    ...payload, 
+    nome: payload.nome,
     empresa_id: admin.empresa_id,
     tipo: payload.tipo || "Profissional",
+    ativo: payload.ativo !== false,
+    status_agendamento: payload.status_agendamento || (payload.redirecionar_whatsapp ? "whatsapp" : payload.ativo !== false ? "ativo" : "inativo"),
+    redirecionar_whatsapp: Boolean(payload.redirecionar_whatsapp || payload.status_agendamento === "whatsapp"),
     codigo_uri: payload.codigo_uri || null,
     numero_especialista: payload.numero_especialista || null,
     especialidade: payload.especialidade || null,
+    preco: Number(payload.preco) || 0.0,
+    dias_bloqueio_padrao: Number(payload.dias_bloqueio_padrao) || 0,
+    tipo_contagem_dias: payload.tipo_contagem_dias || "corridos",
     agendamento_bloqueado_ate: payload.agendamento_bloqueado_ate || null,
     motivo_bloqueio_agenda: payload.motivo_bloqueio_agenda || null
   };
@@ -396,7 +404,7 @@ export async function actionCriarServico(payload) {
     .single();
   
   // Fallback se colunas novas ainda não existirem
-  if (error && (error.code === "42703" || error.message?.includes("column"))) {
+  if (error && (error.code === "42703" || error.code === "PGRST204" || error.message?.includes("column"))) {
     delete insertData.codigo_uri;
     delete insertData.numero_especialista;
     const retry = await supabaseAdmin
@@ -692,21 +700,34 @@ export async function actionSalvarPolicies(config) {
 
 export async function fetchAdminCustomization() {
   const admin = await getAdminLogado(true);
-  const { data, error } = await supabaseAdmin
+  let { data, error } = await supabaseAdmin
     .from("empresas")
-    .select("id,config_campos,config_mensagens,especialidades")
+    .select("id, config_campos, config_mensagens, especialidades")
     .eq("id", admin.empresa_id)
     .single();
 
-  if (error) throw error;
+  if (error) {
+    const fallback = await supabaseAdmin
+      .from("empresas")
+      .select("*")
+      .eq("id", admin.empresa_id)
+      .single();
+    if (fallback.error) throw fallback.error;
+    data = fallback.data;
+  }
   return data;
 }
 
 export async function actionSalvarCustomization({ config_campos, config_mensagens }) {
   const admin = await getAdminLogado(true);
+  const updatePayload = {
+    config_campos,
+    config_mensagens
+  };
+
   const { error } = await supabaseAdmin
     .from("empresas")
-    .update({ config_campos, config_mensagens })
+    .update(updatePayload)
     .eq("id", admin.empresa_id);
 
   if (error) throw error;
@@ -1008,11 +1029,11 @@ export async function actionDispararMensagemManualAdmin(id) {
 
   const { data: emp } = await supabaseAdmin
     .from("empresas")
-    .select("rmchat_webhook_url, config_chaves")
+    .select("config_chaves")
     .eq("id", admin.empresa_id)
     .single();
 
-  const urlWebhook = emp?.rmchat_webhook_url || emp?.config_chaves?.rmchat_webhook_url;
+  const urlWebhook = emp?.config_chaves?.rmchat_webhook_url;
   if (!urlWebhook) throw new Error("URL de Webhook do WhatsApp não configurada.");
 
   const payload = {

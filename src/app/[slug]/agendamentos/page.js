@@ -25,36 +25,7 @@ import { buildJourney, DEFAULT_JOURNEY, isDraftFresh } from "@/lib/journey";
 import { getAppointmentForReschedule, remarcarAgendamentoPaciente } from "@/actions/appointments";
 import { playDopamineSound, triggerHaptic } from "@/lib/dopamine";
 
-export default function AgendamentoPremium() {
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
-
-  return (
-    <div className="flex min-h-[100dvh] w-full bg-[#F8FAFC] dark:bg-[#060A12] text-zinc-900 dark:text-zinc-50 transition-colors duration-400 font-sans antialiased">
-      <SidebarPremium isExpanded={isSidebarExpanded} setIsExpanded={setIsSidebarExpanded} />
-      <Navbar />
-      <main
-        className={`flex-1 relative flex flex-col items-center transition-[margin] duration-500 ease-out w-full min-h-[100dvh] overflow-hidden ${
-          isSidebarExpanded ? "md:ml-[240px]" : "md:ml-[68px]"
-        }`}
-      >
-        <Suspense
-          fallback={
-            <div className="min-h-[100dvh] flex items-center justify-center w-full">
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
-                className="w-8 h-8 border-[3px] border-[#9FC131] border-t-transparent rounded-full"
-              />
-            </div>
-          }
-        >
-          <AgendamentoOrquestrador />
-        </Suspense>
-      </main>
-    </div>
-  );
-
-  function AgendamentoOrquestrador() {
+function AgendamentoOrquestrador() {
     const params = useParams();
     const searchParams = useSearchParams();
     const slug = params?.slug;
@@ -174,6 +145,79 @@ export default function AgendamentoPremium() {
             setPerguntasDB(pergsFull);
           }
 
+// Função Universal e Abstrata de Resolução de Especialidade / Exame / Procedimento
+          const resolveEspecialidadeUniversal = (inputRaw, confObj, empObj, srvsList) => {
+            if (!inputRaw || String(inputRaw).trim() === "") return null;
+            const input = String(inputRaw).trim();
+            const inputLower = input.toLowerCase();
+
+            const confCats = confObj?.especialidades_categorizadas || [];
+            const empEsps = Array.isArray(empObj?.especialidades)
+              ? empObj.especialidades.map((e) => (typeof e === "object" ? e.nome : e)).filter(Boolean)
+              : [];
+
+            const allKnownEsps = new Set();
+            confCats.forEach((c) => c.nome && allKnownEsps.add(c.nome));
+            empEsps.forEach((e) => allKnownEsps.add(e));
+            (srvsList || []).forEach((s) => {
+              if (s.especialidade) {
+                s.especialidade.split(",").forEach((e) => e.trim() && allKnownEsps.add(e.trim()));
+              }
+            });
+
+            const allEspsList = Array.from(allKnownEsps);
+
+            // 1. Busca direta por codigo_uri em especialidades_categorizadas
+            const byUri = confCats.find(
+              (c) => c.codigo_uri && String(c.codigo_uri).trim().toLowerCase() === inputLower
+            );
+            if (byUri?.nome) return byUri.nome;
+
+            // 2. Busca exata por nome (case-insensitive)
+            const byExactName = allEspsList.find((e) => e.toLowerCase() === inputLower);
+            if (byExactName) return byExactName;
+
+            // 3. Se for numérico (ex: "7", "8", 7, 8 - índice 1-based vindo de menus de chatbot)
+            if (/^\d+$/.test(input)) {
+              const num = parseInt(input, 10);
+              if (num > 0) {
+                // 3a. Pelo índice em especialidades_categorizadas
+                if (confCats[num - 1]?.nome) {
+                  return confCats[num - 1].nome;
+                }
+                // 3b. Pelo índice em empresa.especialidades
+                if (empEsps[num - 1]) {
+                  return empEsps[num - 1];
+                }
+                // 3c. Pelo índice na lista global de especialidades
+                if (allEspsList[num - 1]) {
+                  return allEspsList[num - 1];
+                }
+              }
+            }
+
+            // 4. Busca por normalização e slugs (ex: "endoscopia-colonoscopia", "endoscopia+colonoscopia")
+            const normalizeText = (t) =>
+              String(t)
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "")
+                .toLowerCase()
+                .replace(/[^a-z0-9]/g, "");
+
+            const inputNorm = normalizeText(input);
+            const byNormalized = allEspsList.find((e) => normalizeText(e) === inputNorm);
+            if (byNormalized) return byNormalized;
+
+            // 5. Busca por inclusão parcial inteligente
+            const byPartial = allEspsList.find((e) => {
+              const n = normalizeText(e);
+              return n === inputNorm || (inputNorm.length >= 4 && (n.includes(inputNorm) || inputNorm.includes(n)));
+            });
+            if (byPartial) return byPartial;
+
+            return input;
+          };
+
           // Leitura dos Parâmetros de URL (Smart Link)
           const nomeUrlRaw = searchParams.get("nome");
           const sobrenomeUrlRaw = searchParams.get("sobrenome");
@@ -182,7 +226,11 @@ export default function AgendamentoPremium() {
           const wppUrl = searchParams.get("whatsapp");
           const emailUrl = searchParams.get("email");
           const nascUrl = searchParams.get("nascimento");
-          const espRaw = searchParams.get("especialidade");
+          const espRaw =
+            searchParams.get("especialidade") ||
+            searchParams.get("exame") ||
+            searchParams.get("procedimento") ||
+            searchParams.get("servico");
           const urlModalidadeRaw = searchParams.get("modalidade");
           const hideFlag = searchParams.get("hide") === "true";
 
@@ -245,37 +293,17 @@ export default function AgendamentoPremium() {
           if (emailUrl) setValue("email", emailUrl);
           if (nascUrl) setValue("data_nascimento", masks.date(nascUrl));
 
-          // 3. Resolução da Especialidade da URL
+          // 3. Resolução Universal da Especialidade / Exame da URL
           let resolvedEspFromUrl = null;
-          if (espRaw && espRaw.trim() !== "") {
-            const cleanEspInput = String(espRaw).trim();
-            const confCategorizadas = conf.especialidades_categorizadas || [];
-
-            // A. Busca exata por código URI ou ID da especialidade
-            const matchByUri = confCategorizadas.find(
-              (e) => e.codigo_uri && String(e.codigo_uri).trim().toLowerCase() === cleanEspInput.toLowerCase()
-            );
-
-            if (matchByUri) {
-              resolvedEspFromUrl = matchByUri.nome;
-            } else {
-              // B. Busca por nome nas especialidades
-              const matchByNome = confCategorizadas.find(
-                (e) => e.nome && e.nome.toLowerCase().trim() === cleanEspInput.toLowerCase()
-              );
-              if (matchByNome) {
-                resolvedEspFromUrl = matchByNome.nome;
-              } else {
-                resolvedEspFromUrl = cleanEspInput;
-              }
-            }
+          if (espRaw && String(espRaw).trim() !== "") {
+            resolvedEspFromUrl = resolveEspecialidadeUniversal(espRaw, conf, emp, servicosDB);
           }
 
           // 4. Resolução Estrita do Médico por Código URI / Número nos Serviços ATIVOS
           let foundSrv = null;
           let urlSrvId = null;
 
-          if (medicoUrl && medicoUrl.trim() !== "") {
+          if (medicoUrl && String(medicoUrl).trim() !== "") {
             const cleanTarget = String(medicoUrl).trim().toLowerCase();
 
             // A. Busca estrita por codigo_uri, numero_especialista ou id nos serviços ATIVOS
@@ -303,15 +331,23 @@ export default function AgendamentoPremium() {
                 ? foundSrv.especialidade.split(",").map((e) => e.trim()).filter(Boolean)
                 : [];
 
-              let especialidadeFinal = resolvedEspFromUrl || (medicoEsps.length > 0 ? medicoEsps[0] : "Consulta");
+              // Se a especialidade veio na URL (ex: "Endoscopia + Colonoscopia"), NUNCA sobrescrever com a 1ª especialidade do médico!
+              let especialidadeFinal = resolvedEspFromUrl;
+              if (!especialidadeFinal || /^\d+$/.test(especialidadeFinal)) {
+                especialidadeFinal = medicoEsps.length > 0 ? medicoEsps[0] : "Consulta";
+              }
 
               const confCategorizadas = conf.especialidades_categorizadas || [];
-              const matchCatObj = confCategorizadas.find((c) => c.nome && c.nome.toLowerCase().trim() === especialidadeFinal.toLowerCase().trim());
+              const matchCatObj = confCategorizadas.find(
+                (c) => c.nome && c.nome.toLowerCase().trim() === especialidadeFinal.toLowerCase().trim()
+              );
               let isExame = false;
               if (matchCatObj?.categoria) {
                 isExame = matchCatObj.categoria.toLowerCase().includes("exame");
               } else {
-                isExame = /(exame|colonoscopia|endoscopia|ultrassom|tomografia|ressonancia|raio-x|biopsia)/i.test(especialidadeFinal);
+                isExame = /(exame|colonoscopia|endoscopia|ultrassom|tomografia|ressonancia|raio-x|biopsia|procedimento)/i.test(
+                  especialidadeFinal
+                );
               }
               const tipo = isExame ? "Exame" : "Consulta";
 
@@ -322,12 +358,16 @@ export default function AgendamentoPremium() {
             }
           } else if (resolvedEspFromUrl) {
             const confCategorizadas = conf.especialidades_categorizadas || [];
-            const matchCatObj = confCategorizadas.find((c) => c.nome && c.nome.toLowerCase().trim() === resolvedEspFromUrl.toLowerCase().trim());
+            const matchCatObj = confCategorizadas.find(
+              (c) => c.nome && c.nome.toLowerCase().trim() === resolvedEspFromUrl.toLowerCase().trim()
+            );
             let isExame = false;
             if (matchCatObj?.categoria) {
               isExame = matchCatObj.categoria.toLowerCase().includes("exame");
             } else {
-              isExame = /(exame|colonoscopia|endoscopia|ultrassom|tomografia|ressonancia|raio-x|biopsia)/i.test(resolvedEspFromUrl);
+              isExame = /(exame|colonoscopia|endoscopia|ultrassom|tomografia|ressonancia|raio-x|biopsia|procedimento)/i.test(
+                resolvedEspFromUrl
+              );
             }
 
             setValue("especialidade", resolvedEspFromUrl);
@@ -336,7 +376,7 @@ export default function AgendamentoPremium() {
             setValue("subtipo_exame", isExame ? resolvedEspFromUrl : "");
           }
 
-          // 5. Construção Inteligente da Jornada
+                    // 5. Construção Inteligente da Jornada
           const hasPerguntas = urlSrvId ? (pergs || []).some((p) => p.servico_id === urlSrvId) : false;
           let jornada = buildJourney(conf, hasPerguntas);
 
@@ -438,16 +478,6 @@ export default function AgendamentoPremium() {
     const getSelectedService = () => {
       const nomeProfissional = formData.medico_profissional || formData.subtipo_exame;
       if (!nomeProfissional) {
-        if (formData.especialidade) {
-          return (
-            servicosDB.find(
-              (s) =>
-                s.ativo !== false &&
-                s.especialidade &&
-                s.especialidade.toLowerCase().includes(formData.especialidade.toLowerCase())
-            ) || null
-          );
-        }
         return null;
       }
 
@@ -477,16 +507,6 @@ export default function AgendamentoPremium() {
           const sNome = s.nome.toLowerCase().replace(/dra\.|dr\./g, "").trim();
           return sNome.includes(nomeLimpo) || nomeLimpo.includes(sNome);
         });
-      }
-
-      // 4. Se ainda não encontrou e tem especialidade
-      if (!srv && formData.especialidade) {
-        srv = servicosDB.find(
-          (s) =>
-            s.ativo !== false &&
-            s.especialidade &&
-            s.especialidade.toLowerCase().includes(formData.especialidade.toLowerCase())
-        );
       }
 
       return srv || null;
@@ -638,7 +658,8 @@ export default function AgendamentoPremium() {
       if (!formData.data_agendamento || !empresaDados) return;
       const prof =
         formData.tipo_servico === "Exame" ? formData.subtipo_exame : formData.medico_profissional;
-      if (!prof) return;
+      const esp = (formData.especialidade || "").trim();
+      if (!prof && !esp) return;
 
       let isMounted = true;
       const requestStartedAt = Date.now();
@@ -650,17 +671,23 @@ export default function AgendamentoPremium() {
             supabase
               .from("agendamentos")
               .select(
-                "id,horario_agendamento, medico_profissional, subtipo_exame,status_atendimento"
+                "id, horario_agendamento, medico_profissional, subtipo_exame, status_atendimento, tipo_servico, especialidade"
               )
               .eq("data_agendamento", formData.data_agendamento)
               .eq("empresa_id", empresaDados.id)
               .neq("status_atendimento", "cancelado"),
             supabase
               .from("bloqueios_horarios")
-              .select("horario, medico_profissional")
+              .select("horario, medico_profissional, especialidade")
               .eq("data", formData.data_agendamento)
               .eq("empresa_id", empresaDados.id)
           ]);
+
+          const timeToMin = (tStr) => {
+            if (!tStr) return 0;
+            const parts = tStr.trim().split(":");
+            return parseInt(parts[0], 10) * 60 + parseInt(parts[1] || "0", 10);
+          };
 
           const formatTime = (timeStr) => {
             if (!timeStr) return "";
@@ -670,40 +697,98 @@ export default function AgendamentoPremium() {
             return `${h}:${m}`;
           };
 
-          const match = (nDB) => {
-            if (!nDB) return false;
-            if (nDB === "Todos") return true;
+          const espNorm = (formData.especialidade || "").toLowerCase().trim();
+          const subNorm = (formData.subtipo_exame || "").toLowerCase().trim();
+          const profNorm = (formData.medico_profissional || "").toLowerCase().trim();
 
-            const pNorm = prof
-              .normalize("NFD")
-              .replace(/[\u0300-\u036f]/g, "")
-              .toLowerCase()
-              .replace(/dra\.|dr\./g, "")
-              .trim();
-            const nNorm = nDB
-              .normalize("NFD")
-              .replace(/[\u0300-\u036f]/g, "")
-              .toLowerCase()
-              .trim();
-
+          // 1. Identificar regras aplicáveis e pool de agenda compartilhada
+          const sharedRules = (regrasGlobais || []).filter((r) => {
+            if (r.ativo === false) return false;
+            if (r.servico_id && selectedSrv?.id && r.servico_id === selectedSrv.id) return true;
+            const permitidos = (r.tipos_permitidos || []).map((t) => String(t).toLowerCase().trim());
+            const rEsp = (r.especialidade || "").toLowerCase().trim();
             return (
-              nNorm.includes(pNorm) ||
-              pNorm.includes(nNorm) ||
-              nNorm.includes(pNorm.split(" ")[0])
+              (espNorm && (permitidos.includes(espNorm) || rEsp === espNorm || rEsp.includes(espNorm) || espNorm.includes(rEsp))) ||
+              (subNorm && (permitidos.includes(subNorm) || rEsp === subNorm || rEsp.includes(subNorm) || subNorm.includes(rEsp)))
             );
+          });
+
+          const poolEspecialidades = new Set([
+            espNorm,
+            subNorm,
+            ...sharedRules.flatMap((r) => [
+              ...(r.tipos_permitidos || []).map((t) => String(t).toLowerCase().trim()),
+              ...(r.especialidade ? r.especialidade.split(",").map((e) => e.toLowerCase().trim()) : [])
+            ])
+          ].filter(Boolean));
+
+          const confEsps = empresaDados?.config_campos?.especialidades_categorizadas || [];
+
+          const getDurationForAppointment = (itemEsp, itemSub) => {
+            const iEsp = (itemEsp || "").toLowerCase().trim();
+            const iSub = (itemSub || "").toLowerCase().trim();
+            const found = confEsps.find((e) => {
+              const n = (e.nome || "").toLowerCase().trim();
+              return n === iEsp || n === iSub;
+            });
+            if (found?.duracao_minutos) return Number(found.duracao_minutos);
+            const ruleMatch = sharedRules[0];
+            return Number(ruleMatch?.duracao_slot_minutos) || 30;
           };
 
-          const slots = [
-            ...(ag
-              ?.filter((a) => match(a.medico_profissional) || match(a.subtipo_exame))
-              .map((a) => formatTime(a.horario_agendamento)) || []),
-            ...(bl
-              ?.filter((b) => match(b.medico_profissional))
-              .map((b) => formatTime(b.horario)) || [])
-          ];
+          // Duração da especialidade atual selecionada pelo paciente
+          const duracaoPacienteAtual = getDurationForAppointment(formData.especialidade, formData.subtipo_exame);
 
-          if (isMounted)
-            setAgenda({ ocupados: [...new Set(slots)], buscando: false, agora: requestStartedAt });
+          const occupiedIntervals = [];
+          const slots = [];
+
+          // Processar agendamentos existentes que colidem ou compartilham a mesma agenda
+          (ag || []).forEach((a) => {
+            const aProf = (a.medico_profissional || "").toLowerCase().trim();
+            const aSub = (a.subtipo_exame || "").toLowerCase().trim();
+            const aEsp = (a.especialidade || "").toLowerCase().trim();
+
+            const matchProf = profNorm && (aProf.includes(profNorm) || profNorm.includes(aProf));
+            const matchShared = poolEspecialidades.has(aEsp) || poolEspecialidades.has(aSub) || poolEspecialidades.has(aProf);
+
+            if (matchProf || matchShared || (!profNorm && poolEspecialidades.size === 0)) {
+              const startMin = timeToMin(a.horario_agendamento);
+              const dur = getDurationForAppointment(a.especialidade, a.subtipo_exame);
+              const endMin = startMin + dur;
+              const formattedH = formatTime(a.horario_agendamento);
+              occupiedIntervals.push({ startMin, endMin, hora: formattedH });
+              slots.push(formattedH);
+            }
+          });
+
+          // Processar bloqueios manuais na agenda
+          (bl || []).forEach((b) => {
+            const bProf = (b.medico_profissional || "").toLowerCase().trim();
+            const bEsp = (b.especialidade || "").toLowerCase().trim();
+
+            const matchProf = !b.medico_profissional || b.medico_profissional === "Todos" || (profNorm && (bProf.includes(profNorm) || profNorm.includes(bProf)));
+            const matchShared = !b.especialidade || poolEspecialidades.has(bEsp);
+
+            if (matchProf || matchShared) {
+              const startMin = timeToMin(b.horario);
+              const dur = Number(sharedRules[0]?.duracao_slot_minutos) || 30;
+              const endMin = startMin + dur;
+              const formattedH = formatTime(b.horario);
+              occupiedIntervals.push({ startMin, endMin, hora: formattedH });
+              slots.push(formattedH);
+            }
+          });
+
+          if (isMounted) {
+            setAgenda({
+              ocupados: [...new Set(slots)],
+              occupiedIntervals,
+              duracaoAtual: duracaoPacienteAtual,
+              sharedPool: Array.from(poolEspecialidades),
+              buscando: false,
+              agora: requestStartedAt
+            });
+          }
         } catch (e) {
           if (isMounted) setAgenda((a) => ({ ...a, buscando: false }));
         }
@@ -717,9 +802,11 @@ export default function AgendamentoPremium() {
       formData.data_agendamento,
       formData.medico_profissional,
       formData.subtipo_exame,
+      formData.especialidade,
       formData.tipo_servico,
       setValue,
-      empresaDados
+      empresaDados,
+      regrasGlobais
     ]);
 
     const salvarNoBanco = async (pago) => {
@@ -831,7 +918,8 @@ export default function AgendamentoPremium() {
           paciente_id: pacienteId,
           empresa_id: empresaDados?.id,
           tipo_servico: formData.tipo_servico || "Consulta",
-          subtipo_exame: formData.subtipo_exame || null,
+          especialidade: formData.especialidade || formData.subtipo_exame || null,
+          subtipo_exame: formData.subtipo_exame || formData.especialidade || null,
           medico_profissional: formData.medico_profissional || "A definir",
           modalidade: modalidadeEfetiva,
           data_agendamento: formData.data_agendamento,
@@ -911,6 +999,7 @@ export default function AgendamentoPremium() {
             return false;
           return true;
         case "especialidade":
+          if (selectedSrv?.redirecionar_whatsapp || selectedSrv?.status_agendamento === "whatsapp") return false;
           if (flags.exibirConfUri && !flags.confirmouUri) return false;
           if (!formData.tipo_servico) return false;
           if (
@@ -1533,8 +1622,7 @@ export default function AgendamentoPremium() {
                   {currentModuleKey !== "checkout" &&
                   !(
                     currentModuleKey === "especialidade" &&
-                    flags.exibirConfUri &&
-                    !flags.confirmouUri
+                    ((flags.exibirConfUri && !flags.confirmouUri) || selectedSrv?.redirecionar_whatsapp || selectedSrv?.status_agendamento === "whatsapp")
                   ) ? (
                     <motion.button
                       whileHover={
@@ -1613,8 +1701,7 @@ export default function AgendamentoPremium() {
                   {currentModuleKey !== "checkout" &&
                   !(
                     currentModuleKey === "especialidade" &&
-                    flags.exibirConfUri &&
-                    !flags.confirmouUri
+                    ((flags.exibirConfUri && !flags.confirmouUri) || selectedSrv?.redirecionar_whatsapp || selectedSrv?.status_agendamento === "whatsapp")
                   ) ? (
                     <motion.button
                       whileTap={
@@ -1653,4 +1740,33 @@ export default function AgendamentoPremium() {
       </AgendamentoContext.Provider>
     );
   }
+
+export default function AgendamentoPremium() {
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
+
+  return (
+    <div className="flex min-h-[100dvh] w-full bg-[#F8FAFC] dark:bg-[#060A12] text-zinc-900 dark:text-zinc-50 transition-colors duration-400 font-sans antialiased">
+      <SidebarPremium isExpanded={isSidebarExpanded} setIsExpanded={setIsSidebarExpanded} />
+      <Navbar />
+      <main
+        className={`flex-1 relative flex flex-col items-center transition-[margin] duration-500 ease-out w-full min-h-[100dvh] overflow-hidden ${
+          isSidebarExpanded ? "md:ml-[240px]" : "md:ml-[68px]"
+        }`}
+      >
+        <Suspense
+          fallback={
+            <div className="min-h-[100dvh] flex items-center justify-center w-full">
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                className="w-8 h-8 border-[3px] border-[#9FC131] border-t-transparent rounded-full"
+              />
+            </div>
+          }
+        >
+          <AgendamentoOrquestrador />
+        </Suspense>
+      </main>
+    </div>
+  );
 }

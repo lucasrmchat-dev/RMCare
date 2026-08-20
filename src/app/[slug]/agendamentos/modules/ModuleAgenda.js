@@ -2,14 +2,14 @@
 
 import { useEffect, useRef } from "react"; 
 import { motion } from "framer-motion"; 
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Activity, Clock3, Check } from "lucide-react"; 
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Activity, Clock3, Check, Layers, Sparkles } from "lucide-react"; 
 import { useAgendamento } from "../context"; 
 import { helpers, calcularDataLimite } from "../utils"; 
 import { playDopamineSound, triggerHaptic } from "@/lib/dopamine";
 import { SkeletonSlots } from "@/components/SkeletonLoaders";
 
 export default function ModuleAgenda() {     
-    const { formData, setValue, calendarMonth, setCalendarMonth, selectedSrv, bloqueioExtraCalculado, agenda, timeSlotsRef, regrasGlobais } = useAgendamento();     
+    const { formData, setValue, calendarMonth, setCalendarMonth, selectedSrv, bloqueioExtraCalculado, agenda, timeSlotsRef, regrasGlobais, empresaDados } = useAgendamento();     
     
     const getDiaSemana = (dataStr) => {       
         if (!dataStr) return null;       
@@ -19,18 +19,45 @@ export default function ModuleAgenda() {
     
     const diaSelecionado = getDiaSemana(formData.data_agendamento);     
     
-    const rMedico = (regrasGlobais || []).filter(r => r.servico_id && r.servico_id === selectedSrv?.id && r.ativo !== false);     
-    const rGeral = (regrasGlobais || []).filter(r => !r.servico_id && r.ativo !== false);     
-    const regrasAplicaveis = rMedico.length > 0 ? rMedico : rGeral;          
+    const timeToMin = (tStr) => {
+        if (!tStr) return 0;
+        const parts = tStr.trim().split(":");
+        return parseInt(parts[0], 10) * 60 + parseInt(parts[1] || "0", 10);
+    };
+
+    const minToTime = (min) => {
+        const h = Math.floor(min / 60).toString().padStart(2, "0");
+        const m = (min % 60).toString().padStart(2, "0");
+        return `${h}:${m}`;
+    };
+
+    // Identificar regras aplicáveis (prioridade: médico específico > especialidade/grupo compartilhado > geral)
+    const especialidadeStr = (formData.especialidade || "").toLowerCase().trim();
+    const subtipoStr = (formData.subtipo_exame || "").toLowerCase().trim();
+    const tipoServicoStr = (formData.tipo_servico || "").toLowerCase().trim();
+
+    const rMedico = (regrasGlobais || []).filter(r => r.servico_id && r.servico_id === selectedSrv?.id && r.ativo !== false);
+    
+    const rEspecialidade = (regrasGlobais || []).filter(r => {
+        if (r.servico_id || r.ativo === false) return false;
+        const permitidos = (r.tipos_permitidos || []).map(t => String(t).toLowerCase().trim());
+        const rEsp = (r.especialidade || "").toLowerCase().trim();
+        return (
+            (especialidadeStr && (permitidos.includes(especialidadeStr) || rEsp === especialidadeStr || rEsp.includes(especialidadeStr) || especialidadeStr.includes(rEsp))) ||
+            (subtipoStr && (permitidos.includes(subtipoStr) || rEsp === subtipoStr || rEsp.includes(subtipoStr) || subtipoStr.includes(rEsp)))
+        );
+    });
+
+    const rGeral = (regrasGlobais || []).filter(r => !r.servico_id && (!r.especialidade || r.especialidade === "Todas") && (!r.tipos_permitidos || r.tipos_permitidos.length === 0) && r.ativo !== false);     
+    
+    const regrasAplicaveis = rMedico.length > 0 ? rMedico : rEspecialidade.length > 0 ? rEspecialidade : rGeral;          
     
     const isRuleValidForCurrentSelection = (r) => {
         if (!r.tipos_permitidos || !Array.isArray(r.tipos_permitidos) || r.tipos_permitidos.length === 0) {
             return true;
         }
 
-        const especialidadeStr = (formData.especialidade || "").toLowerCase().trim();
         const modalidadeStr = (formData.modalidade || "").toLowerCase().trim();
-        const tipoServicoStr = (formData.tipo_servico || "").toLowerCase().trim();
 
         return r.tipos_permitidos.some(tpRaw => {
             const tp = String(tpRaw).toLowerCase().trim();
@@ -39,6 +66,10 @@ export default function ModuleAgenda() {
             
             if (especialidadeStr !== "") {
                 if (tp === especialidadeStr || tp.includes(especialidadeStr) || especialidadeStr.includes(tp)) return true;
+            }
+
+            if (subtipoStr !== "") {
+                if (tp === subtipoStr || tp.includes(subtipoStr) || subtipoStr.includes(tp)) return true;
             }
 
             if (modalidadeStr !== "") {
@@ -77,7 +108,7 @@ export default function ModuleAgenda() {
             });       
         }              
         
-        if (rMedico.length > 0) {
+        if (rMedico.length > 0 || rEspecialidade.length > 0) {
             return false;
         }
 
@@ -97,7 +128,7 @@ export default function ModuleAgenda() {
         if (!regrasGlobais) return;                  
         if (formData.medico_profissional && !selectedSrv) return;         
         
-        const currentSrvId = selectedSrv?.id || null;         
+        const currentSrvId = selectedSrv?.id || formData.especialidade || null;         
         if (lastEvaluatedSrvId.current === currentSrvId) return;         
         
         const hoje = new Date();         
@@ -127,34 +158,55 @@ export default function ModuleAgenda() {
             setCalendarMonth(new Date(hoje.getFullYear(), hoje.getMonth(), 1));         
         }         
         lastEvaluatedSrvId.current = currentSrvId;     
-    }, [selectedSrv, formData.medico_profissional, regrasGlobais, bloqueioExtraCalculado, formData.tipo_servico]);     
+    }, [selectedSrv, formData.medico_profissional, formData.especialidade, regrasGlobais, bloqueioExtraCalculado, formData.tipo_servico]);     
     
-    const gerarSlotsParaTurno = (startStr, endStr, duracaoMinutos, customLastAllowed) => {       
+    // GERAÇÃO DINÂMICA DE HORÁRIOS COM SUPORTE A DURAÇÕES VARIÁVEIS E AGENDA COMPARTILHADA
+    const gerarSlotsDinamicos = (startStr, endStr, duracaoMinutos, customLastAllowed, intervals = []) => {       
         let slots = [];       
         if (!startStr || !endStr) return slots;       
-        const [sh, sm] = startStr.split(':').map(Number);       
-        const [eh, em] = endStr.split(':').map(Number);              
         
-        if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) return slots;       
-        const duracaoSegura = Math.max(parseInt(duracaoMinutos, 10) || 30, 10);              
-        let current = new Date(2000, 0, 1, sh, sm);       
-        const end = new Date(2000, 0, 1, eh, em);              
+        const startMin = timeToMin(startStr);
+        const endMin = timeToMin(endStr);
+        const dur = Math.max(parseInt(duracaoMinutos, 10) || 30, 10);
         
-        let limit = new Date(end.getTime() - (duracaoSegura * 60000));              
-        if (customLastAllowed) {         
-            const [lh, lm] = customLastAllowed.split(':').map(Number);         
-            if (!isNaN(lh) && !isNaN(lm)) {            
-                const customLimitDate = new Date(2000, 0, 1, lh, lm);            
-                if (customLimitDate < limit) limit = customLimitDate;         
-            }       
-        }       
-        
-        let safeLoop = 0;        
-        while (current <= limit && safeLoop < 100) {         
-            slots.push(current.toTimeString().substring(0, 5));         
-            current = new Date(current.getTime() + (duracaoSegura * 60000));         
-            safeLoop++;       
-        }       
+        let lastAllowedMin = endMin - dur;
+        if (customLastAllowed) {
+            const customMin = timeToMin(customLastAllowed);
+            if (customMin > 0 && customMin < lastAllowedMin) {
+                lastAllowedMin = customMin;
+            }
+        }
+
+        // Gera pontos candidatos a cada 10 min e nos términos de atendimentos existentes
+        const candidatePoints = new Set();
+        const step = dur <= 15 ? 15 : 10;
+
+        for (let m = startMin; m <= lastAllowedMin; m += step) {
+            candidatePoints.add(m);
+        }
+
+        // Inclui como candidato direto o final de cada agendamento ocupado
+        intervals.forEach(iv => {
+            if (iv.endMin >= startMin && iv.endMin <= lastAllowedMin) {
+                candidatePoints.add(iv.endMin);
+            }
+        });
+
+        const sortedCandidates = Array.from(candidatePoints).sort((a, b) => a - b);
+
+        sortedCandidates.forEach(m => {
+            if (m < startMin || m > lastAllowedMin || m + dur > endMin) return;
+
+            // Testa colisão do intervalo [m, m + dur] com os intervalos já agendados
+            const hasCollision = intervals.some(iv => {
+                return Math.max(m, iv.startMin) < Math.min(m + dur, iv.endMin);
+            });
+
+            if (!hasCollision) {
+                slots.push(minToTime(m));
+            }
+        });
+
         return slots;     
     };     
     
@@ -162,19 +214,22 @@ export default function ModuleAgenda() {
     let ocupacaoSeqAtiva = false;     
     
     if (formData.data_agendamento) {       
-        let slotsGerados = [];              
+        let slotsGerados = [];
+        const intervals = agenda?.occupiedIntervals || [];
+        const duracaoAtual = agenda?.duracaoAtual || (regrasDoDia[0]?.duracao_slot_minutos) || 30;
         
         if (regrasDoDia.length > 0) {         
             regrasDoDia.forEach(r => {           
-                const gerados = gerarSlotsParaTurno(r.hora_inicio, r.hora_fim, r.duracao_slot_minutos, r.ultimo_horario_agendamento);           
+                const durRule = agenda?.duracaoAtual || r.duracao_slot_minutos || 30;
+                const gerados = gerarSlotsDinamicos(r.hora_inicio, r.hora_fim, durRule, r.ultimo_horario_agendamento, intervals);           
                 slotsGerados.push(...gerados);           
                 if (r.ocupacao_sequencial) ocupacaoSeqAtiva = true;         
             });       
         } else if (regrasAplicaveis.length === 0) {         
             let duracaoFallback = 40;         
             if (formData.tipo_servico === "Retorno" || formData.modalidade === "Convênio") duracaoFallback = 20;                  
-            slotsGerados.push(...gerarSlotsParaTurno("08:00", "12:00", duracaoFallback));         
-            slotsGerados.push(...gerarSlotsParaTurno("14:00", "18:00", duracaoFallback));       
+            slotsGerados.push(...gerarSlotsDinamicos("08:00", "12:00", duracaoFallback, null, intervals));         
+            slotsGerados.push(...gerarSlotsDinamicos("14:00", "18:00", duracaoFallback, null, intervals));       
         }       
         
         slotsGerados.sort();       
@@ -183,12 +238,10 @@ export default function ModuleAgenda() {
         
         slotsRender = slotsGerados.map(h => {         
             const isPastTime = formData.data_agendamento === helpers.getToday() && new Date().setHours(...h.split(':'), 0, 0) <= (agenda.agora || 0) + 1800000;         
-            const isOccupied = agenda.ocupados.includes(h) || isPastTime;                  
-            
-            let off = isOccupied;                  
+            let off = isPastTime;                  
             
             if (ocupacaoSeqAtiva) {           
-                if (!isOccupied) {             
+                if (!off) {             
                     if (encontrouPrimeiroLivre) {               
                         off = true;             
                     } else {               

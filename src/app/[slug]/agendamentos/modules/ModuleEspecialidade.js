@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
-import { ChevronLeft, Stethoscope, User, Search, Check, Tag } from "lucide-react";
+import { ChevronLeft, Stethoscope,
+  MessageCircle,
+  Sparkles, User, Search, Check, Tag } from "lucide-react";
 import { useAgendamento } from "../context";
 import { playDopamineSound, triggerHaptic } from "@/lib/dopamine";
 
@@ -21,6 +23,29 @@ export default function ModuleEspecialidade() {
 
   const [filterSearch, setFilterSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("Todas");
+
+  // Especialista redirecionando para WhatsApp (Ativo Parcial) derivado diretamente do profissional selecionado
+  const specialistRedirecting = useMemo(() => {
+    if (!formData.medico_profissional) return null;
+    const cleanTarget = String(formData.medico_profissional).toLowerCase().trim();
+    const match = (servicosDB || []).find((s) => {
+      if (s.ativo === false) return false;
+      const sNome = (s.nome || "").toLowerCase().trim();
+      const sNomeSemDr = sNome.replace(/dra\.|dr\./g, "").trim();
+      const targetSemDr = cleanTarget.replace(/dra\.|dr\./g, "").trim();
+      return (
+        sNome === cleanTarget ||
+        sNomeSemDr === targetSemDr ||
+        String(s.codigo_uri || "").toLowerCase().trim() === cleanTarget ||
+        String(s.numero_especialista || "").trim() === cleanTarget ||
+        String(s.id || "").trim() === cleanTarget
+      );
+    });
+    if (match && (match.redirecionar_whatsapp || match.status_agendamento === "whatsapp")) {
+      return match;
+    }
+    return null;
+  }, [formData.medico_profissional, servicosDB]);
 
   // Lista de categorias configuradas na clínica
   const categoriasDisponiveis = useMemo(() => {
@@ -56,13 +81,6 @@ export default function ModuleEspecialidade() {
       };
     });
   }, [empresaDados, servicosDB]);
-
-  useEffect(() => {
-    if (formData.especialidade && formData.medico_profissional) {
-      setValue("medico_profissional", "");
-      setValue("subtipo_exame", "");
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filteredEspecialidades = useMemo(() => {
     return catalogoEspecialidades.filter((esp) => {
@@ -157,6 +175,7 @@ export default function ModuleEspecialidade() {
                 setFlags((f) => ({ ...f, exibirConfUri: false }));
                 setValue("medico_profissional", "");
                 setValue("especialidade", "");
+                setValue("subtipo_exame", "");
               }}
               className="w-full sm:w-1/2 min-h-[48px] py-3.5 border border-zinc-200/80 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-full font-bold text-xs uppercase tracking-wider transition-colors text-zinc-900 dark:text-white"
             >
@@ -253,58 +272,177 @@ export default function ModuleEspecialidade() {
                 <ChevronLeft size={15} /> Voltar para Especialidades
               </button>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                {especialistasDaEspecialidade.map((m) => {
-                  const isSelected =
-                    formData.medico_profissional === m.nome || formData.subtipo_exame === m.nome;
-
-                  return (
-                    <motion.button
-                      whileHover={{ scale: 1.01, y: -2 }}
-                      whileTap={{ scale: 0.97 }}
-                      key={m.id}
-                      onClick={() => handleSelectProfissional(m)}
-                      className={`min-h-[64px] p-4 sm:p-5 border rounded-2xl flex items-center justify-between text-left transition-all ${
-                        isSelected
-                          ? "border-zinc-950 bg-zinc-50 dark:border-white dark:bg-white/[0.08] shadow-md ring-2 ring-[#9FC131]"
-                          : "border-zinc-200/80 dark:border-white/10 hover:border-zinc-400 bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-xl"
-                      }`}
+              {specialistRedirecting ? (
+                /* TELA DEDICADA DE REDIRECIONAMENTO PARA ATENDENTE / WHATSAPP */
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="text-center max-w-lg mx-auto py-4 space-y-6"
+                >
+                  <div className="relative mx-auto w-20 h-20">
+                    <div className="w-20 h-20 rounded-[2rem] bg-gradient-to-br from-emerald-500 to-green-600 text-white flex items-center justify-center shadow-xl shadow-emerald-500/25 border border-white/20">
+                      <MessageCircle size={38} strokeWidth={2.2} />
+                    </div>
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className="absolute -top-1 -right-1 w-7 h-7 rounded-full bg-white dark:bg-black border-2 border-emerald-500 flex items-center justify-center shadow-sm"
                     >
-                      <div className="flex items-center gap-3.5 min-w-0">
-                        <div
-                          className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border ${
-                            isSelected
-                              ? "bg-zinc-950 text-white dark:bg-white dark:text-black"
-                              : "bg-zinc-100 dark:bg-zinc-800 text-zinc-400 border-zinc-200/50 dark:border-zinc-700/50"
-                          }`}
-                        >
-                          <User size={20} strokeWidth={2} />
-                        </div>
-                        <div className="truncate">
-                          <span
-                            className={`block text-sm sm:text-base truncate ${
+                      <Sparkles size={14} className="text-emerald-500" />
+                    </motion.div>
+                  </div>
+
+                  <div>
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs font-bold border border-emerald-200/50 mb-3 shadow-sm">
+                      <Sparkles size={13} /> Atendimento Humanizado
+                    </span>
+                    <h3 className="text-2xl sm:text-3xl font-black text-zinc-950 dark:text-white tracking-tight leading-tight">
+                      Você está sendo redirecionado para um atendente
+                    </h3>
+                    <p className="text-zinc-500 dark:text-zinc-400 text-xs sm:text-sm mt-2.5 leading-relaxed max-w-md mx-auto">
+                      O agendamento com <strong>{specialistRedirecting.nome}</strong> ({formData.especialidade || specialistRedirecting.especialidade || "Atendimento"}) é realizado diretamente através da nossa equipe no WhatsApp.
+                    </p>
+                  </div>
+
+                  <div className="p-5 sm:p-6 rounded-3xl bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 text-left space-y-3.5 shadow-sm">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-zinc-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                        <User size={14} className="text-purple-500" /> Profissional
+                      </span>
+                      <span className="font-extrabold text-zinc-950 dark:text-white text-sm">
+                        {specialistRedirecting.nome}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between items-center text-xs border-t border-zinc-100 dark:border-white/5 pt-3">
+                      <span className="text-zinc-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                        <Stethoscope size={14} className="text-emerald-500" /> Especialidade
+                      </span>
+                      <span className="font-bold text-zinc-900 dark:text-white">
+                        {formData.especialidade || specialistRedirecting.especialidade || "Geral"}
+                      </span>
+                    </div>
+
+                    {formData.nome && (
+                      <div className="flex justify-between items-center text-xs border-t border-zinc-100 dark:border-white/5 pt-3">
+                        <span className="text-zinc-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                          <User size={14} className="text-blue-500" /> Paciente
+                        </span>
+                        <span className="font-bold text-zinc-900 dark:text-white">
+                          {formData.nome} {formData.sobrenome || ""}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-3 pt-2">
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.97 }}
+                      type="button"
+                      onClick={() => {
+                        playDopamineSound("select");
+                        triggerHaptic("success");
+                        const rawWpp =
+                          empresaDados?.config_campos?.whatsapp_atendimento ||
+                          empresaDados?.whatsapp_atendimento ||
+                          empresaDados?.telefone ||
+                          "";
+                        const wppNum = rawWpp.replace(/\D/g, "");
+                        const pacienteInfo = formData.nome
+                          ? ` (Paciente: ${formData.nome} ${formData.sobrenome || ""}${formData.telefone_whatsapp ? ` - Tel: ${formData.telefone_whatsapp}` : ""})`
+                          : "";
+                        const clinicaInfo = empresaDados?.nome ? ` na ${empresaDados.nome}` : "";
+                        const textoMsg = encodeURIComponent(
+                          `Olá! Gostaria de agendar um atendimento com ${specialistRedirecting.nome} para ${formData.especialidade || specialistRedirecting.especialidade || "Consulta"}${clinicaInfo}.${pacienteInfo}`
+                        );
+                        window.open(`https://wa.me/${wppNum}?text=${textoMsg}`, "_blank");
+                      }}
+                      className="w-full min-h-[52px] py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full font-black text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-2.5 transition-all shadow-lg shadow-emerald-600/25"
+                    >
+                      <MessageCircle size={19} />
+                      Falar com Atendente no WhatsApp
+                    </motion.button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        playDopamineSound("click");
+                        setValue("medico_profissional", "");
+                        setValue("subtipo_exame", "");
+                      }}
+                      className="w-full min-h-[44px] py-2.5 text-zinc-500 hover:text-zinc-950 dark:hover:text-white text-xs font-bold transition-colors"
+                    >
+                      ← Escolher outro especialista ou especialidade
+                    </button>
+                  </div>
+                </motion.div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  {especialistasDaEspecialidade.map((m) => {
+                    const isSelected =
+                      formData.medico_profissional === m.nome || formData.subtipo_exame === m.nome;
+                    const isWppRedirect = m.redirecionar_whatsapp || m.status_agendamento === "whatsapp";
+
+                    return (
+                      <motion.button
+                        whileHover={{ scale: 1.01, y: -2 }}
+                        whileTap={{ scale: 0.97 }}
+                        key={m.id}
+                        onClick={() => handleSelectProfissional(m)}
+                        className={`min-h-[64px] p-4 sm:p-5 border rounded-2xl flex items-center justify-between text-left transition-all ${
+                          isSelected
+                            ? "border-zinc-950 bg-zinc-50 dark:border-white dark:bg-white/[0.08] shadow-md ring-2 ring-[#9FC131]"
+                            : isWppRedirect
+                            ? "border-purple-200/80 dark:border-purple-900/40 hover:border-purple-400 bg-purple-50/20 dark:bg-purple-950/10 backdrop-blur-xl"
+                            : "border-zinc-200/80 dark:border-white/10 hover:border-zinc-400 bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-xl"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3.5 min-w-0">
+                          <div
+                            className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border ${
                               isSelected
-                                ? "font-black text-zinc-950 dark:text-white"
-                                : "font-bold text-zinc-800 dark:text-zinc-200"
+                                ? "bg-zinc-950 text-white dark:bg-white dark:text-black"
+                                : isWppRedirect
+                                ? "bg-purple-100 dark:bg-purple-950/60 text-purple-600 border-purple-200 dark:border-purple-900"
+                                : "bg-zinc-100 dark:bg-zinc-800 text-zinc-400 border-zinc-200/50 dark:border-zinc-700/50"
                             }`}
                           >
-                            {m.nome}
-                          </span>
-                          <span className="text-[10px] text-zinc-400 uppercase tracking-widest mt-0.5 block">
-                            {formData.especialidade}
-                          </span>
+                            {isWppRedirect ? <MessageCircle size={20} strokeWidth={2} /> : <User size={20} strokeWidth={2} />}
+                          </div>
+                          <div className="truncate">
+                            <span
+                              className={`block text-sm sm:text-base truncate ${
+                                isSelected
+                                  ? "font-black text-zinc-950 dark:text-white"
+                                  : "font-bold text-zinc-800 dark:text-zinc-200"
+                              }`}
+                            >
+                              {m.nome}
+                            </span>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className="text-[10px] text-zinc-400 uppercase tracking-widest block truncate">
+                                {formData.especialidade}
+                              </span>
+                              {isWppRedirect && (
+                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 text-[9px] font-bold uppercase tracking-wider shrink-0 border border-purple-200/60 dark:border-purple-900/60">
+                                  <MessageCircle size={9} /> Atendente
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                      </div>
 
-                      {isSelected && (
-                        <div className="w-6 h-6 rounded-full bg-[#9FC131] text-black flex items-center justify-center shrink-0 shadow-sm">
-                          <Check size={14} strokeWidth={3} />
-                        </div>
-                      )}
-                    </motion.button>
-                  );
-                })}
-              </div>
+                        {isSelected && !isWppRedirect && (
+                          <div className="w-6 h-6 rounded-full bg-[#9FC131] text-black flex items-center justify-center shrink-0 shadow-sm">
+                            <Check size={14} strokeWidth={3} />
+                          </div>
+                        )}
+                      </motion.button>
+                    );
+                  })}
+                </div>
+              )}
             </motion.div>
           )}
         </div>

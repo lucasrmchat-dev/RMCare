@@ -256,19 +256,25 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
     nomeProfissionalOficial = "";
   }
 
-  // 3. DEFINIÇÃO DAS VARIÁVEIS DO TEMPLATE
+// 3. DEFINIÇÃO DAS VARIÁVEIS DO TEMPLATE
   const dataFormatada = data_agendamento ? data_agendamento.split("-").reverse().join("/") : "";
   const idadePaciente = calcularIdade(data_nascimento);
 
-  // Nome do procedimento / exame (ex: Colonoscopia, Endoscopia)
-  const nomeProcedimento = subtipo_exame || especialidade || (isExame ? "Exame" : "Consulta");
+  // Nome exato da especialidade / procedimento agendado
+  const especialidadeEfetiva =
+    (especialidade && !/^\d+$/.test(especialidade) ? especialidade : "") ||
+    (subtipo_exame && !/^\d+$/.test(subtipo_exame) ? subtipo_exame : "") ||
+    (isExame ? "Exame" : "Consulta");
 
-  // Nome do médico / especialista responsável (ex: Tiago Lima, Maria Aparecida Gouveia)
-  const nomeEspecialista = nomeProfissionalOficial || (isExame ? "Corpo Clínico" : (especialidade || "Especialista Clínico"));
+  const nomeProcedimento = especialidadeEfetiva;
 
-  // Para garantir que "{servico}" nunca repita "Colonoscopia com Colonoscopia":
-  // Se o template disser "Seu exame com {servico}", "{servico}" refere-se ao Especialista quando houver profissional definido!
-  const servicoValor = nomeProfissionalOficial || nomeProcedimento;
+  // Nome do médico / especialista responsável
+  const nomeEspecialista =
+    nomeProfissionalOficial ||
+    (isExame ? "Corpo Clínico" : especialidadeEfetiva || "Especialista Clínico");
+
+  // {servico} representa o médico quando houver profissional ou a especialidade quando não houver
+  const servicoValor = nomeProfissionalOficial || especialidadeEfetiva;
 
   const vars = {
     nome: (nome || "").trim(),
@@ -276,10 +282,10 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
     especialista: nomeEspecialista,
     medico: nomeEspecialista,
     profissional: nomeEspecialista,
-    procedimento: nomeProcedimento,
-    exame: isExame ? nomeProcedimento : "",
-    subtipo_exame: isExame ? nomeProcedimento : "",
-    especialidade: especialidade || nomeProcedimento,
+    procedimento: especialidadeEfetiva,
+    exame: isExame ? especialidadeEfetiva : "",
+    subtipo_exame: isExame ? especialidadeEfetiva : "",
+    especialidade: especialidadeEfetiva,
     categoria: categoriaEfetiva,
     tipo_servico: isExame ? "Exame" : "Consulta",
     enfermidade: (Array.isArray(formData?.enfermidades) && formData.enfermidades.length > 0) ? formData.enfermidades.join(", ") : "",
@@ -292,7 +298,7 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
     link_pagamento: extraData?.link_pagamento || ""
   };
 
-  console.log("🏷️ Classificação Final:", {
+    console.log("🏷️ Classificação Final:", {
     categoriaEfetiva,
     isExame,
     profissional: vars.especialista,

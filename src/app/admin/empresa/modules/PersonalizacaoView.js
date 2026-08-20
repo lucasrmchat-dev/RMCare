@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageSquare,
+  MessageCircle,
   Sparkles,
   Trash2,
   Plus,
@@ -59,6 +60,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
     mostrar_nascimento: true,
     mostrar_email: true,
     mostrar_whatsapp: true,
+    whatsapp_atendimento: "",
     ocultar_triagem: false,
     ocultar_modalidade: false,
     ocultar_checkout: false,
@@ -140,6 +142,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
           setCampos((prev) => ({
             ...prev,
             ...emp.config_campos,
+            whatsapp_atendimento: emp.whatsapp_atendimento || emp.telefone || emp.config_campos?.whatsapp_atendimento || prev.whatsapp_atendimento || "",
             logo_url: emp.logo_url || emp.config_campos.logo_url || prev.logo_url,
             modalidades_opcoes: emp.config_campos.modalidades_opcoes || prev.modalidades_opcoes,
             modalidade_padrao: emp.config_campos.modalidade_padrao || prev.modalidade_padrao,
@@ -553,6 +556,35 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                         Nenhum logotipo configurado.
                       </div>
                     )}
+                  </div>
+                </div>
+              </section>
+
+              {/* SEÇÃO: WHATSAPP OFICIAL DA CLÍNICA */}
+              <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm space-y-4">
+                <div className="flex items-center gap-3 border-b border-zinc-100 dark:border-white/5 pb-4">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                    <MessageCircle size={18} strokeWidth={1.5} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-zinc-950 dark:text-white">
+                      WhatsApp Oficial de Atendimento & Encaminhamento
+                    </h3>
+                    <p className="text-xs text-zinc-500">
+                      Cadastre o número do WhatsApp da sua clínica com DDD (ex: 5583999999999 ou 83999999999).
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-4 items-center">
+                  <TextInput
+                    label="Número do WhatsApp da Clínica"
+                    placeholder="Ex: 5583988887777 ou 83988887777"
+                    value={campos.whatsapp_atendimento || ""}
+                    onChange={(e) => setCampos({ ...campos, whatsapp_atendimento: e.target.value })}
+                  />
+                  <div className="p-4 rounded-2xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/50 dark:border-emerald-900/30 text-xs text-emerald-900 dark:text-emerald-300">
+                    💡 <strong>Uso Automático:</strong> Este número é usado no botão do WhatsApp ao concluir agendamentos e para encaminhar pacientes ao selecionarem especialistas em modo <em>"Ativo Parcialmente (WhatsApp / Atendente)"</em>.
                   </div>
                 </div>
               </section>
