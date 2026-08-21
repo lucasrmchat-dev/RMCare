@@ -54,6 +54,71 @@ export const parseTemplate = (tpl, data) => {
   return tpl.replace(/{(\w+)}/g, (_, k) => data[k] !== undefined ? data[k] : `{${k}}`);
 };
 
+// FORMATAÇÃO INTELIGENTE DE MENSAGEM PARA REDIRECIONAMENTO DE ESPECIALISTA VIA WHATSAPP
+export const formatarMensagemWhatsAppRedirect = (
+  templateCustom,
+  { specialist, formData, empresaDados }
+) => {
+  const nomeEspecialista = specialist?.nome || "Especialista";
+  const especialidadeEfetiva =
+    formData?.especialidade || specialist?.especialidade || "Consulta";
+  const tipoServico =
+    formData?.tipo_servico ||
+    (/(exame|colonoscopia|endoscopia|ultrassom|tomografia|ressonancia)/i.test(especialidadeEfetiva)
+      ? "Exame"
+      : "Consulta");
+  const modalidade = (formData?.modalidade || "").trim();
+  const nomePaciente = (formData?.nome || "").trim();
+  const sobrenomePaciente = (formData?.sobrenome || "").trim();
+  const nomeCompleto = `${nomePaciente} ${sobrenomePaciente}`.trim();
+  const telefone = (formData?.telefone_whatsapp || "").trim();
+  const cpf = (formData?.cpf || "").trim();
+  const nomeClinica = (empresaDados?.nome || "").trim();
+
+  // 1. Se o administrador configurou um template customizado na clínica ou especialista
+  if (templateCustom && String(templateCustom).trim()) {
+    const mapaVars = {
+      especialista: nomeEspecialista,
+      medico: nomeEspecialista,
+      profissional: nomeEspecialista,
+      especialidade: especialidadeEfetiva,
+      procedimento: especialidadeEfetiva,
+      tipo_servico: tipoServico,
+      modalidade: modalidade,
+      cobertura: modalidade,
+      forma_pagamento: modalidade,
+      nome: nomePaciente,
+      sobrenome: sobrenomePaciente,
+      nome_completo: nomeCompleto || nomePaciente,
+      paciente: nomeCompleto
+        ? ` (Paciente: ${nomeCompleto}${telefone ? ` - Tel: ${telefone}` : ""})`
+        : telefone
+        ? ` (Tel: ${telefone})`
+        : "",
+      telefone: telefone,
+      whatsapp: telefone,
+      cpf: cpf,
+      clinica: nomeClinica ? ` na ${nomeClinica}` : "",
+      nome_clinica: nomeClinica
+    };
+
+    return String(templateCustom).replace(/{(\w+)}/g, (_, k) =>
+      mapaVars[k] !== undefined ? mapaVars[k] : `{${k}}`
+    );
+  }
+
+  // 2. Template inteligente padrão com inclusão automática da modalidade e dados preenchidos
+  const clinicaInfo = nomeClinica ? ` na ${nomeClinica}` : "";
+  const modalidadeInfo = modalidade ? ` (${modalidade})` : "";
+  const pacienteInfo = nomeCompleto
+    ? ` (Paciente: ${nomeCompleto}${telefone ? ` - Tel: ${telefone}` : ""})`
+    : telefone
+    ? ` (Tel: ${telefone})`
+    : "";
+
+  return `Olá! Gostaria de agendar um atendimento com ${nomeEspecialista} para ${especialidadeEfetiva}${modalidadeInfo}${clinicaInfo}.${pacienteInfo}`;
+};
+
 // DISPARO DE PUSH PARA O SERVIDOR RM CHAT / WHATSAPP (VIA ROTA SEGURA NO BACKEND)
 export const dispararPushRmChat = async (telefone, nome, mensagem, urlWebhook, contextData = {}) => {
   try {
@@ -256,7 +321,7 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
     nomeProfissionalOficial = "";
   }
 
-// 3. DEFINIÇÃO DAS VARIÁVEIS DO TEMPLATE
+  // 3. DEFINIÇÃO DAS VARIÁVEIS DO TEMPLATE
   const dataFormatada = data_agendamento ? data_agendamento.split("-").reverse().join("/") : "";
   const idadePaciente = calcularIdade(data_nascimento);
 
@@ -278,6 +343,8 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
 
   const vars = {
     nome: (nome || "").trim(),
+    sobrenome: (formData?.sobrenome || "").trim(),
+    nome_completo: `${(nome || "").trim()} ${(formData?.sobrenome || "").trim()}`.trim(),
     servico: servicoValor,
     especialista: nomeEspecialista,
     medico: nomeEspecialista,
@@ -288,6 +355,14 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
     especialidade: especialidadeEfetiva,
     categoria: categoriaEfetiva,
     tipo_servico: isExame ? "Exame" : "Consulta",
+    modalidade: formData?.modalidade || "",
+    cobertura: formData?.modalidade || "",
+    forma_pagamento: formData?.modalidade || "",
+    clinica: empresaDados?.nome || "",
+    nome_clinica: empresaDados?.nome || "",
+    cpf: formData?.cpf || "",
+    telefone: telefone_whatsapp || "",
+    whatsapp: telefone_whatsapp || "",
     enfermidade: (Array.isArray(formData?.enfermidades) && formData.enfermidades.length > 0) ? formData.enfermidades.join(", ") : "",
     idade: idadePaciente !== null ? String(idadePaciente) : "",
     data: dataFormatada,
@@ -298,13 +373,14 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
     link_pagamento: extraData?.link_pagamento || ""
   };
 
-    console.log("🏷️ Classificação Final:", {
+  console.log("🏷️ Classificação Final:", {
     categoriaEfetiva,
     isExame,
     profissional: vars.especialista,
     servico: vars.servico,
     especialidade: vars.especialidade,
-    procedimento: vars.procedimento
+    procedimento: vars.procedimento,
+    modalidade: vars.modalidade
   });
 
   // 4. REGRAS DE MENSAGENS CONFIGURADAS

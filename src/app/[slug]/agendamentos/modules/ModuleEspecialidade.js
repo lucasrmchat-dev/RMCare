@@ -12,9 +12,11 @@ import {
   Tag,
   ArrowLeft,
   CalendarDays,
-  Activity
+  Activity,
+  ShieldCheck
 } from "lucide-react";
 import { useAgendamento } from "../context";
+import { formatarMensagemWhatsAppRedirect } from "../utils";
 import { playDopamineSound, triggerHaptic } from "@/lib/dopamine";
 
 export default function ModuleEspecialidade() {
@@ -124,7 +126,6 @@ export default function ModuleEspecialidade() {
     const isExame = formData.tipo_servico === "Exame";
     setValue("medico_profissional", m.nome);
     setValue("subtipo_exame", isExame ? (formData.especialidade || m.nome) : "");
-    setValue("modalidade", "");
     setValue("data_agendamento", "");
     setValue("horario_agendamento", "");
   };
@@ -172,9 +173,9 @@ export default function ModuleEspecialidade() {
                 setFlags((f) => ({ ...f, confirmouUri: true }));
                 const idxTriagem = modulosAtivos.indexOf("triagem");
                 const idxModalidade = modulosAtivos.indexOf("modalidade");
-                if (idxTriagem !== -1 && perguntasAtuais.length > 0)
+                if (idxTriagem !== -1 && idxTriagem > modulosAtivos.indexOf("especialidade") && perguntasAtuais.length > 0)
                   return setCurrentStepIndex(idxTriagem);
-                if (idxModalidade !== -1) return setCurrentStepIndex(idxModalidade);
+                if (idxModalidade !== -1 && idxModalidade > modulosAtivos.indexOf("especialidade")) return setCurrentStepIndex(idxModalidade);
                 setCurrentStepIndex((p) => p + 1);
               }}
               className="w-full sm:w-1/2 min-h-[48px] py-3.5 bg-zinc-950 hover:bg-black text-white dark:bg-white dark:hover:bg-zinc-200 dark:text-black rounded-full font-bold text-xs uppercase tracking-wider shadow-md transition-transform hover:scale-[1.02] active:scale-[0.98]"
@@ -345,6 +346,18 @@ export default function ModuleEspecialidade() {
                       </span>
                     </div>
 
+                    {/* EXIBIÇÃO DA MODALIDADE ESCOLHIDA (SE PREVIAMENTE SELECIONADA OU PASSADA) */}
+                    {formData.modalidade && (
+                      <div className="flex justify-between items-center text-xs border-t border-zinc-100 dark:border-white/5 pt-3">
+                        <span className="text-zinc-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                          <ShieldCheck size={14} className="text-blue-500" /> Modalidade / Cobertura
+                        </span>
+                        <span className="font-extrabold text-emerald-600 dark:text-emerald-400">
+                          {formData.modalidade}
+                        </span>
+                      </div>
+                    )}
+
                     {formData.nome && (
                       <div className="flex justify-between items-center text-xs border-t border-zinc-100 dark:border-white/5 pt-3">
                         <span className="text-zinc-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
@@ -366,18 +379,24 @@ export default function ModuleEspecialidade() {
                         playDopamineSound("select");
                         triggerHaptic("success");
                         const rawWpp =
+                          specialistRedirecting.whatsapp_atendimento ||
                           empresaDados?.config_campos?.whatsapp_atendimento ||
                           empresaDados?.whatsapp_atendimento ||
                           empresaDados?.telefone ||
                           "";
                         const wppNum = rawWpp.replace(/\D/g, "");
-                        const pacienteInfo = formData.nome
-                          ? ` (Paciente: ${formData.nome} ${formData.sobrenome || ""}${formData.telefone_whatsapp ? ` - Tel: ${formData.telefone_whatsapp}` : ""})`
-                          : "";
-                        const clinicaInfo = empresaDados?.nome ? ` na ${empresaDados.nome}` : "";
-                        const textoMsg = encodeURIComponent(
-                          `Olá! Gostaria de agendar um atendimento com ${specialistRedirecting.nome} para ${formData.especialidade || specialistRedirecting.especialidade || "Consulta"}${clinicaInfo}.${pacienteInfo}`
-                        );
+                        const templateCustom =
+                          specialistRedirecting.msg_whatsapp_redirecionamento ||
+                          empresaDados?.config_campos?.mensagem_redirecionamento_whatsapp ||
+                          "";
+
+                        const mensagemFinal = formatarMensagemWhatsAppRedirect(templateCustom, {
+                          specialist: specialistRedirecting,
+                          formData,
+                          empresaDados
+                        });
+
+                        const textoMsg = encodeURIComponent(mensagemFinal);
                         window.open(`https://wa.me/${wppNum}?text=${textoMsg}`, "_blank");
                       }}
                       className="w-full min-h-[52px] py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full font-black text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-2.5 transition-all shadow-lg shadow-emerald-600/25 cursor-pointer"

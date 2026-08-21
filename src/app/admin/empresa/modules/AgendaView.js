@@ -23,12 +23,17 @@ import {
   CheckCircle2,
   Clock3,
   ShieldCheck,
+  ShieldAlert,
   HeartPulse,
   Mail,
   FileText,
   Plus,
   Tag,
-  ExternalLink
+  ExternalLink,
+  Lock,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown
 } from "lucide-react";
 import {
   getHojeLocal,
@@ -69,14 +74,35 @@ export default function AgendaView({
   bloqueios = [],
   servicos = [],
   fetchAgendamentos,
-  showToast
+  showToast,
+  permissoes = [],
+  isOwner = false
 }) {
   const [viewMode, setViewMode] = useState("cards");
+
+  useEffect(() => {
+    try {
+      const defaultMode = localStorage.getItem("rmcare_default_view_mode") || localStorage.getItem("rmcare_view_mode");
+      if (defaultMode === "cards" || defaultMode === "tabela") {
+        setViewMode(defaultMode);
+      }
+    } catch (e) {}
+  }, []);
+
+  // Verificação estrita de permissão para Ficha Clínica e Dados Sigilosos
+  const temPermissaoSigiloClinico = useMemo(() => {
+    if (isOwner) return true;
+    const perms = Array.isArray(permissoes) ? permissoes : [];
+    return perms.includes("sigilo_clinico") || perms.includes("dados_sensiveis");
+  }, [isOwner, permissoes]);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [origemFilter, setOrigemFilter] = useState("todos");
   const [statusFilter, setStatusFilter] = useState("todos");
   const [filterMedico, setFilterMedico] = useState("Todos");
+
+  // Ordenação de colunas da tabela de pacientes
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(getHojeLocal());
@@ -217,7 +243,7 @@ export default function AgendaView({
         rawItem: b
       }));
 
-    return [...locais, ...erp]
+    let result = [...locais, ...erp]
       .filter((item) => {
         if (statusFilter === "todos") return true;
         if (statusFilter === "cancelado") return item.statusAtendimento === "cancelado";
@@ -234,13 +260,52 @@ export default function AgendaView({
         if (filterMedico === "Todos") return true;
         return item.medicoProfissional === filterMedico;
       })
-      .filter((item) => matchesSearch(item.nomePaciente, item.cpfPaciente, item.telefonePaciente))
-      .sort(
+      .filter((item) => matchesSearch(item.nomePaciente, item.cpfPaciente, item.telefonePaciente));
+
+    if (sortConfig.key) {
+      result.sort((a, b) => {
+        let valA = "";
+        let valB = "";
+
+        if (sortConfig.key === "horario") {
+          valA = a.horario || "";
+          valB = b.horario || "";
+        } else if (sortConfig.key === "paciente") {
+          valA = a.nomePaciente || "";
+          valB = b.nomePaciente || "";
+        } else if (sortConfig.key === "origem") {
+          valA = a.tipo || "";
+          valB = b.tipo || "";
+        } else if (sortConfig.key === "especialista") {
+          valA = a.medicoProfissional || "";
+          valB = b.medicoProfissional || "";
+        } else if (sortConfig.key === "status") {
+          valA = a.statusAtendimento || "";
+          valB = b.statusAtendimento || "";
+        }
+
+        const cmp = String(valA).localeCompare(String(valB), "pt-BR", { sensitivity: "base" });
+        return sortConfig.direction === "asc" ? cmp : -cmp;
+      });
+    } else {
+      result.sort(
         (a, b) =>
           new Date(`${b.data}T${b.horario || "00:00"}`) -
           new Date(`${a.data}T${a.horario || "00:00"}`)
       );
-  }, [agendamentos, bloqueios, statusFilter, origemFilter, filterMedico, searchTerm]);
+    }
+
+    return result;
+  }, [agendamentos, bloqueios, statusFilter, origemFilter, filterMedico, searchTerm, sortConfig]);
+
+  const handleSort = (key) => {
+    let direction = "asc";
+    if (sortConfig.key === key && sortConfig.direction === "asc") {
+      direction = "desc";
+    }
+    setSortConfig({ key, direction });
+    playDopamineSound("click");
+  };
 
   const eventosAgendaMistaDiaria = useMemo(() => {
     return listaUnificadaTodosPacientes
@@ -289,8 +354,14 @@ export default function AgendaView({
     }
   };
 
-  // Abrir Ficha do Paciente e Dados Sensíveis
+  // Abrir Ficha do Paciente e Dados Sensíveis com Proteção de Permissão
   const handleOpenSensitiveModal = (item) => {
+    if (!temPermissaoSigiloClinico) {
+      if (showToast) {
+        showToast("Acesso restrito: você não possui permissão de Sigilo Clínico para visualizar ou editar fichas médicas.", "error");
+      }
+      return;
+    }
     playDopamineSound("click");
     triggerHaptic("light");
     setSensitiveModalItem(item);
@@ -300,6 +371,7 @@ export default function AgendaView({
 
   // Adicionar / Vincular Enfermidade ao Paciente
   const handleAddEnfermidadeToPatient = (enfNome) => {
+    if (!temPermissaoSigiloClinico) return;
     const limpo = enfNome.trim();
     if (!limpo) return;
     if (enfermidadesPaciente.includes(limpo)) return;
@@ -310,6 +382,7 @@ export default function AgendaView({
 
   // Criar Nova Enfermidade no Catálogo e Vincular ao Paciente
   const handleCreateAndLinkEnfermidade = async () => {
+    if (!temPermissaoSigiloClinico) return;
     const limpo = searchEnfermidade.trim();
     if (!limpo) return;
 
@@ -327,10 +400,15 @@ export default function AgendaView({
   };
 
   const handleRemoveEnfermidadeFromPatient = (enfNome) => {
+    if (!temPermissaoSigiloClinico) return;
     setEnfermidadesPaciente((prev) => prev.filter((e) => e !== enfNome));
   };
 
   const handleSaveSensitiveData = async () => {
+    if (!temPermissaoSigiloClinico) {
+      showToast("Acesso negado: sem permissão de sigilo clínico.", "error");
+      return;
+    }
     if (!sensitiveModalItem) return;
     setIsProcessing(true);
     playDopamineSound("select");
@@ -400,7 +478,7 @@ export default function AgendaView({
                     playDopamineSound("click");
                     setViewMode("cards");
                   }}
-                  className={`p-2 rounded-lg transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center ${
+                  className={`p-2 rounded-lg transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer ${
                     viewMode === "cards"
                       ? "bg-white dark:bg-zinc-900 text-zinc-950 dark:text-white shadow-sm"
                       : "text-zinc-400 hover:text-zinc-700"
@@ -414,7 +492,7 @@ export default function AgendaView({
                     playDopamineSound("click");
                     setViewMode("tabela");
                   }}
-                  className={`p-2 rounded-lg transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center ${
+                  className={`p-2 rounded-lg transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer ${
                     viewMode === "tabela"
                       ? "bg-white dark:bg-zinc-900 text-zinc-950 dark:text-white shadow-sm"
                       : "text-zinc-400 hover:text-zinc-700"
@@ -515,13 +593,13 @@ export default function AgendaView({
                     <div className="flex gap-1 bg-zinc-100/70 dark:bg-zinc-900/70 rounded-xl p-1 border border-zinc-200/50 dark:border-zinc-800">
                       <button
                         onClick={prevMonth}
-                        className="p-1.5 text-zinc-400 hover:text-zinc-950 dark:hover:text-white transition-colors"
+                        className="p-1.5 text-zinc-400 hover:text-zinc-950 dark:hover:text-white transition-colors cursor-pointer"
                       >
                         <ChevronLeft size={16} />
                       </button>
                       <button
                         onClick={nextMonth}
-                        className="p-1.5 text-zinc-400 hover:text-zinc-950 dark:hover:text-white transition-colors"
+                        className="p-1.5 text-zinc-400 hover:text-zinc-950 dark:hover:text-white transition-colors cursor-pointer"
                       >
                         <ChevronRight size={16} />
                       </button>
@@ -565,7 +643,7 @@ export default function AgendaView({
                             triggerHaptic("light");
                             setSelectedDay(dateStr);
                           }}
-                          className={`relative h-10 w-full rounded-xl text-xs sm:text-sm transition-all min-h-[38px] flex items-center justify-center ${
+                          className={`relative h-10 w-full rounded-xl text-xs sm:text-sm transition-all min-h-[38px] flex items-center justify-center cursor-pointer ${
                             isSel
                               ? "bg-zinc-950 text-white dark:bg-white dark:text-black font-extrabold shadow-md ring-2 ring-[#9FC131] scale-105"
                               : isTod
@@ -690,8 +768,8 @@ export default function AgendaView({
                                   )}
                                 </div>
 
-                                {/* TAGS DE ENFERMIDADES VINCULADAS */}
-                                {item.enfermidades && item.enfermidades.length > 0 && (
+                                {/* TAGS DE ENFERMIDADES VINCULADAS (PROTEGIDAS POR SIGILO CLÍNICO) */}
+                                {temPermissaoSigiloClinico && item.enfermidades && item.enfermidades.length > 0 && (
                                   <div className="flex flex-wrap gap-1 mt-2">
                                     {item.enfermidades.map((enf, idx) => (
                                       <span
@@ -708,14 +786,23 @@ export default function AgendaView({
 
                             {/* AÇÕES NO CARD */}
                             <div className="flex items-center gap-2 self-end md:self-center">
-                              <button
-                                onClick={() => handleOpenSensitiveModal(item)}
-                                className="min-h-[40px] px-3.5 py-2 rounded-xl border border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 flex items-center gap-1.5 text-xs font-bold transition-colors shadow-sm"
-                                title="Verificar Ficha Clínica & Enfermidades"
-                              >
-                                <ShieldCheck size={14} className="text-blue-500" />
-                                <span>Ficha</span>
-                              </button>
+                              {temPermissaoSigiloClinico ? (
+                                <button
+                                  onClick={() => handleOpenSensitiveModal(item)}
+                                  className="min-h-[40px] px-3.5 py-2 rounded-xl border border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 flex items-center gap-1.5 text-xs font-bold transition-colors shadow-sm cursor-pointer"
+                                  title="Verificar Ficha Clínica & Enfermidades"
+                                >
+                                  <ShieldCheck size={14} className="text-blue-500" />
+                                  <span>Ficha</span>
+                                </button>
+                              ) : (
+                                <span
+                                  className="min-h-[40px] px-3 py-2 rounded-xl bg-zinc-100/50 dark:bg-zinc-800/40 text-zinc-400 text-[11px] font-bold inline-flex items-center gap-1 border border-zinc-200/50 dark:border-zinc-800 opacity-60 cursor-not-allowed"
+                                  title="Acesso Restrito: Requer permissão de Sigilo Clínico"
+                                >
+                                  <Lock size={12} /> Ficha Restrita
+                                </span>
+                              )}
 
                               {!isCanceled && (
                                 <>
@@ -726,7 +813,7 @@ export default function AgendaView({
                                       setNewDate(item.data || selectedDay);
                                       setNewTime(item.horario || "09:00");
                                     }}
-                                    className="min-h-[40px] px-3.5 py-2 rounded-xl border border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 flex items-center gap-1.5 text-xs font-bold transition-colors shadow-sm"
+                                    className="min-h-[40px] px-3.5 py-2 rounded-xl border border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 flex items-center gap-1.5 text-xs font-bold transition-colors shadow-sm cursor-pointer"
                                   >
                                     <RotateCcw
                                       size={14}
@@ -740,7 +827,7 @@ export default function AgendaView({
                                       setCancelModalItem(item.rawItem || item);
                                       setReason("");
                                     }}
-                                    className="min-h-[40px] px-3.5 py-2 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 hover:bg-red-500/20 flex items-center gap-1.5 text-xs font-bold transition-colors shadow-sm"
+                                    className="min-h-[40px] px-3.5 py-2 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 hover:bg-red-500/20 flex items-center gap-1.5 text-xs font-bold transition-colors shadow-sm cursor-pointer"
                                   >
                                     <Trash2 size={14} /> Cancelar
                                   </button>
@@ -756,13 +843,73 @@ export default function AgendaView({
                     <div className="bg-white dark:bg-[#111116] border border-zinc-200/80 dark:border-zinc-800 rounded-2xl overflow-x-auto shadow-sm">
                       <table className="w-full text-left border-collapse text-xs">
                         <thead>
-                          <tr className="border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/60 font-bold uppercase tracking-wider text-zinc-400">
-                            <th className="p-4">Horário</th>
-                            <th className="p-4">Paciente</th>
-                            <th className="p-4">Origem</th>
-                            <th className="p-4">Especialista</th>
-                            <th className="p-4">Status</th>
-                            <th className="p-4 text-right pr-6">Ações</th>
+                          <tr className="border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/60 font-bold uppercase tracking-wider text-zinc-400 select-none">
+                            <th
+                              onClick={() => handleSort("horario")}
+                              className="p-4 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                            >
+                              <div className="flex items-center gap-1">
+                                <span>Horário</span>
+                                {sortConfig.key === "horario" ? (
+                                  sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                                ) : (
+                                  <ArrowUpDown size={11} className="opacity-40" />
+                                )}
+                              </div>
+                            </th>
+                            <th
+                              onClick={() => handleSort("paciente")}
+                              className="p-4 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                            >
+                              <div className="flex items-center gap-1">
+                                <span>Paciente</span>
+                                {sortConfig.key === "paciente" ? (
+                                  sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                                ) : (
+                                  <ArrowUpDown size={11} className="opacity-40" />
+                                )}
+                              </div>
+                            </th>
+                            <th
+                              onClick={() => handleSort("origem")}
+                              className="p-4 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                            >
+                              <div className="flex items-center gap-1">
+                                <span>Origem</span>
+                                {sortConfig.key === "origem" ? (
+                                  sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                                ) : (
+                                  <ArrowUpDown size={11} className="opacity-40" />
+                                )}
+                              </div>
+                            </th>
+                            <th
+                              onClick={() => handleSort("especialista")}
+                              className="p-4 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                            >
+                              <div className="flex items-center gap-1">
+                                <span>Especialista</span>
+                                {sortConfig.key === "especialista" ? (
+                                  sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                                ) : (
+                                  <ArrowUpDown size={11} className="opacity-40" />
+                                )}
+                              </div>
+                            </th>
+                            <th
+                              onClick={() => handleSort("status")}
+                              className="p-4 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                            >
+                              <div className="flex items-center gap-1">
+                                <span>Status</span>
+                                {sortConfig.key === "status" ? (
+                                  sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                                ) : (
+                                  <ArrowUpDown size={11} className="opacity-40" />
+                                )}
+                              </div>
+                            </th>
+                            <th className="p-4 text-right pr-6 whitespace-nowrap">Ações</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800 font-medium">
@@ -783,7 +930,7 @@ export default function AgendaView({
                                     CPF: {item.cpfPaciente}
                                   </div>
                                 )}
-                                {item.enfermidades && item.enfermidades.length > 0 && (
+                                {temPermissaoSigiloClinico && item.enfermidades && item.enfermidades.length > 0 && (
                                   <div className="flex flex-wrap gap-1 mt-1">
                                     {item.enfermidades.map((enf, idx) => (
                                       <span
@@ -828,14 +975,23 @@ export default function AgendaView({
                               {/* COLUNA DE AÇÕES: RIGOROSAMENTE NO MESMO HORIZONTE */}
                               <td className="p-4 text-right pr-6 whitespace-nowrap">
                                 <div className="inline-flex items-center justify-end gap-2">
-                                  <button
-                                    onClick={() => handleOpenSensitiveModal(item)}
-                                    className="min-h-[34px] px-3 py-1.5 border border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 text-[11px] font-bold inline-flex items-center gap-1.5 transition-colors shadow-sm"
-                                    title="Verificar Ficha Clínica & Enfermidades"
-                                  >
-                                    <ShieldCheck size={13} className="text-blue-500" />
-                                    <span>Ficha</span>
-                                  </button>
+                                  {temPermissaoSigiloClinico ? (
+                                    <button
+                                      onClick={() => handleOpenSensitiveModal(item)}
+                                      className="min-h-[34px] px-3 py-1.5 border border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 text-[11px] font-bold inline-flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                                      title="Verificar Ficha Clínica & Enfermidades"
+                                    >
+                                      <ShieldCheck size={13} className="text-blue-500" />
+                                      <span>Ficha</span>
+                                    </button>
+                                  ) : (
+                                    <span
+                                      className="min-h-[34px] px-2.5 py-1.5 rounded-xl bg-zinc-100/50 dark:bg-zinc-800/40 text-zinc-400 text-[10px] font-bold inline-flex items-center gap-1 border border-zinc-200/50 dark:border-zinc-800 opacity-60 cursor-not-allowed"
+                                      title="Acesso Restrito: Requer permissão de Sigilo Clínico"
+                                    >
+                                      <Lock size={11} /> Restrito
+                                    </span>
+                                  )}
 
                                   {item.statusAtendimento !== "cancelado" && (
                                     <>
@@ -846,7 +1002,7 @@ export default function AgendaView({
                                           setNewDate(item.data || selectedDay);
                                           setNewTime(item.horario || "09:00");
                                         }}
-                                        className="min-h-[34px] px-3 py-1.5 border border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 text-[11px] font-bold inline-flex items-center gap-1 transition-colors shadow-sm"
+                                        className="min-h-[34px] px-3 py-1.5 border border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 text-[11px] font-bold inline-flex items-center gap-1 transition-colors shadow-sm cursor-pointer"
                                       >
                                         <RotateCcw
                                           size={12}
@@ -860,7 +1016,7 @@ export default function AgendaView({
                                           setCancelModalItem(item.rawItem || item);
                                           setReason("");
                                         }}
-                                        className="min-h-[34px] p-2 text-red-600 dark:text-red-400 bg-red-50/60 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/60 border border-red-200/50 dark:border-red-900/40 rounded-xl inline-flex items-center justify-center transition-colors shadow-sm"
+                                        className="min-h-[34px] p-2 text-red-600 dark:text-red-400 bg-red-50/60 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/60 border border-red-200/50 dark:border-red-900/40 rounded-xl inline-flex items-center justify-center transition-colors shadow-sm cursor-pointer"
                                         title="Cancelar Atendimento"
                                       >
                                         <Trash2 size={14} />
@@ -981,7 +1137,7 @@ export default function AgendaView({
                                 <strong>{item.horario || "--:--"}h</strong>
                               </p>
 
-                              {item.enfermidades && item.enfermidades.length > 0 && (
+                              {temPermissaoSigiloClinico && item.enfermidades && item.enfermidades.length > 0 && (
                                 <div className="flex flex-wrap gap-1 mt-2">
                                   {item.enfermidades.map((enf, idx) => (
                                     <span
@@ -997,14 +1153,23 @@ export default function AgendaView({
                           </div>
 
                           <div className="flex items-center gap-2 self-end md:self-center">
-                            <button
-                              onClick={() => handleOpenSensitiveModal(item)}
-                              className="min-h-[40px] px-3.5 py-2 border border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl text-xs font-bold hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors flex items-center gap-1.5 shadow-sm"
-                              title="Verificar Ficha Clínica & Enfermidades"
-                            >
-                              <ShieldCheck size={14} className="text-blue-500" />
-                              <span>Ficha</span>
-                            </button>
+                            {temPermissaoSigiloClinico ? (
+                              <button
+                                onClick={() => handleOpenSensitiveModal(item)}
+                                className="min-h-[40px] px-3.5 py-2 border border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl text-xs font-bold hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
+                                title="Verificar Ficha Clínica & Enfermidades"
+                              >
+                                <ShieldCheck size={14} className="text-blue-500" />
+                                <span>Ficha</span>
+                              </button>
+                            ) : (
+                              <span
+                                className="min-h-[40px] px-3 py-2 rounded-xl bg-zinc-100/50 dark:bg-zinc-800/40 text-zinc-400 text-[11px] font-bold inline-flex items-center gap-1 border border-zinc-200/50 dark:border-zinc-800 opacity-60 cursor-not-allowed"
+                                title="Acesso Restrito: Requer permissão de Sigilo Clínico"
+                              >
+                                <Lock size={12} /> Ficha Restrita
+                              </span>
+                            )}
 
                             {!isCanceled && (
                               <>
@@ -1015,7 +1180,7 @@ export default function AgendaView({
                                     setNewDate(item.data || selectedDay);
                                     setNewTime(item.horario || "09:00");
                                   }}
-                                  className="min-h-[40px] px-3.5 py-2 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl text-xs font-bold hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors flex items-center gap-1.5 shadow-sm"
+                                  className="min-h-[40px] px-3.5 py-2 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl text-xs font-bold hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
                                 >
                                   <RotateCcw
                                     size={14}
@@ -1029,7 +1194,7 @@ export default function AgendaView({
                                     setCancelModalItem(item.rawItem || item);
                                     setReason("");
                                   }}
-                                  className="min-h-[40px] px-3.5 py-2 bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 rounded-xl text-xs font-bold hover:bg-red-500/20 transition-colors flex items-center gap-1.5 shadow-sm"
+                                  className="min-h-[40px] px-3.5 py-2 bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 rounded-xl text-xs font-bold hover:bg-red-500/20 transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
                                 >
                                   <Trash2 size={14} /> Cancelar
                                 </button>
@@ -1047,9 +1212,9 @@ export default function AgendaView({
         </div>
       </div>
 
-      {/* MODAL: FICHA CLÍNICA & DADOS SENSÍVEIS (ENFERMIDADES) */}
+      {/* MODAL: FICHA CLÍNICA & DADOS SENSÍVEIS (ENFERMIDADES) - PROTEGIDO POR PERMISSÃO */}
       <AnimatePresence>
-        {sensitiveModalItem && (
+        {sensitiveModalItem && temPermissaoSigiloClinico && (
           <div
             className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-md p-4 flex items-center justify-center"
             onClick={() => setSensitiveModalItem(null)}
@@ -1077,7 +1242,7 @@ export default function AgendaView({
                 </div>
                 <button
                   onClick={() => setSensitiveModalItem(null)}
-                  className="p-2 text-zinc-400 hover:text-zinc-950 dark:hover:text-white rounded-full"
+                  className="p-2 text-zinc-400 hover:text-zinc-950 dark:hover:text-white rounded-full cursor-pointer"
                 >
                   <X size={18} />
                 </button>
@@ -1182,7 +1347,7 @@ export default function AgendaView({
                         <button
                           type="button"
                           onClick={() => handleRemoveEnfermidadeFromPatient(enf)}
-                          className="text-rose-400 hover:text-red-600 transition-colors p-0.5"
+                          className="text-rose-400 hover:text-red-600 transition-colors p-0.5 cursor-pointer"
                           title={`Desvincular "${enf}"`}
                         >
                           <X size={12} />
@@ -1219,7 +1384,7 @@ export default function AgendaView({
                           key={sug}
                           type="button"
                           onClick={() => handleAddEnfermidadeToPatient(sug)}
-                          className="w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-zinc-800 dark:text-zinc-200 hover:bg-rose-50 dark:hover:bg-rose-950/30 flex items-center justify-between transition-colors"
+                          className="w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-zinc-800 dark:text-zinc-200 hover:bg-rose-50 dark:hover:bg-rose-950/30 flex items-center justify-between transition-colors cursor-pointer"
                         >
                           <span className="flex items-center gap-2">
                             <HeartPulse size={13} className="text-rose-500" />
@@ -1235,7 +1400,7 @@ export default function AgendaView({
                         <button
                           type="button"
                           onClick={handleCreateAndLinkEnfermidade}
-                          className="w-full text-left px-3 py-2.5 rounded-xl text-xs font-extrabold text-white bg-zinc-950 dark:bg-white dark:text-black hover:bg-black transition-colors flex items-center gap-2 shadow-sm"
+                          className="w-full text-left px-3 py-2.5 rounded-xl text-xs font-extrabold text-white bg-zinc-950 dark:bg-white dark:text-black hover:bg-black transition-colors flex items-center gap-2 shadow-sm cursor-pointer"
                         >
                           <Plus size={14} />
                           <span>Cadastrar "{searchEnfermidade.trim()}" no catálogo e vincular</span>
@@ -1256,7 +1421,7 @@ export default function AgendaView({
                   type="button"
                   onClick={() => setSensitiveModalItem(null)}
                   disabled={isProcessing}
-                  className="min-h-[44px] rounded-xl border border-zinc-200/80 dark:border-zinc-800 font-bold text-xs uppercase text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 transition-colors"
+                  className="min-h-[44px] rounded-xl border border-zinc-200/80 dark:border-zinc-800 font-bold text-xs uppercase text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 transition-colors cursor-pointer"
                 >
                   Fechar
                 </button>
@@ -1264,7 +1429,7 @@ export default function AgendaView({
                   onClick={handleSaveSensitiveData}
                   disabled={isProcessing}
                   icon={CheckCircle2}
-                  className="min-h-[44px] text-xs rounded-xl justify-center"
+                  className="min-h-[44px] text-xs rounded-xl justify-center cursor-pointer"
                 >
                   {isProcessing ? "Salvando..." : "Salvar Alterações"}
                 </ButtonPrimary>
@@ -1294,7 +1459,7 @@ export default function AgendaView({
                 </div>
                 <button
                   onClick={() => setCancelModalItem(null)}
-                  className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-full"
+                  className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-full cursor-pointer"
                 >
                   <X size={20} />
                 </button>
@@ -1331,14 +1496,14 @@ export default function AgendaView({
                 <button
                   onClick={() => setCancelModalItem(null)}
                   disabled={isProcessing}
-                  className="min-h-[48px] rounded-2xl border border-zinc-200/80 dark:border-zinc-800 font-bold text-xs uppercase text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100"
+                  className="min-h-[48px] rounded-2xl border border-zinc-200/80 dark:border-zinc-800 font-bold text-xs uppercase text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 cursor-pointer"
                 >
                   Voltar
                 </button>
                 <button
                   onClick={handleCancelarAdmin}
                   disabled={isProcessing}
-                  className="min-h-[48px] rounded-2xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs uppercase flex items-center justify-center gap-2 shadow-md"
+                  className="min-h-[48px] rounded-2xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs uppercase flex items-center justify-center gap-2 shadow-md cursor-pointer"
                 >
                   {isProcessing ? <Activity size={16} className="animate-spin" /> : "Confirmar"}
                 </button>
@@ -1368,7 +1533,7 @@ export default function AgendaView({
                 </div>
                 <button
                   onClick={() => setRescheduleModalItem(null)}
-                  className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-full"
+                  className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-full cursor-pointer"
                 >
                   <X size={20} />
                 </button>
@@ -1406,14 +1571,14 @@ export default function AgendaView({
                 <button
                   onClick={() => setRescheduleModalItem(null)}
                   disabled={isProcessing}
-                  className="min-h-[48px] rounded-2xl border border-zinc-200/80 dark:border-zinc-800 font-bold text-xs uppercase text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100"
+                  className="min-h-[48px] rounded-2xl border border-zinc-200/80 dark:border-zinc-800 font-bold text-xs uppercase text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 cursor-pointer"
                 >
                   Voltar
                 </button>
                 <button
                   onClick={handleRemarcarAdmin}
                   disabled={isProcessing || !newDate || !newTime}
-                  className="min-h-[48px] rounded-2xl bg-zinc-950 hover:bg-black dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-bold text-xs uppercase flex items-center justify-center gap-2 shadow-md"
+                  className="min-h-[48px] rounded-2xl bg-zinc-950 hover:bg-black dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-bold text-xs uppercase flex items-center justify-center gap-2 shadow-md cursor-pointer"
                 >
                   {isProcessing ? (
                     <Activity size={16} className="animate-spin" />

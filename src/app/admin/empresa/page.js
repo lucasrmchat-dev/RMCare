@@ -16,7 +16,9 @@ import {
   Menu,
   X,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  BarChart3,
+  Lock
 } from "lucide-react";
 import AdminSessionBar from "@/components/AdminSessionBar";
 import { spring } from "./components/SharedUI";
@@ -25,10 +27,12 @@ import {
   fetchAdminAgendamentos,
   fetchAdminServicos,
   fetchAdminPerguntas,
-  fetchAdminRegras
+  fetchAdminRegras,
+  fetchAdminCustomization
 } from "@/actions/adminData";
 import { getSessionAdminInfo } from "@/actions/auth";
 import AgendaView from "./modules/AgendaView";
+import MetricasView from "./modules/MetricasView";
 import RestricoesView from "./modules/RestricoesView";
 import EquipeView from "./modules/EquipeView";
 import TriagemView from "./modules/TriagemView";
@@ -59,6 +63,24 @@ export default function EmpresaAdmin() {
     fetchServicos();
     fetchPerguntas();
     fetchRegras();
+    try {
+      const emp = await fetchAdminCustomization();
+      if (emp?.config_campos?.tema && typeof window !== "undefined") {
+        const tema = emp.config_campos.tema;
+        const escopo = tema.escopo_tema || "ambos";
+        if (escopo === "ambos" || escopo === "admin") {
+          const root = document.documentElement;
+          if (tema.cor_primaria) {
+            root.style.setProperty("--brand-primary", tema.cor_primaria);
+            localStorage.setItem("rmcare_brand_primary", tema.cor_primaria);
+          }
+          if (tema.cor_secundaria) {
+            root.style.setProperty("--brand-secondary", tema.cor_secundaria);
+            localStorage.setItem("rmcare_brand_secondary", tema.cor_secundaria);
+          }
+        }
+      }
+    } catch (e) {}
   };
 
   const showToast = (msg, type = "success") => {
@@ -144,7 +166,7 @@ export default function EmpresaAdmin() {
     checkAccessAndFetch();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Estrutura completa de navegação com sub-menus
+  // Estrutura completa de navegação com sub-menus e nomes autoexplicativos
   const baseMenuStructure = useMemo(
     () => [
       {
@@ -152,8 +174,20 @@ export default function EmpresaAdmin() {
         label: "Agenda",
         icon: CalendarDays,
         subItems: [
-          { id: "calendario", label: "Calendário Diário" },
-          { id: "lista", label: "Lista Unificada" }
+          { id: "calendario", label: "Pacientes do Dia" },
+          { id: "lista", label: "Todos os Pacientes" }
+        ]
+      },
+      {
+        id: "metricas",
+        label: "Métricas",
+        icon: BarChart3,
+        subItems: [
+          { id: "visao_geral", label: "Visão Geral" },
+          { id: "financeiro", label: "Financeiro & Faturamento" },
+          { id: "pacientes", label: "Pacientes & Demografia" },
+          { id: "especialidades", label: "Especialidades & Equipe" },
+          { id: "operacional", label: "Operacional & Jornada" }
         ]
       },
       {
@@ -164,6 +198,7 @@ export default function EmpresaAdmin() {
           { id: "corpo", label: "Lista de Especialistas" },
           { id: "formulario", label: "Cadastrar Especialista" },
           { id: "especialidades", label: "Especialidades" },
+          { id: "modalidades", label: "Modalidades & Convênios" },
           { id: "pausas", label: "Pausas na Agenda" }
         ]
       },
@@ -193,7 +228,6 @@ export default function EmpresaAdmin() {
         subItems: [
           { id: "jornada", label: "Identificação & Logo" },
           { id: "aparencia", label: "Design & Cores" },
-          { id: "modalidades", label: "Modalidades" },
           { id: "mensagens", label: "Mensagens WhatsApp" },
           { id: "historico_mensagens", label: "Histórico de Envios" }
         ]
@@ -220,7 +254,7 @@ export default function EmpresaAdmin() {
     if (!loggedAdmin) return baseMenuStructure;
     if (loggedAdmin.is_owner || loggedAdmin.role === "sistema") return baseMenuStructure;
 
-    const userPerms = loggedAdmin.permissoes || ["agenda"];
+    const userPerms = loggedAdmin.permissoes || ["agenda", "metricas"];
     return baseMenuStructure.filter((item) => {
       if (item.id === "conta") return true;
       return userPerms.includes(item.id);
@@ -269,7 +303,7 @@ export default function EmpresaAdmin() {
       <motion.button
         whileTap={{ scale: 0.9 }}
         aria-label="Abrir menu de navegação"
-        className="md:hidden fixed bottom-5 right-5 z-50 p-3.5 bg-zinc-950 dark:bg-white text-white dark:text-black rounded-full shadow-2xl min-h-[44px] min-w-[44px] flex items-center justify-center"
+        className="md:hidden fixed bottom-5 right-5 z-50 p-3.5 bg-zinc-950 dark:bg-white text-white dark:text-black rounded-full shadow-2xl min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer"
         onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
       >
         {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
@@ -321,7 +355,7 @@ export default function EmpresaAdmin() {
                 setIsSidebarCollapsed(!isSidebarCollapsed);
               }}
               title={isSidebarCollapsed ? "Expandir menu lateral" : "Recolher menu lateral"}
-              className="hidden md:flex p-1.5 rounded-lg text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors ml-auto"
+              className="hidden md:flex p-1.5 rounded-lg text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors ml-auto cursor-pointer"
             >
               <ChevronLeft
                 size={16}
@@ -346,7 +380,7 @@ export default function EmpresaAdmin() {
                     <button
                       onClick={() => handleMainMenuClick(item)}
                       title={isSidebarCollapsed ? item.label : undefined}
-                      className={`group relative flex items-center w-full min-h-[38px] rounded-xl text-xs transition-all duration-200 ${
+                      className={`group relative flex items-center w-full min-h-[38px] rounded-xl text-xs transition-all duration-200 cursor-pointer ${
                         isMainActive
                           ? "bg-zinc-950 text-white dark:bg-white dark:text-black font-bold shadow-sm"
                           : isExpanded
@@ -381,7 +415,7 @@ export default function EmpresaAdmin() {
                       )}
                     </button>
 
-                    {/* SUB-MENU ESTILO APPLE TREE VIEW */}
+                    {/* SUB-MENU ESTILO TREE VIEW */}
                     <AnimatePresence initial={false}>
                       {!isSidebarCollapsed && hasSub && isExpanded && (
                         <motion.div
@@ -397,7 +431,7 @@ export default function EmpresaAdmin() {
                               <button
                                 key={sub.id}
                                 onClick={() => handleSubMenuClick(item.id, sub.id)}
-                                className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[11.5px] transition-all min-h-[30px] flex items-center gap-2 group ${
+                                className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[11.5px] transition-all min-h-[30px] flex items-center gap-2 group cursor-pointer ${
                                   isSubActive
                                     ? "bg-zinc-900/[0.06] dark:bg-white/10 text-zinc-950 dark:text-white font-bold shadow-[inset_0_0.5px_0_rgba(255,255,255,0.6)] dark:shadow-[inset_0_0.5px_0_rgba(255,255,255,0.08)]"
                                     : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white hover:bg-black/[0.03] dark:hover:bg-white/[0.04] font-medium"
@@ -449,6 +483,16 @@ export default function EmpresaAdmin() {
                 isOwner={loggedAdmin?.is_owner}
               />
             )}
+            {activeView === "metricas" && (
+              <MetricasView
+                subTab={activeSubView}
+                setSubTab={setActiveSubView}
+                agendamentos={agendamentos}
+                servicos={servicos}
+                bloqueios={bloqueios}
+                showToast={showToast}
+              />
+            )}
             {activeView === "equipe" && (
               <EquipeView
                 subTab={activeSubView}
@@ -456,6 +500,8 @@ export default function EmpresaAdmin() {
                 servicos={servicos}
                 showToast={showToast}
                 fetchServicos={fetchServicos}
+                permissoes={loggedAdmin?.permissoes}
+                isOwner={loggedAdmin?.is_owner}
               />
             )}
             {activeView === "bloqueios" && (
@@ -499,6 +545,8 @@ export default function EmpresaAdmin() {
                 subTab={activeSubView}
                 showToast={showToast}
                 loggedAdmin={loggedAdmin}
+                permissoes={loggedAdmin?.permissoes}
+                isOwner={loggedAdmin?.is_owner}
               />
             )}
           </AnimatePresence>

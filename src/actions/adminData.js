@@ -420,6 +420,19 @@ export async function actionCriarServico(payload) {
   return data;
 }
 
+export async function actionDeletarServico(id) {
+  const admin = await getAdminLogado(true);
+
+  const { error } = await supabaseAdmin
+    .from("servicos")
+    .delete()
+    .eq("id", id)
+    .eq("empresa_id", admin.empresa_id);
+
+  if (error) throw error;
+  return true;
+}
+
 /* ==========================================
    GESTÃO DE USUÁRIOS E NÍVEIS DE PERMISSÕES
    ========================================== */
@@ -427,9 +440,19 @@ export async function actionListarUsuariosEmpresa() {
   const admin = await getAdminLogado(true);
   const { data, error } = await supabaseAdmin
     .from("administradores")
-    .select("id, usuario, nome, role, permissoes, is_owner, created_at")
+    .select("id, usuario, nome, role, permissoes, is_owner, primeiro_acesso, created_at")
     .eq("empresa_id", admin.empresa_id)
     .order("created_at", { ascending: true });
+
+  if (error && (error.code === "42703" || error.message?.includes("primeiro_acesso"))) {
+    const { data: fallbackData, error: fallbackErr } = await supabaseAdmin
+      .from("administradores")
+      .select("id, usuario, nome, role, permissoes, is_owner, created_at")
+      .eq("empresa_id", admin.empresa_id)
+      .order("created_at", { ascending: true });
+    if (fallbackErr) throw fallbackErr;
+    return fallbackData || [];
+  }
 
   if (error) throw error;
   return data || [];
@@ -461,25 +484,43 @@ export async function actionCriarUsuarioEmpresa({ usuario, senha, nome, permisso
       role: "empresa",
       empresa_id: admin.empresa_id,
       permissoes: defaultPerms,
-      is_owner: false
+      is_owner: false,
+      primeiro_acesso: true
     })
     .select()
     .single();
 
   if (error) {
     if (error.code === "23505") throw new Error("Este nome de usuário já está em uso.");
-    // Fallback se as colunas novas ainda não existirem
+    // Fallback se a coluna primeiro_acesso não existir
     const { data: retryData, error: retryErr } = await supabaseAdmin
       .from("administradores")
       .insert({
         usuario: cleanUser,
         senha_hash: senha,
+        nome: nome?.trim() || null,
         role: "empresa",
-        empresa_id: admin.empresa_id
+        empresa_id: admin.empresa_id,
+        permissoes: defaultPerms,
+        is_owner: false
       })
       .select()
       .single();
-    if (retryErr) throw new Error(retryErr.message);
+
+    if (retryErr) {
+      const { data: fallbackData, error: fallbackErr } = await supabaseAdmin
+        .from("administradores")
+        .insert({
+          usuario: cleanUser,
+          senha_hash: senha,
+          role: "empresa",
+          empresa_id: admin.empresa_id
+        })
+        .select()
+        .single();
+      if (fallbackErr) throw new Error(fallbackErr.message);
+      return fallbackData;
+    }
     return retryData;
   }
   return data;
@@ -1005,15 +1046,44 @@ export async function actionSalvarCatalogoEnfermidades(catalogo) {
    ========================================== */
 export async function actionListarHistoricoMensagensAdmin() {
   const admin = await getAdminLogado(true);
-  const { data, error } = await supabaseAdmin
-    .from("fila_mensagens")
-    .select("*")
-    .eq("empresa_id", admin.empresa_id)
-    .order("created_at", { ascending: false })
-    .limit(100);
+  try {
+    let { data, error } = await supabaseAdmin
+      .from("fila_mensagens")
+      .select("*")
+      .eq("empresa_id", admin.empresa_id)
+      .order("created_at", { ascending: false })
+      .limit(100);
 
-  if (error) throw error;
-  return data || [];
+    if (error && (error.code === "42703" || error.message?.includes("created_at"))) {
+      const retryProg = await supabaseAdmin
+        .from("fila_mensagens")
+        .select("*")
+        .eq("empresa_id", admin.empresa_id)
+        .order("data_hora_programada", { ascending: false })
+        .limit(100);
+      if (!retryProg.error) {
+        data = retryProg.data;
+        error = null;
+      } else {
+        const retrySimple = await supabaseAdmin
+          .from("fila_mensagens")
+          .select("*")
+          .eq("empresa_id", admin.empresa_id)
+          .limit(100);
+        data = retrySimple.data || [];
+        error = null;
+      }
+    }
+
+    if (error) {
+      console.warn("Aviso ao buscar histórico de mensagens:", error);
+      return [];
+    }
+    return data || [];
+  } catch (err) {
+    console.warn("Falha segura ao listar histórico de mensagens:", err);
+    return [];
+  }
 }
 
 export async function actionDispararMensagemManualAdmin(id) {
@@ -1055,4 +1125,107 @@ export async function actionDispararMensagemManualAdmin(id) {
 
   await supabaseAdmin.from("fila_mensagens").update({ status: "enviado" }).eq("id", id);
   return { success: true };
+}
+
+/* ==========================================
+   GESTÃO DE INTEGRAÇÕES ERP E MAPEAMENTOS
+   ========================================== */
+export async function actionBloquearProfissionalERP(nomeProfissional) {
+  const admin = await getAdminLogado(true);
+  const cleanName = (nomeProfissional || "").trim();
+  if (!cleanName) throw new Error("Nome do profissional inválido.");
+
+  const { data: emp } = await supabaseAdmin
+    .from("empresas")
+    .select("config_campos")
+    .eq("id", admin.empresa_id)
+    .single();
+
+  const confCampos = emp?.config_campos || {};
+  const bloqueadosAtuais = Array.isArray(confCampos.profissionais_erp_bloqueados)
+    ? confCampos.profissionais_erp_bloqueados
+    : [];
+
+  const novaLista = [...new Set([...bloqueadosAtuais, cleanName])];
+
+  await supabaseAdmin
+    .from("empresas")
+    .update({
+      config_campos: {
+        ...confCampos,
+        profissionais_erp_bloqueados: novaLista
+      }
+    })
+    .eq("id", admin.empresa_id);
+
+  // Inativa o profissional se ele existir na tabela de serviços
+  try {
+    await supabaseAdmin
+      .from("servicos")
+      .update({ ativo: false, status_agendamento: "inativo" })
+      .eq("empresa_id", admin.empresa_id)
+      .ilike("nome", `%${cleanName}%`);
+  } catch (e) {}
+
+  return { success: true, bloqueados: novaLista };
+}
+
+export async function actionDesbloquearProfissionalERP(nomeProfissional) {
+  const admin = await getAdminLogado(true);
+  const cleanName = (nomeProfissional || "").trim();
+
+  const { data: emp } = await supabaseAdmin
+    .from("empresas")
+    .select("config_campos")
+    .eq("id", admin.empresa_id)
+    .single();
+
+  const confCampos = emp?.config_campos || {};
+  const bloqueadosAtuais = Array.isArray(confCampos.profissionais_erp_bloqueados)
+    ? confCampos.profissionais_erp_bloqueados
+    : [];
+
+  const novaLista = bloqueadosAtuais.filter((n) => n.toLowerCase() !== cleanName.toLowerCase());
+
+  await supabaseAdmin
+    .from("empresas")
+    .update({
+      config_campos: {
+        ...confCampos,
+        profissionais_erp_bloqueados: novaLista
+      }
+    })
+    .eq("id", admin.empresa_id);
+
+  return { success: true, bloqueados: novaLista };
+}
+
+export async function actionAtualizarBloqueioERP(id, { medico_profissional, especialidade, convenio, observacoes }) {
+  const admin = await getAdminLogado(true);
+  const payload = {};
+  if (medico_profissional !== undefined) payload.medico_profissional = medico_profissional?.trim() || null;
+  if (especialidade !== undefined) payload.especialidade = especialidade?.trim() || "Geral";
+  if (convenio !== undefined) payload.convenio = convenio?.trim() || null;
+  if (observacoes !== undefined) payload.observacoes = observacoes?.trim() || null;
+
+  const { error } = await supabaseAdmin
+    .from("bloqueios_horarios")
+    .update(payload)
+    .eq("id", id)
+    .eq("empresa_id", admin.empresa_id);
+
+  if (error) throw error;
+  return true;
+}
+
+export async function actionDeletarBloqueioERP(id) {
+  const admin = await getAdminLogado(true);
+  const { error } = await supabaseAdmin
+    .from("bloqueios_horarios")
+    .delete()
+    .eq("id", id)
+    .eq("empresa_id", admin.empresa_id);
+
+  if (error) throw error;
+  return true;
 }

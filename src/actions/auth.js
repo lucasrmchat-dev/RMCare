@@ -18,13 +18,22 @@ const supabaseAdmin = createClient(
 export async function checkIdentifier(identificador) {
   const idClean = identificador.trim().toLowerCase();
 
-  const { data: admin } = await supabaseAdmin
+  // Busca segura do administrador
+  let { data: admin } = await supabaseAdmin
     .from("administradores")
-    .select("id, role, empresa_id")
+    .select("*")
     .eq("usuario", idClean)
     .maybeSingle();
 
-  if (admin) return { success: true, type: "admin", role: admin.role, empresa_id: admin.empresa_id };
+  if (admin) {
+    return {
+      success: true,
+      type: "admin",
+      role: admin.role,
+      empresa_id: admin.empresa_id,
+      primeiro_acesso: Boolean(admin.primeiro_acesso)
+    };
+  }
 
   const cleanCpf = idClean.replace(/\D/g, "");
   
@@ -115,10 +124,10 @@ export async function authenticateUser(payload) {
     let isAuthorized = false;
     let adminRecord = null;
 
-    // 1. Tenta a verificação em formato Antigo (Texto Puro) - Fallback para senhas antigas
+    // 1. Tenta a verificação com senha em texto simples (compatibilidade com cadastros diretos)
     const { data: plainAdmin } = await supabaseAdmin
       .from("administradores")
-      .select("id, role, empresa_id, usuario")
+      .select("*")
       .eq("usuario", idClean)
       .eq("senha_hash", password)
       .maybeSingle();
@@ -127,23 +136,39 @@ export async function authenticateUser(payload) {
       isAuthorized = true;
       adminRecord = plainAdmin;
     } else {
-      // 2. Tenta a verificação com Criptografia Forte via RPC
-      const { data: hashAdmin } = await supabaseAdmin.rpc("verificar_senha_admin", {
-        p_usuario: idClean,
-        p_senha: password
-      });
-      if (hashAdmin) {
-        isAuthorized = true;
-        const { data: fetchAdmin } = await supabaseAdmin
-          .from("administradores")
-          .select("id, role, empresa_id, usuario")
-          .eq("usuario", idClean)
-          .maybeSingle();
-        adminRecord = fetchAdmin;
+      // 2. Tenta a verificação com Criptografia Forte via RPC (se existir a função)
+      try {
+        const { data: hashAdmin } = await supabaseAdmin.rpc("verificar_senha_admin", {
+          p_usuario: idClean,
+          p_senha: password
+        });
+        if (hashAdmin) {
+          isAuthorized = true;
+          const { data: fetchAdmin } = await supabaseAdmin
+            .from("administradores")
+            .select("*")
+            .eq("usuario", idClean)
+            .maybeSingle();
+          adminRecord = fetchAdmin;
+        }
+      } catch (errRpc) {
+        // Se a RPC não existir, apenas continua
       }
     }
 
     if (isAuthorized && adminRecord) {
+      // Se for primeiro acesso do usuário (e a flag primeiro_acesso estiver explicitamente como true)
+      if (adminRecord.primeiro_acesso === true) {
+        return {
+          success: true,
+          mustResetPassword: true,
+          usuario: idClean,
+          role: adminRecord.role,
+          empresa_id: adminRecord.empresa_id,
+          message: "Primeiro acesso detectado. Por favor, cadastre sua nova senha."
+        };
+      }
+
       // Cria a sessão em Cookie para isolar o Tenant
       const sessionToken = await createAdminSession(idClean);
       cookieStore.set("rmagenda_auth", sessionToken, {
@@ -173,6 +198,63 @@ export async function authenticateUser(payload) {
   }
 
   return { success: false, error: "Erro de autenticação." };
+}
+
+export async function actionRedefinirSenhaPrimeiroAcesso({ usuario, novaSenha }) {
+  const cookieStore = await cookies();
+  const cleanUser = (usuario || "").trim().toLowerCase();
+  if (cleanUser.length < 3 || (novaSenha || "").length < 8) {
+    return { success: false, error: "A nova senha deve conter no mínimo 8 caracteres." };
+  }
+
+  let { error } = await supabaseAdmin
+    .from("administradores")
+    .update({
+      senha_hash: novaSenha,
+      primeiro_acesso: false
+    })
+    .eq("usuario", cleanUser);
+
+  if (error && (error.code === "42703" || error.message?.includes("column") || error.message?.includes("primeiro_acesso"))) {
+    const retry = await supabaseAdmin
+      .from("administradores")
+      .update({ senha_hash: novaSenha })
+      .eq("usuario", cleanUser);
+    error = retry.error;
+  }
+
+  if (error) {
+    return { success: false, error: `Falha ao salvar nova senha: ${error.message}` };
+  }
+
+  const sessionToken = await createAdminSession(cleanUser);
+  cookieStore.set("rmagenda_auth", sessionToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: ADMIN_SESSION_SECONDS,
+    path: "/"
+  });
+  cookieStore.set("rmcare_auth", sessionToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: ADMIN_SESSION_SECONDS,
+    path: "/"
+  });
+
+  const { data: adminRecord } = await supabaseAdmin
+    .from("administradores")
+    .select("role, empresa_id")
+    .eq("usuario", cleanUser)
+    .maybeSingle();
+
+  return {
+    success: true,
+    role: adminRecord?.role || "empresa",
+    empresa_id: adminRecord?.empresa_id,
+    message: "Senha redefinida com sucesso!"
+  };
 }
 
 export async function refreshAdminSession() {
@@ -214,7 +296,7 @@ export async function getSessionAdminInfo() {
 
   const { data: admin } = await supabaseAdmin
     .from("administradores")
-    .select("id, role, empresa_id, usuario, nome, permissoes, is_owner")
+    .select("*")
     .eq("usuario", current.sub)
     .maybeSingle();
 

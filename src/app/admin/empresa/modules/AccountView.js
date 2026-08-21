@@ -21,7 +21,8 @@ import {
   CalendarDays,
   Clock3,
   CheckCircle2,
-  XCircle
+  XCircle,
+  Lock
 } from "lucide-react";
 import { fadeUp, ButtonPrimary, TextInput, spring } from "../components/SharedUI";
 import { updateAdminCredentials } from "@/actions/auth";
@@ -35,17 +36,23 @@ import {
 
 const LISTA_PERMISSOES = [
   { id: "agenda", label: "Agenda & Pacientes", desc: "Visualizar e gerenciar agendamentos e calendário.", icon: CalendarDays, color: "text-blue-500" },
-  { id: "dados_sensiveis", label: "Sigilo Clínico & Enfermidades", desc: "Acesso crítico a respostas de formulários clínicos e histórico de saúde dos pacientes.", icon: ShieldAlert, color: "text-red-500", superCritico: true },
+  { id: "sigilo_clinico", label: "Sigilo Clínico & Enfermidades", desc: "Acesso crítico a respostas de formulários clínicos e histórico de saúde dos pacientes.", icon: ShieldAlert, color: "text-red-500", superCritico: true },
   { id: "bloqueios", label: "Horários & Duração", desc: "Configurar turnos, pausas e regras de ocupação da agenda.", icon: Clock3, color: "text-amber-500" },
   { id: "politicas", label: "Políticas de Atendimento", desc: "Regras de retorno de consultas e prazos de antecedência.", icon: FileSpreadsheet, color: "text-indigo-500" },
   { id: "triagem", label: "Formulários Clínicos", desc: "Criar e editar questionários de triagem por especialidade.", icon: ClipboardCheck, color: "text-emerald-500" },
-  { id: "personalizacao", label: "Mensagens & WhatsApp", desc: "Gerenciar templates automáticos e jornadas do paciente.", icon: Zap, color: "text-purple-500" },
+  { id: "personalizacao", label: "Aparência & Mensagens", desc: "Gerenciar templates automáticos e jornadas do paciente.", icon: Zap, color: "text-purple-500" },
   { id: "equipe", label: "Corpo Clínico & Especialistas", desc: "Cadastrar novos especialistas, códigos URI e pausas.", icon: Users, color: "text-cyan-500" },
   { id: "integracoes", label: "Sincronização & ERP", desc: "Configurar credenciais da API Medicalsys e Webhooks.", icon: Link2, color: "text-orange-500" },
   { id: "usuarios", label: "Gerenciar Usuários & Permissões", desc: "Criar e editar colaboradores e acessos da clínica.", icon: ShieldCheck, color: "text-rose-500", superCritico: true }
 ];
 
-export default function AccountView({ subTab = "credenciais", showToast, loggedAdmin }) {
+export default function AccountView({
+  subTab = "credenciais",
+  showToast,
+  loggedAdmin,
+  permissoes = [],
+  isOwner = false
+}) {
   // ==========================================
   // ESTADOS: ALTERAÇÃO DE CREDENCIAIS PRÓPRIAS
   // ==========================================
@@ -169,6 +176,13 @@ export default function AccountView({ subTab = "credenciais", showToast, loggedA
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
 
+  const temPermissaoUsuarios = useMemo(() => {
+    if (!loggedAdmin) return false;
+    if (isOwner || loggedAdmin.is_owner || loggedAdmin.role === "sistema") return true;
+    const perms = Array.isArray(permissoes) && permissoes.length > 0 ? permissoes : (loggedAdmin.permissoes || []);
+    return perms.includes("usuarios");
+  }, [loggedAdmin, isOwner, permissoes]);
+
   const [newUserForm, setNewUserForm] = useState({
     usuario: "",
     nome: "",
@@ -178,6 +192,7 @@ export default function AccountView({ subTab = "credenciais", showToast, loggedA
   const [savingUser, setSavingUser] = useState(false);
 
   const fetchUsuarios = async () => {
+    if (!temPermissaoUsuarios) return;
     setLoadingUsuarios(true);
     try {
       const data = await actionListarUsuariosEmpresa();
@@ -190,10 +205,10 @@ export default function AccountView({ subTab = "credenciais", showToast, loggedA
   };
 
   useEffect(() => {
-    if (subTab === "usuarios") {
+    if (subTab === "usuarios" && temPermissaoUsuarios) {
       fetchUsuarios();
     }
-  }, [subTab]);
+  }, [subTab, temPermissaoUsuarios]);
 
   const togglePermissaoNovoUsuario = (permId) => {
     setNewUserForm((prev) => {
@@ -369,7 +384,7 @@ export default function AccountView({ subTab = "credenciais", showToast, loggedA
                       type="submit"
                       disabled={loadingUser || usernameAvailable === false || !usernameForm.currentPassword || !usernameForm.newUsername}
                       icon={Save}
-                      className="px-6 py-2 text-xs min-h-[38px] rounded-xl"
+                      className="px-6 py-2 text-xs min-h-[38px] rounded-xl cursor-pointer"
                     >
                       {loadingUser ? "Atualizando Login..." : "Salvar Novo Usuário"}
                     </ButtonPrimary>
@@ -454,7 +469,7 @@ export default function AccountView({ subTab = "credenciais", showToast, loggedA
                       type="submit"
                       disabled={loadingPass || !isPasswordValid || !passwordForm.currentPassword}
                       icon={Save}
-                      className="px-6 py-2 text-xs min-h-[38px] rounded-xl"
+                      className="px-6 py-2 text-xs min-h-[38px] rounded-xl cursor-pointer"
                     >
                       {loadingPass ? "Atualizando Senha..." : "Salvar Nova Senha"}
                     </ButtonPrimary>
@@ -466,306 +481,320 @@ export default function AccountView({ subTab = "credenciais", showToast, loggedA
 
           {/* SUB-ABA 2: GESTÃO DE USUÁRIOS & PERMISSÕES */}
           {subTab === "usuarios" && (
-            <motion.div
-              key="usuarios"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={spring}
-              className="space-y-6"
-            >
-              {/* TOPO COM BOTÃO DE NOVO USUÁRIO */}
-              <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl p-6 rounded-[2rem] border border-zinc-200/80 dark:border-white/10 shadow-sm">
-                <div>
-                  <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">
-                    <Users size={18} strokeWidth={1.5} className="text-blue-500" /> Colaboradores & Perfis de Acesso
-                  </h3>
-                  <p className="text-xs text-zinc-500 mt-0.5">
-                    Cadastre outros administradores para esta clínica com controle estrito de abas e dados sigilosos.
-                  </p>
+            !temPermissaoUsuarios ? (
+              <div className="p-16 text-center rounded-[2rem] bg-white/80 dark:bg-[#0c0c0e]/80 border border-zinc-200/80 dark:border-white/10 shadow-sm space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto">
+                  <Lock size={22} />
                 </div>
-
-                {!isAddingUser && (
-                  <ButtonPrimary onClick={() => { setIsAddingUser(true); setEditingUser(null); }} icon={Plus} className="px-5 py-2 text-xs min-h-[38px] rounded-xl">
-                    Cadastrar Novo Usuário
-                  </ButtonPrimary>
-                )}
+                <h3 className="text-base font-bold text-zinc-950 dark:text-white">
+                  Acesso Restrito: Gerenciamento de Usuários
+                </h3>
+                <p className="text-xs text-zinc-500 max-w-md mx-auto">
+                  Sua conta de colaborador não possui a permissão <strong>"Gerenciar Usuários & Permissões"</strong>. Solicite liberação ao administrador proprietário da clínica.
+                </p>
               </div>
+            ) : (
+              <motion.div
+                key="usuarios"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={spring}
+                className="space-y-6"
+              >
+                {/* TOPO COM BOTÃO DE NOVO USUÁRIO */}
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl p-6 rounded-[2rem] border border-zinc-200/80 dark:border-white/10 shadow-sm">
+                  <div>
+                    <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">
+                      <Users size={18} strokeWidth={1.5} className="text-blue-500" /> Colaboradores & Perfis de Acesso
+                    </h3>
+                    <p className="text-xs text-zinc-500 mt-0.5">
+                      Cadastre outros administradores para esta clínica com controle estrito de abas e dados sigilosos.
+                    </p>
+                  </div>
 
-              {/* FORMULÁRIO DE CADASTRO DE NOVO USUÁRIO */}
-              <AnimatePresence>
-                {isAddingUser && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0, y: -10 }}
-                    animate={{ opacity: 1, height: "auto", y: 0 }}
-                    exit={{ opacity: 0, height: 0, y: -10 }}
-                    className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-xl space-y-6"
-                  >
-                    <div className="flex justify-between items-center border-b border-zinc-100 dark:border-white/5 pb-4">
-                      <div>
-                        <h4 className="text-base font-bold text-zinc-950 dark:text-white">Criar Novo Acesso Administrativo</h4>
-                        <p className="text-xs text-zinc-500 mt-0.5">Defina as credenciais e selecione as permissões específicas deste colaborador.</p>
-                      </div>
-                      <button
-                        onClick={() => setIsAddingUser(false)}
-                        className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400 hover:text-red-500 transition-colors"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-
-                    <form onSubmit={handleCriarUsuario} className="space-y-5">
-                      <div className="grid md:grid-cols-3 gap-4">
-                        <TextInput
-                          label="Nome Completo / Cargo"
-                          placeholder="Ex.: Dra. Ana Paula (Atendimento)"
-                          value={newUserForm.nome}
-                          onChange={(e) => setNewUserForm({ ...newUserForm, nome: e.target.value })}
-                        />
-                        <TextInput
-                          label="Usuário (Login de Entrada) *"
-                          placeholder="Ex.: ana.recepcao"
-                          value={newUserForm.usuario}
-                          onChange={(e) => setNewUserForm({ ...newUserForm, usuario: e.target.value.toLowerCase().trim() })}
-                          required
-                        />
-                        <TextInput
-                          type="password"
-                          label="Senha Provisória *"
-                          placeholder="Mínimo 6 caracteres"
-                          value={newUserForm.senha}
-                          onChange={(e) => setNewUserForm({ ...newUserForm, senha: e.target.value })}
-                          required
-                        />
-                      </div>
-
-                      {/* SELETOR GRANULAR DE PERMISSÕES */}
-                      <div className="space-y-2.5 pt-1">
-                        <label className="text-xs font-bold uppercase tracking-widest text-zinc-400 block ml-1">
-                          Níveis de Acesso e Permissões de Abas:
-                        </label>
-                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                          {LISTA_PERMISSOES.map((perm) => {
-                            const isSelected = newUserForm.permissoes.includes(perm.id);
-                            const Icon = perm.icon;
-                            return (
-                              <button
-                                key={perm.id}
-                                type="button"
-                                onClick={() => togglePermissaoNovoUsuario(perm.id)}
-                                className={`p-3.5 rounded-2xl border text-left transition-all flex items-start gap-3 ${
-                                  isSelected
-                                    ? perm.superCritico
-                                      ? "bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-800"
-                                      : "bg-blue-50/50 dark:bg-blue-950/30 border-blue-300 dark:border-blue-800"
-                                    : "bg-zinc-50/50 dark:bg-zinc-900/40 border-zinc-200/80 dark:border-zinc-800 opacity-60 hover:opacity-100"
-                                }`}
-                              >
-                                <div className={`p-2 rounded-xl bg-white dark:bg-black border border-zinc-200/60 dark:border-zinc-800 ${perm.color}`}>
-                                  <Icon size={15} strokeWidth={1.5} />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center justify-between">
-                                    <span className="font-bold text-xs text-zinc-900 dark:text-white truncate">{perm.label}</span>
-                                    <div className={`w-3.5 h-3.5 rounded flex items-center justify-center text-[9px] ${isSelected ? "bg-zinc-900 dark:bg-white text-white dark:text-black font-bold" : "border border-zinc-300 dark:border-zinc-700"}`}>
-                                      {isSelected && <Check size={10} />}
-                                    </div>
-                                  </div>
-                                  <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5 leading-tight">{perm.desc}</p>
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      <div className="flex justify-end gap-2.5 pt-3 border-t border-zinc-100 dark:border-white/5">
-                        <button
-                          type="button"
-                          onClick={() => setIsAddingUser(false)}
-                          className="px-5 py-2 rounded-xl text-xs font-bold text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-                        >
-                          Cancelar
-                        </button>
-                        <ButtonPrimary type="submit" disabled={savingUser} icon={Plus} className="px-6 py-2 text-xs min-h-[38px] rounded-xl">
-                          {savingUser ? "Criando Usuário..." : "Criar Usuário"}
-                        </ButtonPrimary>
-                      </div>
-                    </form>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* FORMULÁRIO DE EDIÇÃO DE PERMISSÕES DO USUÁRIO */}
-              <AnimatePresence>
-                {editingUser && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0, y: -10 }}
-                    animate={{ opacity: 1, height: "auto", y: 0 }}
-                    exit={{ opacity: 0, height: 0, y: -10 }}
-                    className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-blue-200 dark:border-blue-900/60 p-6 md:p-8 rounded-[2rem] shadow-xl space-y-6"
-                  >
-                    <div className="flex justify-between items-center border-b border-zinc-100 dark:border-white/5 pb-4">
-                      <div>
-                        <h4 className="text-base font-bold text-zinc-950 dark:text-white">
-                          Editar Acesso de @{editingUser.usuario}
-                        </h4>
-                        <p className="text-xs text-zinc-500 mt-0.5">Atualize as permissões de abas ou redefina a senha deste colaborador.</p>
-                      </div>
-                      <button
-                        onClick={() => setEditingUser(null)}
-                        className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400 hover:text-red-500 transition-colors"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-
-                    <form onSubmit={handleAtualizarUsuario} className="space-y-5">
-                      <div className="grid md:grid-cols-2 gap-4">
-                        <TextInput
-                          label="Nome / Identificação"
-                          value={editingUser.nome || ""}
-                          onChange={(e) => setEditingUser({ ...editingUser, nome: e.target.value })}
-                        />
-                        <TextInput
-                          type="password"
-                          label="Redefinir Senha (Deixe em branco para manter)"
-                          placeholder="Nova senha..."
-                          value={editingUser.novaSenha || ""}
-                          onChange={(e) => setEditingUser({ ...editingUser, novaSenha: e.target.value })}
-                        />
-                      </div>
-
-                      <div className="space-y-2.5 pt-1">
-                        <label className="text-xs font-bold uppercase tracking-widest text-zinc-400 block ml-1">
-                          Permissões e Sigilo do Colaborador:
-                        </label>
-                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                          {LISTA_PERMISSOES.map((perm) => {
-                            const isSelected = (editingUser.permissoes || []).includes(perm.id);
-                            const Icon = perm.icon;
-                            return (
-                              <button
-                                key={perm.id}
-                                type="button"
-                                onClick={() => togglePermissaoEditUser(perm.id)}
-                                className={`p-3.5 rounded-2xl border text-left transition-all flex items-start gap-3 ${
-                                  isSelected
-                                    ? perm.superCritico
-                                      ? "bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-800"
-                                      : "bg-blue-50/50 dark:bg-blue-950/30 border-blue-300 dark:border-blue-800"
-                                    : "bg-zinc-50/50 dark:bg-zinc-900/40 border-zinc-200/80 dark:border-zinc-800 opacity-60 hover:opacity-100"
-                                }`}
-                              >
-                                <div className={`p-2 rounded-xl bg-white dark:bg-black border border-zinc-200/60 dark:border-zinc-800 ${perm.color}`}>
-                                  <Icon size={15} strokeWidth={1.5} />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center justify-between">
-                                    <span className="font-bold text-xs text-zinc-900 dark:text-white truncate">{perm.label}</span>
-                                    <div className={`w-3.5 h-3.5 rounded flex items-center justify-center text-[9px] ${isSelected ? "bg-zinc-900 dark:bg-white text-white dark:text-black font-bold" : "border border-zinc-300 dark:border-zinc-700"}`}>
-                                      {isSelected && <Check size={10} />}
-                                    </div>
-                                  </div>
-                                  <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5 leading-tight">{perm.desc}</p>
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      <div className="flex justify-end gap-2.5 pt-3 border-t border-zinc-100 dark:border-white/5">
-                        <button
-                          type="button"
-                          onClick={() => setEditingUser(null)}
-                          className="px-5 py-2 rounded-xl text-xs font-bold text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-                        >
-                          Cancelar
-                        </button>
-                        <ButtonPrimary type="submit" disabled={savingUser} icon={Save} className="px-6 py-2 text-xs min-h-[38px] rounded-xl">
-                          {savingUser ? "Salvando..." : "Salvar Alterações"}
-                        </ButtonPrimary>
-                      </div>
-                    </form>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* LISTA DE USUÁRIOS CADASTRADOS */}
-              <div className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 rounded-[2rem] overflow-hidden shadow-sm">
-                <div className="p-5 border-b border-zinc-100 dark:border-white/5 flex justify-between items-center">
-                  <span className="text-xs font-bold uppercase tracking-widest text-zinc-400">Usuários Ativos na Clínica</span>
-                  <span className="text-xs font-bold text-zinc-500">{usuarios.length} cadastrado(s)</span>
+                  {!isAddingUser && (
+                    <ButtonPrimary onClick={() => { setIsAddingUser(true); setEditingUser(null); }} icon={Plus} className="px-5 py-2 text-xs min-h-[38px] rounded-xl cursor-pointer">
+                      Cadastrar Novo Usuário
+                    </ButtonPrimary>
+                  )}
                 </div>
 
-                {loadingUsuarios ? (
-                  <div className="p-12 text-center text-xs text-zinc-400">Carregando usuários...</div>
-                ) : usuarios.length === 0 ? (
-                  <div className="p-12 text-center text-xs text-zinc-500">Nenhum usuário secundário cadastrado.</div>
-                ) : (
-                  <div className="divide-y divide-zinc-100 dark:divide-white/5">
-                    {usuarios.map((u) => (
-                      <div key={u.id} className="p-5 flex flex-col md:flex-row justify-between md:items-center gap-4 hover:bg-zinc-50/50 dark:hover:bg-zinc-900/30 transition-colors">
+                {/* FORMULÁRIO DE CADASTRO DE NOVO USUÁRIO */}
+                <AnimatePresence>
+                  {isAddingUser && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0, y: -10 }}
+                      animate={{ opacity: 1, height: "auto", y: 0 }}
+                      exit={{ opacity: 0, height: 0, y: -10 }}
+                      className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-xl space-y-6"
+                    >
+                      <div className="flex justify-between items-center border-b border-zinc-100 dark:border-white/5 pb-4">
                         <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-bold text-zinc-900 dark:text-white text-sm">@{u.usuario}</span>
-                            {u.is_owner ? (
-                              <span className="px-2 py-0.5 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 text-[9px] font-bold uppercase tracking-widest rounded-md">
-                                Proprietário
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 text-[9px] font-bold uppercase tracking-widest rounded-md">
-                                Colaborador
-                              </span>
-                            )}
-                          </div>
-                          {u.nome && <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{u.nome}</p>}
+                          <h4 className="text-base font-bold text-zinc-950 dark:text-white">Criar Novo Acesso Administrativo</h4>
+                          <p className="text-xs text-zinc-500 mt-0.5">Defina as credenciais e selecione as permissões específicas deste colaborador.</p>
+                        </div>
+                        <button
+                          onClick={() => setIsAddingUser(false)}
+                          className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400 hover:text-red-500 transition-colors cursor-pointer"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
 
-                          {/* Badges de permissões ativas */}
-                          <div className="flex flex-wrap gap-1 mt-2.5">
-                            {(u.permissoes || []).map((pId) => {
-                              const pObj = LISTA_PERMISSOES.find((item) => item.id === pId);
-                              if (!pObj) return null;
+                      <form onSubmit={handleCriarUsuario} className="space-y-5">
+                        <div className="grid md:grid-cols-3 gap-4">
+                          <TextInput
+                            label="Nome Completo / Cargo"
+                            placeholder="Ex.: Dra. Ana Paula (Atendimento)"
+                            value={newUserForm.nome}
+                            onChange={(e) => setNewUserForm({ ...newUserForm, nome: e.target.value })}
+                          />
+                          <TextInput
+                            label="Usuário (Login de Entrada) *"
+                            placeholder="Ex.: ana.recepcao"
+                            value={newUserForm.usuario}
+                            onChange={(e) => setNewUserForm({ ...newUserForm, usuario: e.target.value.toLowerCase().trim() })}
+                            required
+                          />
+                          <TextInput
+                            type="password"
+                            label="Senha Provisória *"
+                            placeholder="Mínimo 6 caracteres"
+                            value={newUserForm.senha}
+                            onChange={(e) => setNewUserForm({ ...newUserForm, senha: e.target.value })}
+                            required
+                          />
+                        </div>
+
+                        {/* SELETOR GRANULAR DE PERMISSÕES */}
+                        <div className="space-y-2.5 pt-1">
+                          <label className="text-xs font-bold uppercase tracking-widest text-zinc-400 block ml-1">
+                            Níveis de Acesso e Permissões de Abas:
+                          </label>
+                          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                            {LISTA_PERMISSOES.map((perm) => {
+                              const isSelected = newUserForm.permissoes.includes(perm.id);
+                              const Icon = perm.icon;
                               return (
-                                <span
-                                  key={pId}
-                                  className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-md ${
-                                    pObj.superCritico
-                                      ? "bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-200/50"
-                                      : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
+                                <button
+                                  key={perm.id}
+                                  type="button"
+                                  onClick={() => togglePermissaoNovoUsuario(perm.id)}
+                                  className={`p-3.5 rounded-2xl border text-left transition-all flex items-start gap-3 cursor-pointer ${
+                                    isSelected
+                                      ? perm.superCritico
+                                        ? "bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-800 ring-2 ring-red-500/30"
+                                        : "bg-blue-50/50 dark:bg-blue-950/30 border-blue-300 dark:border-blue-800 ring-2 ring-blue-500/30"
+                                      : "bg-zinc-50/50 dark:bg-zinc-900/40 border-zinc-200/80 dark:border-zinc-800 opacity-60 hover:opacity-100"
                                   }`}
                                 >
-                                  {pObj.label}
-                                </span>
+                                  <div className={`p-2 rounded-xl bg-white dark:bg-black border border-zinc-200/60 dark:border-zinc-800 ${perm.color}`}>
+                                    <Icon size={15} strokeWidth={1.5} />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-bold text-xs text-zinc-950 dark:text-white truncate">{perm.label}</span>
+                                      <div className={`w-3.5 h-3.5 rounded flex items-center justify-center text-[9px] ${isSelected ? "bg-zinc-900 dark:bg-white text-white dark:text-black font-bold" : "border border-zinc-300 dark:border-zinc-700"}`}>
+                                        {isSelected && <Check size={10} />}
+                                      </div>
+                                    </div>
+                                    <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5 leading-tight">{perm.desc}</p>
+                                  </div>
+                                </button>
                               );
                             })}
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex justify-end gap-2.5 pt-3 border-t border-zinc-100 dark:border-white/5">
                           <button
-                            onClick={() => { setEditingUser({ ...u, novaSenha: "" }); setIsAddingUser(false); }}
-                            className="px-3.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-900 dark:text-white rounded-xl text-xs font-bold transition-colors min-h-[34px]"
+                            type="button"
+                            onClick={() => setIsAddingUser(false)}
+                            className="px-5 py-2 rounded-xl text-xs font-bold text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
                           >
-                            Gerenciar
+                            Cancelar
                           </button>
-                          {!u.is_owner && (
-                            <button
-                              onClick={() => handleExcluirUsuario(u)}
-                              className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl transition-colors"
-                              title="Excluir Usuário"
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          )}
+                          <ButtonPrimary type="submit" disabled={savingUser} icon={Plus} className="px-6 py-2 text-xs min-h-[38px] rounded-xl cursor-pointer">
+                            {savingUser ? "Criando Usuário..." : "Criar Usuário"}
+                          </ButtonPrimary>
                         </div>
+                      </form>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* FORMULÁRIO DE EDIÇÃO DE PERMISSÕES DO USUÁRIO */}
+                <AnimatePresence>
+                  {editingUser && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0, y: -10 }}
+                      animate={{ opacity: 1, height: "auto", y: 0 }}
+                      exit={{ opacity: 0, height: 0, y: -10 }}
+                      className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-blue-200 dark:border-blue-900/60 p-6 md:p-8 rounded-[2rem] shadow-xl space-y-6"
+                    >
+                      <div className="flex justify-between items-center border-b border-zinc-100 dark:border-white/5 pb-4">
+                        <div>
+                          <h4 className="text-base font-bold text-zinc-950 dark:text-white">
+                            Editar Acesso de @{editingUser.usuario}
+                          </h4>
+                          <p className="text-xs text-zinc-500 mt-0.5">Atualize as permissões de abas ou redefina a senha deste colaborador.</p>
+                        </div>
+                        <button
+                          onClick={() => setEditingUser(null)}
+                          className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400 hover:text-red-500 transition-colors cursor-pointer"
+                        >
+                          <X size={16} />
+                        </button>
                       </div>
-                    ))}
+
+                      <form onSubmit={handleAtualizarUsuario} className="space-y-5">
+                        <div className="grid md:grid-cols-2 gap-4">
+                          <TextInput
+                            label="Nome / Identificação"
+                            value={editingUser.nome || ""}
+                            onChange={(e) => setEditingUser({ ...editingUser, nome: e.target.value })}
+                          />
+                          <TextInput
+                            type="password"
+                            label="Redefinir Senha (Deixe em branco para manter)"
+                            placeholder="Nova senha..."
+                            value={editingUser.novaSenha || ""}
+                            onChange={(e) => setEditingUser({ ...editingUser, novaSenha: e.target.value })}
+                          />
+                        </div>
+
+                        <div className="space-y-2.5 pt-1">
+                          <label className="text-xs font-bold uppercase tracking-widest text-zinc-400 block ml-1">
+                            Permissões e Sigilo do Colaborador:
+                          </label>
+                          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                            {LISTA_PERMISSOES.map((perm) => {
+                              const isSelected = (editingUser.permissoes || []).includes(perm.id);
+                              const Icon = perm.icon;
+                              return (
+                                <button
+                                  key={perm.id}
+                                  type="button"
+                                  onClick={() => togglePermissaoEditUser(perm.id)}
+                                  className={`p-3.5 rounded-2xl border text-left transition-all flex items-start gap-3 cursor-pointer ${
+                                    isSelected
+                                      ? perm.superCritico
+                                        ? "bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-800 ring-2 ring-red-500/30"
+                                        : "bg-blue-50/50 dark:bg-blue-950/30 border-blue-300 dark:border-blue-800 ring-2 ring-blue-500/30"
+                                      : "bg-zinc-50/50 dark:bg-zinc-900/40 border-zinc-200/80 dark:border-zinc-800 opacity-60 hover:opacity-100"
+                                  }`}
+                                >
+                                  <div className={`p-2 rounded-xl bg-white dark:bg-black border border-zinc-200/60 dark:border-zinc-800 ${perm.color}`}>
+                                    <Icon size={15} strokeWidth={1.5} />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-bold text-xs text-zinc-950 dark:text-white truncate">{perm.label}</span>
+                                      <div className={`w-3.5 h-3.5 rounded flex items-center justify-center text-[9px] ${isSelected ? "bg-zinc-900 dark:bg-white text-white dark:text-black font-bold" : "border border-zinc-300 dark:border-zinc-700"}`}>
+                                        {isSelected && <Check size={10} />}
+                                      </div>
+                                    </div>
+                                    <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5 leading-tight">{perm.desc}</p>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="flex justify-end gap-2.5 pt-3 border-t border-zinc-100 dark:border-white/5">
+                          <button
+                            type="button"
+                            onClick={() => setEditingUser(null)}
+                            className="px-5 py-2 rounded-xl text-xs font-bold text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                          >
+                            Cancelar
+                          </button>
+                          <ButtonPrimary type="submit" disabled={savingUser} icon={Save} className="px-6 py-2 text-xs min-h-[38px] rounded-xl cursor-pointer">
+                            {savingUser ? "Salvando..." : "Salvar Alterações"}
+                          </ButtonPrimary>
+                        </div>
+                      </form>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* LISTA DE USUÁRIOS CADASTRADOS */}
+                <div className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 rounded-[2rem] overflow-hidden shadow-sm">
+                  <div className="p-5 border-b border-zinc-100 dark:border-white/5 flex justify-between items-center">
+                    <span className="text-xs font-bold uppercase tracking-widest text-zinc-400">Usuários Ativos na Clínica</span>
+                    <span className="text-xs font-bold text-zinc-500">{usuarios.length} cadastrado(s)</span>
                   </div>
-                )}
-              </div>
-            </motion.div>
+
+                  {loadingUsuarios ? (
+                    <div className="p-12 text-center text-xs text-zinc-400">Carregando usuários...</div>
+                  ) : usuarios.length === 0 ? (
+                    <div className="p-12 text-center text-xs text-zinc-500">Nenhum usuário secundário cadastrado.</div>
+                  ) : (
+                    <div className="divide-y divide-zinc-100 dark:divide-white/5">
+                      {usuarios.map((u) => (
+                        <div key={u.id} className="p-5 flex flex-col md:flex-row justify-between md:items-center gap-4 hover:bg-zinc-50/50 dark:hover:bg-zinc-900/30 transition-colors">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-bold text-zinc-950 dark:text-white text-sm">@{u.usuario}</span>
+                              {u.is_owner ? (
+                                <span className="px-2 py-0.5 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 text-[9px] font-bold uppercase tracking-widest rounded-md">
+                                  Proprietário
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 text-[9px] font-bold uppercase tracking-widest rounded-md">
+                                  Colaborador
+                                </span>
+                              )}
+                            </div>
+                            {u.nome && <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{u.nome}</p>}
+
+                            {/* Badges de permissões ativas */}
+                            <div className="flex flex-wrap gap-1 mt-2.5">
+                              {(u.permissoes || []).map((pId) => {
+                                const pObj = LISTA_PERMISSOES.find((item) => item.id === pId);
+                                if (!pObj) return null;
+                                return (
+                                  <span
+                                    key={pId}
+                                    className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-md ${
+                                      pObj.superCritico
+                                        ? "bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-200/50"
+                                        : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
+                                    }`}
+                                  >
+                                    {pObj.label}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => { setEditingUser({ ...u, novaSenha: "" }); setIsAddingUser(false); }}
+                              className="px-3.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-900 dark:text-white rounded-xl text-xs font-bold transition-colors min-h-[34px] cursor-pointer"
+                            >
+                              Gerenciar
+                            </button>
+                            {!u.is_owner && (
+                              <button
+                                onClick={() => handleExcluirUsuario(u)}
+                                className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl transition-colors cursor-pointer"
+                                title="Excluir Usuário"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )
           )}
         </AnimatePresence>
       </div>

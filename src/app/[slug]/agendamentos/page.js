@@ -1711,7 +1711,7 @@ function AgendamentoOrquestrador() {
               ref={contentContainerRef}
               className={`flex-1 overflow-y-auto custom-scrollbar px-5 ${
                 isBoasVindas
-                  ? "pt-14 sm:pt-16 pb-[84px] sm:pb-24 flex flex-col"
+                  ? "pt-12 sm:pt-14 pb-16 sm:pb-20 flex flex-col justify-center"
                   : isConcluido
                   ? "pt-16 pb-28"
                   : "pt-[124px] sm:pt-[130px] pb-44"
@@ -1725,6 +1725,7 @@ function AgendamentoOrquestrador() {
                     animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
                     exit={{ opacity: 0, x: -14, filter: "blur(4px)" }}
                     transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                    className={isBoasVindas ? "w-full flex-1 flex flex-col justify-center my-auto" : "w-full"}
                   >
                     <CurrentComponent />
                   </motion.div>

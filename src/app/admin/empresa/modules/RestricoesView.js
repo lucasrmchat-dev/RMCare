@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   CalendarDays,
@@ -18,7 +18,10 @@ import {
   List,
   Layers,
   Sparkles,
-  Info
+  Info,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown
 } from "lucide-react";
 import {
   fadeUp,
@@ -33,6 +36,7 @@ import {
   actionAtualizarRegraAgenda,
   actionDeletarRegra
 } from "@/actions/adminData";
+import { playDopamineSound, triggerHaptic } from "@/lib/dopamine";
 
 const DIAS_SEMANA = [
   { id: 1, label: "Segunda", short: "Seg" },
@@ -56,6 +60,17 @@ export default function RestricoesView({
   const [viewMode, setViewMode] = useState("cards"); // "cards" | "tabela"
   const [tipoRegra, setTipoRegra] = useState("especialidade"); // "geral" | "especialidade" | "especifica"
 
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
+
+  useEffect(() => {
+    try {
+      const defaultMode = localStorage.getItem("rmcare_default_view_mode") || localStorage.getItem("rmcare_view_mode");
+      if (defaultMode === "cards" || defaultMode === "tabela") {
+        setViewMode(defaultMode);
+      }
+    } catch (e) {}
+  }, []);
+
   const [formData, setFormData] = useState({
     servico_id: "",
     especialidade: "",
@@ -65,8 +80,8 @@ export default function RestricoesView({
     hora_inicio: "08:00",
     hora_fim: "18:00",
     ultimo_horario_agendamento: "17:30",
-    duracao_slot_minutos: 30,
-    ocupacao_sequencial: false
+    duracao_slot_minutos: 0, // 0 = Desabilitada / Conforme cada especialidade
+    ocupacao_sequencial: true
   });
 
   const [isProcessing, setIsProcessing] = useState(false);
@@ -97,8 +112,8 @@ export default function RestricoesView({
       hora_inicio: "08:00",
       hora_fim: "18:00",
       ultimo_horario_agendamento: "17:30",
-      duracao_slot_minutos: 30,
-      ocupacao_sequencial: false
+      duracao_slot_minutos: 0,
+      ocupacao_sequencial: true
     });
   };
 
@@ -123,7 +138,7 @@ export default function RestricoesView({
       hora_inicio: regra.hora_inicio?.slice(0, 5) || "08:00",
       hora_fim: regra.hora_fim?.slice(0, 5) || "18:00",
       ultimo_horario_agendamento: regra.ultimo_horario_agendamento?.slice(0, 5) || "17:30",
-      duracao_slot_minutos: regra.duracao_slot_minutos || 30,
+      duracao_slot_minutos: Number(regra.duracao_slot_minutos) || 0,
       ocupacao_sequencial: Boolean(regra.ocupacao_sequencial),
       ativo: regra.ativo !== false
     });
@@ -177,7 +192,7 @@ export default function RestricoesView({
         hora_inicio: formData.hora_inicio,
         hora_fim: formData.hora_fim,
         ultimo_horario_agendamento: formData.ultimo_horario_agendamento,
-        duracao_slot_minutos: Number(formData.duracao_slot_minutos),
+        duracao_slot_minutos: Number(formData.duracao_slot_minutos) || 0,
         ocupacao_sequencial: Boolean(formData.ocupacao_sequencial),
         ativo: true
       };
@@ -217,6 +232,38 @@ export default function RestricoesView({
     }
   };
 
+  const handleSort = (key) => {
+    let direction = "asc";
+    if (sortConfig.key === key && sortConfig.direction === "asc") {
+      direction = "desc";
+    }
+    setSortConfig({ key, direction });
+    playDopamineSound("click");
+  };
+
+  const regrasOrdenadas = useMemo(() => {
+    if (!sortConfig.key) return regras;
+    return [...regras].sort((a, b) => {
+      let valA = "";
+      let valB = "";
+
+      if (sortConfig.key === "alvo") {
+        valA = a.servico_id ? (servicosOptions.find((s) => s.value === a.servico_id)?.label || "") : (a.especialidade || "Geral");
+        valB = b.servico_id ? (servicosOptions.find((s) => s.value === b.servico_id)?.label || "") : (b.especialidade || "Geral");
+      } else if (sortConfig.key === "horario") {
+        valA = a.hora_inicio || "";
+        valB = b.hora_inicio || "";
+      } else if (sortConfig.key === "duracao") {
+        const dA = Number(a.duracao_slot_minutos) || 0;
+        const dB = Number(b.duracao_slot_minutos) || 0;
+        return sortConfig.direction === "asc" ? dA - dB : dB - dA;
+      }
+
+      const cmp = String(valA).localeCompare(String(valB), "pt-BR", { sensitivity: "base" });
+      return sortConfig.direction === "asc" ? cmp : -cmp;
+    });
+  }, [regras, sortConfig, servicosOptions]);
+
   return (
     <motion.div
       key="motor-regras"
@@ -234,7 +281,7 @@ export default function RestricoesView({
               Disponibilidade & Agendas Compartilhadas
             </h2>
             <p className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">
-              Defina turnos, dias de funcionamento e vincule especialidades individuais ou em grupos para compartilharem a mesma agenda.
+              Defina turnos, dias de funcionamento e vincule especialidades individuais ou em grupos para compartilharem a mesma agenda sequencial.
             </p>
           </div>
         </div>
@@ -247,7 +294,7 @@ export default function RestricoesView({
                 if (setSubTab) setSubTab("adicionar");
               }}
               icon={Plus}
-              className="px-4 py-2 text-xs min-h-[38px] rounded-xl"
+              className="px-4 py-2 text-xs min-h-[38px] rounded-xl cursor-pointer"
             >
               Adicionar Horário
             </ButtonPrimary>
@@ -257,7 +304,7 @@ export default function RestricoesView({
                 resetForm();
                 if (setSubTab) setSubTab("configurados");
               }}
-              className="px-4 py-2 text-xs font-bold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition-colors min-h-[38px]"
+              className="px-4 py-2 text-xs font-bold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition-colors min-h-[38px] cursor-pointer"
             >
               Ver Horários Configurados
             </button>
@@ -266,7 +313,7 @@ export default function RestricoesView({
           <div className="flex items-center gap-1 p-1 bg-zinc-100 dark:bg-zinc-900 rounded-xl border border-zinc-200/60 dark:border-zinc-800">
             <button
               onClick={() => setViewMode("cards")}
-              className={`p-1.5 rounded-lg transition-colors ${
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                 viewMode === "cards"
                   ? "bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white shadow-sm"
                   : "text-zinc-400 hover:text-zinc-700"
@@ -277,7 +324,7 @@ export default function RestricoesView({
             </button>
             <button
               onClick={() => setViewMode("tabela")}
-              className={`p-1.5 rounded-lg transition-colors ${
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                 viewMode === "tabela"
                   ? "bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white shadow-sm"
                   : "text-zinc-400 hover:text-zinc-700"
@@ -317,7 +364,7 @@ export default function RestricoesView({
                         resetForm();
                         if (setSubTab) setSubTab("configurados");
                       }}
-                      className="p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-100 rounded-lg"
+                      className="p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-100 rounded-lg cursor-pointer"
                     >
                       <X size={16} />
                     </button>
@@ -337,7 +384,7 @@ export default function RestricoesView({
                     <button
                       type="button"
                       onClick={() => setTipoRegra("especialidade")}
-                      className={`p-4 rounded-2xl border-2 transition-all flex flex-col gap-2 text-left ${
+                      className={`p-4 rounded-2xl border-2 transition-all flex flex-col gap-2 text-left cursor-pointer ${
                         tipoRegra === "especialidade"
                           ? "border-zinc-900 bg-zinc-50 dark:bg-zinc-900/70 dark:border-white shadow-sm ring-2 ring-[#9FC131]"
                           : "border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/30"
@@ -364,7 +411,7 @@ export default function RestricoesView({
                     <button
                       type="button"
                       onClick={() => setTipoRegra("especifica")}
-                      className={`p-4 rounded-2xl border-2 transition-all flex flex-col gap-2 text-left ${
+                      className={`p-4 rounded-2xl border-2 transition-all flex flex-col gap-2 text-left cursor-pointer ${
                         tipoRegra === "especifica"
                           ? "border-zinc-900 bg-zinc-50 dark:bg-zinc-900/70 dark:border-white shadow-sm ring-2 ring-[#9FC131]"
                           : "border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/30"
@@ -391,7 +438,7 @@ export default function RestricoesView({
                     <button
                       type="button"
                       onClick={() => setTipoRegra("geral")}
-                      className={`p-4 rounded-2xl border-2 transition-all flex flex-col gap-2 text-left ${
+                      className={`p-4 rounded-2xl border-2 transition-all flex flex-col gap-2 text-left cursor-pointer ${
                         tipoRegra === "geral"
                           ? "border-zinc-900 bg-zinc-50 dark:bg-zinc-900/70 dark:border-white shadow-sm ring-2 ring-[#9FC131]"
                           : "border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/30"
@@ -433,7 +480,7 @@ export default function RestricoesView({
                                 key={esp}
                                 type="button"
                                 onClick={() => toggleEspecialidadeSelecionada(esp)}
-                                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 ${
+                                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer ${
                                   isSelected
                                     ? "bg-purple-950 dark:bg-purple-300 text-white dark:text-black border-purple-950 dark:border-purple-300 shadow-sm scale-105"
                                     : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:border-purple-300"
@@ -459,7 +506,7 @@ export default function RestricoesView({
                       <div className="flex items-start gap-2 p-3 bg-white/80 dark:bg-black/30 rounded-xl border border-purple-200/50 text-[11px] text-purple-900 dark:text-purple-300">
                         <Sparkles size={16} className="text-purple-600 shrink-0 mt-0.5" />
                         <span>
-                          <strong>Como funciona a Agenda Compartilhada:</strong> Se um paciente marcar uma especialidade de 20 min às 08:00, o próximo horário liberado para qualquer uma das especialidades vinculadas será às 08:20. Se em seguida for agendada uma de 30 min, a próxima vaga liberada será às 08:50, e assim por diante.
+                          <strong>Como funciona a Agenda Compartilhada:</strong> Se um paciente marcar uma especialidade de 20 min às 08:00, o próximo horário liberado para qualquer uma das especialidades vinculadas será às 08:20. O sistema respeita automaticamente a duração configurada em cada especialidade.
                         </span>
                       </div>
                     </div>
@@ -493,7 +540,7 @@ export default function RestricoesView({
                         type="button"
                         key={dia.id}
                         onClick={() => toggleDia(dia.id)}
-                        className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all border flex items-center justify-center ${
+                        className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all border flex items-center justify-center cursor-pointer ${
                           formData.dias_semana.includes(dia.id)
                             ? "bg-zinc-900 text-white dark:bg-white dark:text-black border-zinc-900 dark:border-white shadow-sm"
                             : "bg-white dark:bg-zinc-900 text-zinc-500 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300"
@@ -507,13 +554,13 @@ export default function RestricoesView({
 
                 <hr className="border-zinc-100 dark:border-zinc-800" />
 
-                {/* ETAPA 3: TURNO E HORÁRIOS */}
+                {/* ETAPA 3: TURNO E HORÁRIOS COM DURAÇÃO PERSONALIZADA POR ESPECIALIDADE */}
                 <section>
                   <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-zinc-900 dark:text-white mb-4">
                     <span className="w-5 h-5 rounded-md bg-zinc-900 dark:bg-white text-white dark:text-black flex items-center justify-center text-[10px]">
                       3
                     </span>
-                    Turno e Horários
+                    Turno, Horários & Duração do Slot
                   </h4>
                   <div className="grid md:grid-cols-3 gap-4 mb-6">
                     <TextInput
@@ -539,22 +586,35 @@ export default function RestricoesView({
                   </div>
 
                   <div className="grid md:grid-cols-2 gap-6 p-4 bg-zinc-50/60 dark:bg-zinc-900/40 rounded-2xl border border-zinc-200/60 dark:border-zinc-800">
-                    <CustomSelect
-                      label="Duração Padrão do Slot (Minutos)"
-                      value={formData.duracao_slot_minutos}
-                      onChange={(val) => setFormData({ ...formData, duracao_slot_minutos: val })}
-                      options={[
-                        { value: 10, label: "10 Minutos" },
-                        { value: 15, label: "15 Minutos" },
-                        { value: 20, label: "20 Minutos" },
-                        { value: 30, label: "30 Minutos" },
-                        { value: 40, label: "40 Minutos" },
-                        { value: 45, label: "45 Minutos" },
-                        { value: 60, label: "1 Hora" },
-                        { value: 90, label: "1h 30min" },
-                        { value: 120, label: "2 Horas" }
-                      ]}
-                    />
+                    <div className="space-y-1.5">
+                      <CustomSelect
+                        label="Duração do Slot da Agenda"
+                        value={formData.duracao_slot_minutos}
+                        onChange={(val) => setFormData({ ...formData, duracao_slot_minutos: Number(val) })}
+                        options={[
+                          { value: 0, label: "Desabilitada (Respeitar Tempo de Cada Especialidade)" },
+                          { value: 10, label: "10 Minutos (Fixo)" },
+                          { value: 15, label: "15 Minutos (Fixo)" },
+                          { value: 20, label: "20 Minutos (Fixo)" },
+                          { value: 30, label: "30 Minutos (Fixo Padrão)" },
+                          { value: 40, label: "40 Minutos (Fixo)" },
+                          { value: 45, label: "45 Minutos (Fixo)" },
+                          { value: 60, label: "1 Hora (Fixo)" },
+                          { value: 90, label: "1h 30min (Fixo)" },
+                          { value: 120, label: "2 Horas (Fixo)" }
+                        ]}
+                      />
+                      {formData.duracao_slot_minutos === 0 ? (
+                        <p className="text-[10.5px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1 mt-1">
+                          <CheckCircle2 size={12} /> A agenda respeitará o tempo determinado de cada especialidade cadastrada.
+                        </p>
+                      ) : (
+                        <p className="text-[10.5px] text-zinc-500 mt-1">
+                          Slots com intervalo fixo de {formData.duracao_slot_minutos} minutos para todos os atendimentos desta regra.
+                        </p>
+                      )}
+                    </div>
+
                     <div className="flex flex-col justify-center">
                       <ToggleSwitch
                         checked={formData.ocupacao_sequencial}
@@ -570,7 +630,7 @@ export default function RestricoesView({
                     onClick={handleSalvarVisual}
                     disabled={isProcessing}
                     icon={CheckCircle2}
-                    className="px-8 py-3 text-xs"
+                    className="px-8 py-3 text-xs cursor-pointer"
                   >
                     {isProcessing
                       ? "Salvando..."
@@ -605,14 +665,14 @@ export default function RestricoesView({
                       if (setSubTab) setSubTab("adicionar");
                     }}
                     icon={Plus}
-                    className="px-5 py-2 text-xs"
+                    className="px-5 py-2 text-xs cursor-pointer"
                   >
                     Nova Disponibilidade
                   </ButtonPrimary>
                 </div>
               ) : viewMode === "cards" ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {regras.map((regra) => {
+                  {regrasOrdenadas.map((regra) => {
                     let tituloRegra = "Geral da Clínica";
                     let subtituloTipo = "Regra Padrão Global";
                     let icone = <Building size={16} className="text-blue-500" />;
@@ -649,6 +709,11 @@ export default function RestricoesView({
                       .filter(Boolean)
                       .join(", ");
 
+                    const duracaoLabel =
+                      !regra.duracao_slot_minutos || Number(regra.duracao_slot_minutos) === 0
+                        ? "Conforme Especialidade"
+                        : `Slot: ${regra.duracao_slot_minutos} min`;
+
                     return (
                       <motion.div
                         key={regra.id}
@@ -677,7 +742,7 @@ export default function RestricoesView({
                             <div className="flex gap-1.5 shrink-0">
                               <button
                                 onClick={() => editarRegra(regra)}
-                                className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 transition-colors"
+                                className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 transition-colors cursor-pointer"
                                 title="Editar"
                               >
                                 <Pencil size={15} />
@@ -689,7 +754,7 @@ export default function RestricoesView({
                                   if (fetchRegras) await fetchRegras();
                                   showToast("Horário removido.");
                                 }}
-                                className="p-2 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-400 hover:text-red-500 transition-colors"
+                                className="p-2 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-400 hover:text-red-500 transition-colors cursor-pointer"
                                 title="Remover"
                               >
                                 <Trash2 size={15} />
@@ -697,7 +762,6 @@ export default function RestricoesView({
                             </div>
                           </div>
 
-                          {/* Especialidades vinculadas se for pool compartilhado */}
                           {espsArray.length > 0 && (
                             <div className="flex flex-wrap gap-1 pt-1">
                               {espsArray.map((esp, i) => (
@@ -717,7 +781,7 @@ export default function RestricoesView({
                               {regra.hora_fim?.substring(0, 5)}
                             </div>
                             <div className="flex items-center gap-1.5 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900/40 px-3 py-1 rounded-lg text-xs font-bold">
-                              Slot Base: {regra.duracao_slot_minutos} min
+                              {duracaoLabel}
                             </div>
                             {regra.ocupacao_sequencial && (
                               <div className="flex items-center gap-1.5 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200/50 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase">
@@ -731,19 +795,56 @@ export default function RestricoesView({
                   })}
                 </div>
               ) : (
+                /* TABELA DE HORÁRIOS CONFIGURADOS COM ORDENAÇÃO */
                 <div className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 rounded-2xl overflow-x-auto shadow-sm">
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
-                      <tr className="border-b border-zinc-100 dark:border-white/5 bg-zinc-50/50 dark:bg-zinc-900/40 font-bold uppercase tracking-wider text-zinc-400">
-                        <th className="p-3.5">Alvo / Tipo</th>
+                      <tr className="border-b border-zinc-100 dark:border-white/5 bg-zinc-50/50 dark:bg-zinc-900/40 font-bold uppercase tracking-wider text-zinc-400 select-none">
+                        <th
+                          onClick={() => handleSort("alvo")}
+                          className="p-3.5 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                        >
+                          <div className="flex items-center gap-1">
+                            <span>Alvo / Tipo</span>
+                            {sortConfig.key === "alvo" ? (
+                              sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                            ) : (
+                              <ArrowUpDown size={11} className="opacity-40" />
+                            )}
+                          </div>
+                        </th>
                         <th className="p-3.5">Dias</th>
-                        <th className="p-3.5">Horário</th>
-                        <th className="p-3.5">Duração Slot</th>
+                        <th
+                          onClick={() => handleSort("horario")}
+                          className="p-3.5 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                        >
+                          <div className="flex items-center gap-1">
+                            <span>Horário</span>
+                            {sortConfig.key === "horario" ? (
+                              sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                            ) : (
+                              <ArrowUpDown size={11} className="opacity-40" />
+                            )}
+                          </div>
+                        </th>
+                        <th
+                          onClick={() => handleSort("duracao")}
+                          className="p-3.5 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                        >
+                          <div className="flex items-center gap-1">
+                            <span>Duração Slot</span>
+                            {sortConfig.key === "duracao" ? (
+                              sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                            ) : (
+                              <ArrowUpDown size={11} className="opacity-40" />
+                            )}
+                          </div>
+                        </th>
                         <th className="p-3.5 text-right">Ações</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800 font-medium">
-                      {regras.map((regra) => {
+                      {regrasOrdenadas.map((regra) => {
                         let tituloRegra = "Geral da Clínica";
                         if (regra.servico_id) {
                           const srv = servicosOptions.find((s) => s.value === regra.servico_id);
@@ -755,6 +856,12 @@ export default function RestricoesView({
                           .map((dId) => DIAS_SEMANA.find((d) => d.id === dId)?.short)
                           .filter(Boolean)
                           .join(", ");
+
+                        const duracaoTexto =
+                          !regra.duracao_slot_minutos || Number(regra.duracao_slot_minutos) === 0
+                            ? "Conforme Especialidade"
+                            : `${regra.duracao_slot_minutos} min`;
+
                         return (
                           <tr
                             key={regra.id}
@@ -771,12 +878,13 @@ export default function RestricoesView({
                               {regra.hora_fim?.substring(0, 5)}
                             </td>
                             <td className="p-3.5 font-bold text-blue-600 dark:text-blue-400">
-                              {regra.duracao_slot_minutos} min
+                              {duracaoTexto}
                             </td>
                             <td className="p-3.5 text-right space-x-1.5">
                               <button
                                 onClick={() => editarRegra(regra)}
-                                className="p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 rounded-lg"
+                                className="p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 rounded-lg cursor-pointer"
+                                title="Editar"
                               >
                                 <Pencil size={15} />
                               </button>
@@ -787,7 +895,8 @@ export default function RestricoesView({
                                   if (fetchRegras) await fetchRegras();
                                   showToast("Removido.");
                                 }}
-                                className="p-1.5 text-red-600 dark:text-red-400 hover:bg-red-50 rounded-lg"
+                                className="p-1.5 text-red-600 dark:text-red-400 hover:bg-red-50 rounded-lg cursor-pointer"
+                                title="Remover"
                               >
                                 <Trash2 size={15} />
                               </button>

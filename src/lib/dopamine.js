@@ -21,7 +21,9 @@ export function playDopamineSound(type = "click") {
   if (typeof window === "undefined") return;
 
   try {
-    const isMuted = localStorage.getItem("rmcare_sound_muted") === "true";
+    const isMuted =
+      localStorage.getItem("rmcare_sound_muted") === "true" ||
+      localStorage.getItem("rmagenda_sound_muted") === "true";
     if (isMuted) return;
 
     const ctx = getAudioContext();

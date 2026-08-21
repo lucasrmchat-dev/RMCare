@@ -1,32 +1,50 @@
-# Task Checklist: Refinamentos e Correções no RM Care
+# Plano de Implementação: Melhorias Executivas, Agenda Compartilhada, Métricas, Permissões & UX
 
-- [x] 1. Diagnóstico e Mapeamento Detalhado dos Problemas e Arquitetura UI/UX
-- [x] 2. Navbar Inferior e Dock Flutuante:
-  - [x] 2.1 Remover a barra de fundo gigante/opaca atrás da navbar (deixar área atrás 100% transparente/invisível)
-  - [x] 2.2 Tornar a Navbar translúcida/parcialmente transparente com blur e visual premium
-  - [x] 2.3 Posicionamento dinâmico da Navbar:
-    - Na tela de boas-vindas: posicionar bem rente à base inferior da tela (bottom mais baixo)
-    - Nas etapas de agendamento com barra inferior ("Voltar" e "Continuar"): posicionar a Navbar suspensa alguns pixels acima da barra de ações
-    - Na etapa final ("Agendamento Finalizado" / Concluído): posicionar a Navbar no ponto mais inferior possível da tela, sem sobreposição com os botões de ação ("Falar no WhatsApp" / "Realizar Novo Agendamento")
-- [x] 3. Logotipo da Clínica & Moldura:
-  - [x] 3.1 Evitar duplicação da logo na tela de Boas-Vindas (exibir apenas no hero central/abaixo, nunca duplicada no cabeçalho)
-  - [x] 3.2 Transição suave da logo ao clicar em "Iniciar Agendamento" (recolhendo com animação para o topo nas etapas seguintes)
-  - [x] 3.3 Moldura da logo 100% preenchida (sem sensação de 'dentro e fora', a logo é o próprio formato/moldura)
-  - [x] 3.4 Configuração de formatos no Admin/PersonalizacaoView (Quadrada/Retangular, 100% Redonda/Circular, Parcialmente Arredondada/Boleada) refletindo dinamicamente em todo o sistema
-- [x] 4. Espaçamento Superior & Dynamic Island (Prevenção de Sobreposição):
-  - [x] 4.1 Ajustar o padding-top e posicionamento para que o título e conteúdo de "Direcionamento Clínico" fiquem abaixo do Dynamic Island, sem sobreposição inicial
-  - [x] 4.2 Ajustar espaçamento e scroll container da etapa "Como será o atendimento?" (Modalidade) para não sobrepor o cabeçalho
-  - [x] 4.3 Garantir que todas as telas de etapas tenham scroll suave e folga visual elegante abaixo do Dynamic Island
-- [x] 5. Correção do Fluxo e Botão "Voltar" nas Especialidades:
-  - [x] 5.1 Ao selecionar uma especialidade e visualizar os especialistas, o botão inferior "Voltar" se adapta dinamicamente para "Voltar para Especialidades" e retorna à lista de especialidades
-  - [x] 5.2 Desabilitar/unificar botões redundantes de voltar para manter consistência e dinâmica
-- [x] 6. Centralização e Scroll dos Horários Disponíveis:
-  - [x] 6.1 Ao clicar em uma data, scrollar com precisão para centralizar a grade de horários disponíveis na tela
-  - [x] 6.2 Otimizar o layout da grade de horários (8h às 17h40+) para visualização clara, profissional e sem cortes
-- [x] 7. Etapa Final ("Agendamento Finalizado"):
-  - [x] 7.1 Forçar scroll automático para o topo (top: 0) imediatamente ao entrar na tela de conclusão
-  - [x] 7.2 Garantir visibilidade total do cabeçalho "Agendamento Confirmado!" e dos dados de confirmação sem corte
-  - [x] 7.3 Posicionamento inferior da Navbar sem interferir no acesso aos botões do WhatsApp e novo agendamento
-- [x] 8. Elevação Visual Geral (Design System 100% Profissional):
-  - [x] 8.1 Refinar tipografia, micro-interações, contraste, bordas sutis e glassmorphism profissional
-- [x] 9. Testes, Verificação de Build/Lint e Entrega do Checklist Final
+- [ ] 1. Header, Top Bar & Branding da Aplicação
+  - [ ] Exibir Logo da "RM Agenda" (marca pai) lado a lado com a Logo da Clínica (parceiras)
+  - [ ] Padronizar denominação unificada e elegante ("Painel de Gestão Clínica")
+  - [ ] Criar cápsula de perfil no topo direito com: Nome do operador, Toggle de Som (Dopamine), Alternador de Tema (Claro/Escuro), Timer de Sessão e Botão Sair
+- [ ] 2. Nomenclaturas da Sidebar & Desambiguação de Menus
+  - [ ] Renomear "Calendário Diário" -> "Pacientes do Dia"
+  - [ ] Renomear "Lista Unificada" -> "Todos os Pacientes"
+  - [ ] Renomear "Métricas & BI" -> "Métricas"
+  - [ ] Na tela de Métricas, navegar exclusivamente pelas sub-opções da sidebar, removendo a barra interna duplicada
+- [ ] 3. Gestão de Modalidades transferida para Corpo Clínico
+  - [ ] Mover todo o gerenciamento de Modalidades de `PersonalizacaoView` para `EquipeView` (aba `modalidades` em Corpo Clínico)
+  - [ ] Manter todas as funções de criação, edição, código URI, exigência de senha e modalidade padrão
+- [ ] 4. Visualização em Lista e Cards em Todo o Sistema & Preferências Visuais
+  - [ ] Adicionar alternância Lista/Cards em Lista de Especialistas (`EquipeView`)
+  - [ ] Adicionar alternância Lista/Cards em Especialidades Médicas (`EquipeView`) com design refinado
+  - [ ] Adicionar alternância Lista/Cards em Automações de Mensagens (`PersonalizacaoView`)
+  - [ ] Remover todos os emojis de WhatsApp (🟢, 🟣, 🔴) do cadastro de especialistas e substituir por SVGs Lucide profissionais
+  - [ ] Criar sistema de "Preferências Visuais" (persiste no localStorage com padrão "Lista" em todo o sistema)
+- [ ] 5. Agenda Compartilhada Multi-Especialidade & Duração por Especialidade
+  - [ ] Interface dedicada e autoexplicativa para Agenda Compartilhada em `RestricoesView`
+  - [ ] Suporte a vincular múltiplas especialidades (ex: Colonoscopia + Endoscopia + Ultrassom) que compartilham a mesma sala
+  - [ ] Lógica de bloqueio cruzado: agendamento em uma especialidade bloqueia o horário para as demais da sala
+  - [ ] Respeitar horários e dias individuais dos especialistas cadastrados
+  - [ ] Duração específica por especialidade respeitada dinamicamente
+- [ ] 6. Status de Agendamento Passado ("Histórico Concluído / Prazo Encerrado")
+  - [ ] Detectar agendamentos com data/horário no passado e rotular com badge elegante e profissional
+- [ ] 7. Ordem das Etapas com Habilitação/Desabilitação Integrada
+  - [ ] Integrar botões de Ativar/Ocultar etapa diretamente em cada card da lista de reordenação
+  - [ ] Permitir configurar os campos de identificação (CPF, Sobrenome, etc.) diretamente dentro do card de "Identificação do Paciente"
+  - [ ] Bloquear desabilitação das etapas essenciais (Boas-vindas, Identificação e Agenda) e liberar as customizáveis (Especialidade, Modalidade, Triagem, Pagamento)
+- [ ] 8. Design, Cores & Escala (Escopo Geral / Painel vs Cliente)
+  - [ ] Corrigir aplicação e persistência das cores primária e secundária
+  - [ ] Permitir selecionar o escopo da personalização: Portal do Paciente, Painel Administrativo ou Ambos
+- [ ] 9. Mensagens WhatsApp - Correção da Lista e Botão Duplicar
+  - [ ] Corrigir renderização em formato de Lista em `PersonalizacaoView`
+  - [ ] Implementar botão de Duplicar Regra de Mensagem com feedback
+- [ ] 10. Correção do Bug de Histórico de Envios (`fila_mensagens.created_at`)
+  - [ ] Corrigir query em `actionListarHistoricoMensagensAdmin` com fallback de ordenação seguro
+- [ ] 11. Integrações ERP (`SyncView`): Bloqueio Permanente e Correção com Todas as Colunas
+  - [ ] Interface clara, moderna e profissional para Integrações ERP
+  - [ ] Criar funcionalidade de Bloquear Permanentemente Especialistas do ERP com lista/modal de desbloqueio
+  - [ ] Tabela completa com todas as colunas dos bloqueios importados (Médico, Especialidade, Convênio, Observações, Data, Horário) com ações de correção direta
+- [ ] 12. Gestão Estrita de Permissões de Usuários & Sigilo Clínico
+  - [ ] Bloquear visualização de menus e módulos de acordo com as permissões atribuídas no cadastro do usuário
+  - [ ] Restringir acesso a "Usuários & Permissões" e dados clínicos para usuários não autorizados
+- [ ] 13. Verificação de Código, Validação e Testes Finais
+  - [ ] Verificar ausência de erros de sintaxe ou console
+  - [ ] Validar todos os fluxos e aprovar cada item do checklist

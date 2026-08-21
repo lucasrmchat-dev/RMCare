@@ -17,7 +17,18 @@ import {
   Hash,
   Users,
   Tag,
-  FolderPlus
+  ShieldCheck,
+  List,
+  LayoutGrid,
+  Check,
+  Ban,
+  Clock,
+  Stethoscope,
+  Copy,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
+  Pencil
 } from "lucide-react";
 import {
   fadeUp,
@@ -33,14 +44,16 @@ import { supabase } from "@/lib/supabase";
 import {
   actionAtualizarServico,
   actionCriarServico,
+  actionDeletarServico,
   actionSalvarCustomization,
   fetchAdminCustomization
 } from "@/actions/adminData";
+import { playDopamineSound, triggerHaptic } from "@/lib/dopamine";
 
 // ==========================================
 // COMPONENTE: CARD DO PROFISSIONAL
 // ==========================================
-const ServicoCard = ({ srv, onEdit }) => {
+const ServicoCard = ({ srv, onEdit, onDelete }) => {
   const especialidadesArray = srv.especialidade
     ? srv.especialidade.split(",").map((e) => e.trim()).filter(Boolean)
     : [];
@@ -51,13 +64,22 @@ const ServicoCard = ({ srv, onEdit }) => {
       layoutId={`card-${srv.id}`}
       className="bg-white/85 dark:bg-[#0c0c0e]/85 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-7 rounded-[2rem] shadow-sm hover:shadow-xl hover:border-zinc-300 dark:hover:border-zinc-700 transition-all duration-300 flex flex-col justify-between group relative overflow-hidden"
     >
-      <button
-        onClick={() => onEdit(srv)}
-        className="absolute top-5 right-5 w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-700 flex items-center justify-center text-zinc-400 opacity-0 scale-75 group-hover:opacity-100 group-hover:scale-100 transition-all duration-200 hover:text-zinc-900 dark:hover:text-white shadow-md z-20"
-        title="Editar Especialista"
-      >
-        <PenLine size={16} strokeWidth={2} />
-      </button>
+      <div className="absolute top-5 right-5 flex items-center gap-1.5 z-20">
+        <button
+          onClick={() => onEdit(srv)}
+          className="w-9 h-9 rounded-full bg-zinc-100 dark:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-700 flex items-center justify-center text-zinc-400 opacity-0 scale-75 group-hover:opacity-100 group-hover:scale-100 transition-all duration-200 hover:text-zinc-900 dark:hover:text-white shadow-md cursor-pointer"
+          title="Editar Especialista"
+        >
+          <PenLine size={15} strokeWidth={2} />
+        </button>
+        <button
+          onClick={() => onDelete(srv)}
+          className="w-9 h-9 rounded-full bg-red-50 dark:bg-red-950/40 border border-red-200/80 dark:border-red-900/60 flex items-center justify-center text-red-500 opacity-0 scale-75 group-hover:opacity-100 group-hover:scale-100 transition-all duration-200 hover:bg-red-100 dark:hover:bg-red-900/60 shadow-md cursor-pointer"
+          title="Excluir Especialista"
+        >
+          <Trash2 size={15} strokeWidth={2} />
+        </button>
+      </div>
 
       <div className="relative z-10">
         <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -71,16 +93,16 @@ const ServicoCard = ({ srv, onEdit }) => {
           )}
 
           {srv.redirecionar_whatsapp || srv.status_agendamento === "whatsapp" ? (
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 text-[10px] font-black uppercase tracking-widest rounded-lg border border-purple-200/60 dark:border-purple-900/40">
-              <MessageCircle size={11} /> Ativo Parcial (WhatsApp)
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 text-[10px] font-extrabold uppercase tracking-wider rounded-lg border border-purple-200/60 dark:border-purple-900/40">
+              <MessageCircle size={12} className="text-purple-600 dark:text-purple-400" /> Ativo Parcial
             </span>
           ) : !srv.ativo || srv.status_agendamento === "inativo" ? (
-            <span className="inline-flex items-center px-2.5 py-0.5 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 text-[10px] font-black uppercase tracking-widest rounded-lg">
-              Inativo
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 text-[10px] font-extrabold uppercase tracking-wider rounded-lg border border-rose-200/60 dark:border-rose-900/40">
+              <Ban size={11} className="text-rose-500" /> Inativo
             </span>
           ) : (
-            <span className="inline-flex items-center px-2.5 py-0.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-[10px] font-black uppercase tracking-widest rounded-lg">
-              Ativo na Agenda
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-[10px] font-extrabold uppercase tracking-wider rounded-lg border border-emerald-200/60 dark:border-emerald-900/40">
+              <CheckCircle2 size={12} className="text-emerald-600 dark:text-emerald-400" /> Ativo Online
             </span>
           )}
 
@@ -143,7 +165,7 @@ const ServicoCard = ({ srv, onEdit }) => {
 };
 
 // ==========================================
-// COMPONENTE: FORMULÁRIO (CADASTRO E EDIÇÃO)
+// COMPONENTE: FORMULÁRIO (CADASTRO E EDIÇÃO DE ESPECIALISTA)
 // ==========================================
 const ServicoForm = ({ initialData, onSave, onCancel, loading, especialidadesList }) => {
   const isEditing = !!initialData?.id;
@@ -204,7 +226,7 @@ const ServicoForm = ({ initialData, onSave, onCancel, loading, especialidadesLis
         </div>
         <button
           onClick={onCancel}
-          className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-400 hover:text-zinc-950 dark:hover:text-white transition-all flex items-center justify-center"
+          className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-400 hover:text-zinc-950 dark:hover:text-white transition-all flex items-center justify-center cursor-pointer"
         >
           <X size={18} />
         </button>
@@ -257,7 +279,7 @@ const ServicoForm = ({ initialData, onSave, onCancel, loading, especialidadesLis
                         key={espNome}
                         type="button"
                         onClick={() => toggleEspecialidade(espNome)}
-                        className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 ${
+                        className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer ${
                           isSelected
                             ? "bg-zinc-950 dark:bg-white text-white dark:text-black border-zinc-950 dark:border-white shadow-sm scale-105"
                             : "bg-zinc-50 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300"
@@ -285,15 +307,17 @@ const ServicoForm = ({ initialData, onSave, onCancel, loading, especialidadesLis
                 <button
                   type="button"
                   onClick={() => setFormData({ ...formData, status_agendamento: "ativo", ativo: true, redirecionar_whatsapp: false })}
-                  className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between ${
+                  className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between cursor-pointer ${
                     formData.status_agendamento === "ativo"
-                      ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 text-emerald-950 dark:text-emerald-200 shadow-sm ring-2 ring-emerald-500/30"
-                      : "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400"
+                      ? "bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-500 text-emerald-950 dark:text-emerald-200 shadow-sm ring-2 ring-emerald-500/30"
+                      : "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:border-zinc-300"
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-black">🟢 Ativo Online</span>
-                    {formData.status_agendamento === "ativo" && <CheckCircle2 size={15} className="text-emerald-600" />}
+                    <span className="text-xs font-black flex items-center gap-1.5">
+                      <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400" /> Ativo Online
+                    </span>
+                    {formData.status_agendamento === "ativo" && <Check size={14} className="text-emerald-600 dark:text-emerald-400 stroke-[3]" />}
                   </div>
                   <span className="text-[10px] opacity-80 mt-1">Agendamento 100% online automático</span>
                 </button>
@@ -301,15 +325,17 @@ const ServicoForm = ({ initialData, onSave, onCancel, loading, especialidadesLis
                 <button
                   type="button"
                   onClick={() => setFormData({ ...formData, status_agendamento: "whatsapp", ativo: true, redirecionar_whatsapp: true })}
-                  className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between ${
+                  className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between cursor-pointer ${
                     formData.status_agendamento === "whatsapp"
-                      ? "bg-purple-50 dark:bg-purple-950/40 border-purple-500 text-purple-950 dark:text-purple-200 shadow-sm ring-2 ring-purple-500/30"
-                      : "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400"
+                      ? "bg-purple-50/80 dark:bg-purple-950/40 border-purple-500 text-purple-950 dark:text-purple-200 shadow-sm ring-2 ring-purple-500/30"
+                      : "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:border-zinc-300"
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-black">🟣 Ativo Parcial</span>
-                    {formData.status_agendamento === "whatsapp" && <CheckCircle2 size={15} className="text-purple-600" />}
+                    <span className="text-xs font-black flex items-center gap-1.5">
+                      <MessageCircle size={14} className="text-purple-600 dark:text-purple-400" /> Ativo Parcial
+                    </span>
+                    {formData.status_agendamento === "whatsapp" && <Check size={14} className="text-purple-600 dark:text-purple-400 stroke-[3]" />}
                   </div>
                   <span className="text-[10px] opacity-80 mt-1">Redireciona para Atendente / WhatsApp</span>
                 </button>
@@ -317,15 +343,17 @@ const ServicoForm = ({ initialData, onSave, onCancel, loading, especialidadesLis
                 <button
                   type="button"
                   onClick={() => setFormData({ ...formData, status_agendamento: "inativo", ativo: false, redirecionar_whatsapp: false })}
-                  className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between ${
+                  className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between cursor-pointer ${
                     formData.status_agendamento === "inativo"
-                      ? "bg-red-50 dark:bg-red-950/40 border-red-500 text-red-950 dark:text-red-200 shadow-sm ring-2 ring-red-500/30"
-                      : "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400"
+                      ? "bg-rose-50/80 dark:bg-rose-950/40 border-rose-500 text-rose-950 dark:text-rose-200 shadow-sm ring-2 ring-rose-500/30"
+                      : "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:border-zinc-300"
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-black">🔴 Inativo</span>
-                    {formData.status_agendamento === "inativo" && <CheckCircle2 size={15} className="text-red-600" />}
+                    <span className="text-xs font-black flex items-center gap-1.5">
+                      <Ban size={14} className="text-rose-600 dark:text-rose-400" /> Inativo
+                    </span>
+                    {formData.status_agendamento === "inativo" && <Check size={14} className="text-rose-600 dark:text-rose-400 stroke-[3]" />}
                   </div>
                   <span className="text-[10px] opacity-80 mt-1">Oculto do portal de agendamento</span>
                 </button>
@@ -333,7 +361,7 @@ const ServicoForm = ({ initialData, onSave, onCancel, loading, especialidadesLis
 
               {formData.status_agendamento === "whatsapp" && (
                 <div className="p-3 bg-purple-50/70 dark:bg-purple-950/30 border border-purple-200/60 dark:border-purple-900/40 rounded-xl text-xs text-purple-900 dark:text-purple-300">
-                  💬 <strong>Como funciona o Ativo Parcial:</strong> O paciente poderá ver e clicar neste especialista, mas em vez de abrir o calendário, o sistema exibirá uma tela dedicada: <em>"Você está sendo redirecionado para um atendente"</em> e abrirá o WhatsApp da clínica com mensagem pré-preenchida com o nome do especialista e especialidade.
+                  💬 <strong>Como funciona o Ativo Parcial:</strong> O paciente poderá ver este especialista na lista, mas em vez de abrir o calendário de horários, o sistema exibirá uma tela de redirecionamento para o WhatsApp da clínica com mensagem pré-preenchida com o nome do especialista.
                 </div>
               )}
             </div>
@@ -410,7 +438,7 @@ const ServicoForm = ({ initialData, onSave, onCancel, loading, especialidadesLis
         <button
           onClick={onCancel}
           disabled={loading}
-          className="px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
+          className="px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
         >
           Cancelar
         </button>
@@ -435,17 +463,53 @@ export default function EquipeView({
   setSubTab,
   servicos = [],
   showToast,
-  fetchServicos
+  fetchServicos,
+  permissoes = [],
+  isOwner = false
 }) {
   const [editingServico, setEditingServico] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Estados para Especialidades e Classificação
-  const [empresaId, setEmpresaId] = useState(null);
-  const categoriasList = ["Consultas", "Exames"];
+  // Preferência visual: Lista vs Cards para Especialistas e Especialidades
+  const [viewMode, setViewMode] = useState("lista");
+  const [viewModeEspecialidades, setViewModeEspecialidades] = useState("lista");
 
-  // Especialidades estruturadas: [{ nome: "Nutricionista", categoria: "Consultas", codigo_uri: "8", duracao_minutos: 30 }, ...]
+  // Ordenação de colunas do Corpo Clínico
+  const [sortEspecialistas, setSortEspecialistas] = useState({ key: "nome", direction: "asc" });
+
+  // Ordenação de colunas de Especialidades
+  const [sortEspecialidades, setSortEspecialidades] = useState({ key: "nome", direction: "asc" });
+
+  useEffect(() => {
+    try {
+      const defaultMode = localStorage.getItem("rmcare_default_view_mode") || localStorage.getItem("rmcare_view_mode");
+      if (defaultMode === "cards" || defaultMode === "lista") {
+        setViewMode(defaultMode);
+        setViewModeEspecialidades(defaultMode);
+      }
+    } catch (e) {}
+  }, []);
+
+  const handleToggleViewMode = (mode) => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem("rmcare_view_mode", mode);
+    } catch (e) {}
+  };
+
+  const handleToggleViewModeEspecialidades = (mode) => {
+    setViewModeEspecialidades(mode);
+  };
+
+  // Estados para Especialidades e Modalidades
+  const [empresaId, setEmpresaId] = useState(null);
+  const [modalidadesOpcoes, setModalidadesOpcoes] = useState([
+    { id: "1", codigo_uri: "1", nome: "Particular", exige_senha: false, senha: "" },
+    { id: "2", codigo_uri: "2", nome: "Convênio", exige_senha: false, senha: "" }
+  ]);
+  const [modalidadePadrao, setModalidadePadrao] = useState("Particular");
+
   const [especialidadesCategorizadas, setEspecialidadesCategorizadas] = useState([]);
   const [novaEspecialidadeNome, setNovaEspecialidadeNome] = useState("");
   const [novaEspecialidadeCodigoUri, setNovaEspecialidadeCodigoUri] = useState("");
@@ -453,7 +517,10 @@ export default function EquipeView({
   const [novaEspecialidadeDuracao, setNovaEspecialidadeDuracao] = useState(30);
   const [filtroCategoria, setFiltroCategoria] = useState("Todas");
 
-  // Carregar dados de forma inteligente agregando de todas as fontes
+  // Modal para editar Especialidade
+  const [editingEspecialidade, setEditingEspecialidade] = useState(null);
+
+  // Carregar dados
   useEffect(() => {
     const fetchDados = async () => {
       try {
@@ -462,10 +529,15 @@ export default function EquipeView({
           setEmpresaId(emp.id);
           const conf = emp.config_campos || {};
 
-          // Mapeamento completo de especialidades
+          if (Array.isArray(conf.modalidades_opcoes) && conf.modalidades_opcoes.length > 0) {
+            setModalidadesOpcoes(conf.modalidades_opcoes);
+          }
+          if (conf.modalidade_padrao) {
+            setModalidadePadrao(conf.modalidade_padrao);
+          }
+
           const mapCategorias = new Map();
 
-          // A. Especialidades já cadastradas nos serviços (corpo clínico)
           (servicos || []).forEach((s) => {
             if (s.especialidade) {
               s.especialidade
@@ -486,7 +558,6 @@ export default function EquipeView({
             }
           });
 
-          // B. Especialidades simples da empresa
           if (Array.isArray(emp.especialidades)) {
             emp.especialidades.forEach((e) => {
               const espName = typeof e === "object" ? e.nome : e;
@@ -505,7 +576,6 @@ export default function EquipeView({
             });
           }
 
-          // C. Especialidades já categorizadas pelo usuário (prevalecem na categoria, codigo_uri e duracao)
           if (Array.isArray(conf.especialidades_categorizadas)) {
             conf.especialidades_categorizadas.forEach((item) => {
               if (item?.nome && String(item.nome).trim()) {
@@ -520,7 +590,6 @@ export default function EquipeView({
             });
           }
 
-          // D. Fallback base se estiver vazio
           if (mapCategorias.size === 0) {
             ["Nutricionista", "Gastroenterologista", "Colonoscopia", "Endoscopia", "Psicologia", "Cirurgia Geral"].forEach(
               (baseName) => {
@@ -541,7 +610,7 @@ export default function EquipeView({
           setEspecialidadesCategorizadas(listaFinal);
         }
       } catch (err) {
-        console.error("Erro ao carregar especialidades:", err);
+        console.error("Erro ao carregar corpo clínico:", err);
       }
     };
     fetchDados();
@@ -610,6 +679,83 @@ export default function EquipeView({
     }
   };
 
+  // Excluir Especialista
+  const handleDeleteServico = async (srv) => {
+    if (!window.confirm(`Deseja realmente excluir permanentemente o especialista "${srv.nome}"?`)) {
+      return;
+    }
+    setIsProcessing(true);
+    playDopamineSound("click");
+    try {
+      await actionDeletarServico(srv.id);
+      showToast(`Especialista "${srv.nome}" excluído com sucesso!`);
+      if (fetchServicos) {
+        await fetchServicos();
+      }
+    } catch (error) {
+      console.error(error);
+      showToast(`Erro ao excluir especialista: ${error.message}`, "error");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Persistir Modalidades
+  const persistirModalidades = async (novasMods, padrao) => {
+    if (!empresaId) return;
+    try {
+      const { data: emp } = await supabase
+        .from("empresas")
+        .select("config_campos")
+        .eq("id", empresaId)
+        .single();
+
+      const updatedConfig = {
+        ...(emp?.config_campos || {}),
+        modalidades_opcoes: novasMods,
+        modalidade_padrao: padrao || modalidadePadrao
+      };
+
+      await supabase
+        .from("empresas")
+        .update({ config_campos: updatedConfig })
+        .eq("id", empresaId);
+    } catch (err) {
+      console.error("Erro ao persistir modalidades:", err);
+    }
+  };
+
+  const handleAddModalidade = async () => {
+    const nova = {
+      id: Date.now().toString(),
+      codigo_uri: (modalidadesOpcoes.length + 1).toString(),
+      nome: "Nova Modalidade",
+      exige_senha: false,
+      senha: ""
+    };
+    const updated = [...modalidadesOpcoes, nova];
+    setModalidadesOpcoes(updated);
+    await persistirModalidades(updated, modalidadePadrao);
+    showToast("Modalidade adicionada!");
+  };
+
+  const handleUpdateModalidade = async (id, field, value) => {
+    const updated = modalidadesOpcoes.map((m) => (m.id === id ? { ...m, [field]: value } : m));
+    setModalidadesOpcoes(updated);
+    await persistirModalidades(updated, modalidadePadrao);
+  };
+
+  const handleRemoveModalidade = async (id) => {
+    if (modalidadesOpcoes.length <= 1) {
+      showToast("Mantenha pelo menos uma modalidade de atendimento.", "error");
+      return;
+    }
+    const updated = modalidadesOpcoes.filter((m) => m.id !== id);
+    setModalidadesOpcoes(updated);
+    await persistirModalidades(updated, modalidadePadrao);
+    showToast("Modalidade removida.");
+  };
+
   // Persistir Especialidades
   const persistirEspecialidades = async (novasEsps) => {
     if (!empresaId) return;
@@ -638,7 +784,6 @@ export default function EquipeView({
     }
   };
 
-  // Ações de Especialidades
   const handleAddEspecialidade = async () => {
     const nomeLimpo = novaEspecialidadeNome.trim();
     if (!nomeLimpo) return;
@@ -659,6 +804,26 @@ export default function EquipeView({
     setNovaEspecialidadeCodigoUri("");
     await persistirEspecialidades(updatedEsps);
     showToast(`Especialidade "${nomeLimpo}" cadastrada com sucesso!`);
+  };
+
+  const handleSaveEditedEspecialidade = async (originalNome, editedData) => {
+    const updatedEsps = especialidadesCategorizadas.map((e) => {
+      if (e.nome === originalNome) {
+        return {
+          ...e,
+          nome: editedData.nome.trim() || e.nome,
+          codigo_uri: editedData.codigo_uri ? String(editedData.codigo_uri).trim() : null,
+          categoria: editedData.categoria || e.categoria || "Consultas",
+          duracao_minutos: Number(editedData.duracao_minutos) || 30
+        };
+      }
+      return e;
+    });
+
+    setEspecialidadesCategorizadas(updatedEsps);
+    await persistirEspecialidades(updatedEsps);
+    setEditingEspecialidade(null);
+    showToast(`Especialidade "${editedData.nome || originalNome}" atualizada com sucesso!`);
   };
 
   const handleChangeEspecialidadeCategoria = async (espNome, novaCat) => {
@@ -695,25 +860,120 @@ export default function EquipeView({
     showToast(`Especialidade "${espNome}" removida.`);
   };
 
+  // Ordenação de Especialistas
+  const handleSortEspecialistas = (key) => {
+    let direction = "asc";
+    if (sortEspecialistas.key === key && sortEspecialistas.direction === "asc") {
+      direction = "desc";
+    }
+    setSortEspecialistas({ key, direction });
+    playDopamineSound("click");
+  };
+
   const filteredServicos = useMemo(() => {
-    if (!searchTerm.trim()) return servicos;
-    const term = searchTerm.toLowerCase();
-    return servicos.filter(
-      (s) =>
-        s.nome.toLowerCase().includes(term) ||
-        (s.codigo_uri && s.codigo_uri.toLowerCase().includes(term)) ||
-        (s.especialidade && s.especialidade.toLowerCase().includes(term))
-    );
-  }, [servicos, searchTerm]);
+    let list = servicos;
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      list = list.filter(
+        (s) =>
+          s.nome.toLowerCase().includes(term) ||
+          (s.codigo_uri && String(s.codigo_uri).toLowerCase().includes(term)) ||
+          (s.especialidade && s.especialidade.toLowerCase().includes(term))
+      );
+    }
+
+    if (sortEspecialistas.key) {
+      list = [...list].sort((a, b) => {
+        let valA = "";
+        let valB = "";
+
+        if (sortEspecialistas.key === "nome") {
+          valA = a.nome || "";
+          valB = b.nome || "";
+        } else if (sortEspecialistas.key === "especialidade") {
+          valA = a.especialidade || "";
+          valB = b.especialidade || "";
+        } else if (sortEspecialistas.key === "uri") {
+          const numA = parseInt(a.codigo_uri || a.numero_especialista, 10);
+          const numB = parseInt(b.codigo_uri || b.numero_especialista, 10);
+          if (!isNaN(numA) && !isNaN(numB)) {
+            return sortEspecialistas.direction === "asc" ? numA - numB : numB - numA;
+          }
+          valA = String(a.codigo_uri || a.numero_especialista || "");
+          valB = String(b.codigo_uri || b.numero_especialista || "");
+        } else if (sortEspecialistas.key === "disponibilidade") {
+          valA = a.status_agendamento || (a.ativo ? "ativo" : "inativo");
+          valB = b.status_agendamento || (b.ativo ? "ativo" : "inativo");
+        } else if (sortEspecialistas.key === "preco") {
+          const pA = Number(a.preco) || 0;
+          const pB = Number(b.preco) || 0;
+          return sortEspecialistas.direction === "asc" ? pA - pB : pB - pA;
+        } else if (sortEspecialistas.key === "antecedencia") {
+          const dA = Number(a.dias_bloqueio_padrao) || 0;
+          const dB = Number(b.dias_bloqueio_padrao) || 0;
+          return sortEspecialistas.direction === "asc" ? dA - dB : dB - dA;
+        }
+
+        const cmp = String(valA).localeCompare(String(valB), "pt-BR", { sensitivity: "base" });
+        return sortEspecialistas.direction === "asc" ? cmp : -cmp;
+      });
+    }
+
+    return list;
+  }, [servicos, searchTerm, sortEspecialistas]);
 
   const servicosPausados = useMemo(() => {
     return servicos.filter((s) => s.agendamento_bloqueado_ate);
   }, [servicos]);
 
+  // Ordenação de Especialidades
+  const handleSortEspecialidades = (key) => {
+    let direction = "asc";
+    if (sortEspecialidades.key === key && sortEspecialidades.direction === "asc") {
+      direction = "desc";
+    }
+    setSortEspecialidades({ key, direction });
+    playDopamineSound("click");
+  };
+
   const especialidadesFiltradas = useMemo(() => {
-    if (filtroCategoria === "Todas") return especialidadesCategorizadas;
-    return especialidadesCategorizadas.filter((e) => e.categoria === filtroCategoria);
-  }, [especialidadesCategorizadas, filtroCategoria]);
+    let list = especialidadesCategorizadas;
+    if (filtroCategoria !== "Todas") {
+      list = list.filter((e) => e.categoria === filtroCategoria);
+    }
+
+    if (sortEspecialidades.key) {
+      list = [...list].sort((a, b) => {
+        let valA = "";
+        let valB = "";
+
+        if (sortEspecialidades.key === "nome") {
+          valA = a.nome || "";
+          valB = b.nome || "";
+        } else if (sortEspecialidades.key === "categoria") {
+          valA = a.categoria || "";
+          valB = b.categoria || "";
+        } else if (sortEspecialidades.key === "uri") {
+          const numA = parseInt(a.codigo_uri, 10);
+          const numB = parseInt(b.codigo_uri, 10);
+          if (!isNaN(numA) && !isNaN(numB)) {
+            return sortEspecialidades.direction === "asc" ? numA - numB : numB - numA;
+          }
+          valA = String(a.codigo_uri || "");
+          valB = String(b.codigo_uri || "");
+        } else if (sortEspecialidades.key === "duracao") {
+          const dA = Number(a.duracao_minutos) || 30;
+          const dB = Number(b.duracao_minutos) || 30;
+          return sortEspecialidades.direction === "asc" ? dA - dB : dB - dA;
+        }
+
+        const cmp = String(valA).localeCompare(String(valB), "pt-BR", { sensitivity: "base" });
+        return sortEspecialidades.direction === "asc" ? cmp : -cmp;
+      });
+    }
+
+    return list;
+  }, [especialidadesCategorizadas, filtroCategoria, sortEspecialidades]);
 
   return (
     <motion.div
@@ -731,11 +991,12 @@ export default function EquipeView({
             <h2 className="text-xl font-bold text-zinc-950 dark:text-white tracking-tight">
               {subTab === "corpo" && "Corpo Clínico & Especialistas"}
               {subTab === "especialidades" && "Especialidades Médicas & Exames"}
+              {subTab === "modalidades" && "Modalidades & Convênios"}
               {subTab === "pausas" && "Especialistas com Agenda Pausada"}
               {subTab === "formulario" && "Cadastro de Especialista"}
             </h2>
             <p className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">
-              Gerencie colaboradores, categorias de atendimento, exames, consultas e pausas de agenda.
+              Gerencie colaboradores, categorias de atendimento, convênios, exames e pausas na agenda.
             </p>
           </div>
         </div>
@@ -744,7 +1005,7 @@ export default function EquipeView({
           <ButtonPrimary
             onClick={() => handleOpenForm()}
             icon={Plus}
-            className="px-5 py-2 text-xs min-h-[38px] rounded-xl"
+            className="px-5 py-2 text-xs min-h-[38px] rounded-xl cursor-pointer"
           >
             Novo Especialista
           </ButtonPrimary>
@@ -785,9 +1046,39 @@ export default function EquipeView({
                   />
                 </div>
 
-                <span className="text-xs font-bold text-zinc-500">
-                  {filteredServicos.length} especialista(s) cadastrado(s)
-                </span>
+                <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+                  {/* ALTERNADOR DE VISUALIZAÇÃO: LISTA VS CARDS */}
+                  <div className="flex items-center bg-zinc-100 dark:bg-zinc-800/80 p-1 rounded-xl border border-zinc-200/70 dark:border-zinc-700/60 shadow-inner">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleViewMode("lista")}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        viewMode === "lista"
+                          ? "bg-white dark:bg-black text-zinc-950 dark:text-white shadow-sm"
+                          : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+                      }`}
+                      title="Visualizar em formato de Lista"
+                    >
+                      <List size={14} /> Lista
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleViewMode("cards")}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        viewMode === "cards"
+                          ? "bg-white dark:bg-black text-zinc-950 dark:text-white shadow-sm"
+                          : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+                      }`}
+                      title="Visualizar em formato de Cards"
+                    >
+                      <LayoutGrid size={14} /> Cards
+                    </button>
+                  </div>
+
+                  <span className="text-xs font-bold text-zinc-500 whitespace-nowrap">
+                    {filteredServicos.length} especialista(s)
+                  </span>
+                </div>
               </div>
 
               {filteredServicos.length === 0 ? (
@@ -807,17 +1098,198 @@ export default function EquipeView({
                     Cadastrar Especialista
                   </ButtonPrimary>
                 </div>
+              ) : viewMode === "lista" ? (
+                /* VISUALIZAÇÃO EM LISTA (TABELA MODERNA COM ORDENAÇÃO E BOTÃO EXCLUIR) */
+                <div className="bg-white/85 dark:bg-[#0c0c0e]/85 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 rounded-2xl overflow-hidden shadow-sm">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b border-zinc-200/80 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-900/60 text-zinc-400 font-bold uppercase tracking-wider text-[10px] select-none">
+                          <th
+                            onClick={() => handleSortEspecialistas("nome")}
+                            className="p-4 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                          >
+                            <div className="flex items-center gap-1">
+                              <span>Especialista</span>
+                              {sortEspecialistas.key === "nome" ? (
+                                sortEspecialistas.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                              ) : (
+                                <ArrowUpDown size={11} className="opacity-40" />
+                              )}
+                            </div>
+                          </th>
+                          <th
+                            onClick={() => handleSortEspecialistas("especialidade")}
+                            className="p-4 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                          >
+                            <div className="flex items-center gap-1">
+                              <span>Especialidades</span>
+                              {sortEspecialistas.key === "especialidade" ? (
+                                sortEspecialistas.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                              ) : (
+                                <ArrowUpDown size={11} className="opacity-40" />
+                              )}
+                            </div>
+                          </th>
+                          <th
+                            onClick={() => handleSortEspecialistas("uri")}
+                            className="p-4 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                          >
+                            <div className="flex items-center gap-1">
+                              <span>URI</span>
+                              {sortEspecialistas.key === "uri" ? (
+                                sortEspecialistas.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                              ) : (
+                                <ArrowUpDown size={11} className="opacity-40" />
+                              )}
+                            </div>
+                          </th>
+                          <th
+                            onClick={() => handleSortEspecialistas("disponibilidade")}
+                            className="p-4 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                          >
+                            <div className="flex items-center gap-1">
+                              <span>Disponibilidade</span>
+                              {sortEspecialistas.key === "disponibilidade" ? (
+                                sortEspecialistas.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                              ) : (
+                                <ArrowUpDown size={11} className="opacity-40" />
+                              )}
+                            </div>
+                          </th>
+                          <th
+                            onClick={() => handleSortEspecialistas("preco")}
+                            className="p-4 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                          >
+                            <div className="flex items-center gap-1">
+                              <span>Particular</span>
+                              {sortEspecialistas.key === "preco" ? (
+                                sortEspecialistas.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                              ) : (
+                                <ArrowUpDown size={11} className="opacity-40" />
+                              )}
+                            </div>
+                          </th>
+                          <th
+                            onClick={() => handleSortEspecialistas("antecedencia")}
+                            className="p-4 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                          >
+                            <div className="flex items-center gap-1">
+                              <span>Antecedência</span>
+                              {sortEspecialistas.key === "antecedencia" ? (
+                                sortEspecialistas.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                              ) : (
+                                <ArrowUpDown size={11} className="opacity-40" />
+                              )}
+                            </div>
+                          </th>
+                          <th className="p-4 text-right whitespace-nowrap">Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60 font-medium">
+                        {filteredServicos.map((srv) => {
+                          const esps = srv.especialidade
+                            ? srv.especialidade.split(",").map((e) => e.trim()).filter(Boolean)
+                            : [];
+                          return (
+                            <tr key={srv.id} className="hover:bg-zinc-50/60 dark:hover:bg-zinc-900/40 transition-colors">
+                              <td className="p-4 font-bold text-zinc-950 dark:text-white">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center font-bold text-zinc-600 dark:text-zinc-300">
+                                    {srv.nome.charAt(0)}
+                                  </div>
+                                  <span className="font-extrabold text-sm">{srv.nome}</span>
+                                </div>
+                              </td>
+                              <td className="p-4">
+                                <div className="flex flex-wrap gap-1 max-w-xs">
+                                  {esps.length > 0 ? (
+                                    esps.map((esp, i) => (
+                                      <span
+                                        key={i}
+                                        className="text-[9.5px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/40 px-2 py-0.5 rounded"
+                                      >
+                                        {esp}
+                                      </span>
+                                    ))
+                                  ) : (
+                                    <span className="text-zinc-400 italic text-[11px]">Geral</span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="p-4">
+                                {srv.codigo_uri ? (
+                                  <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/50">
+                                    #{srv.codigo_uri}
+                                  </span>
+                                ) : (
+                                  <span className="text-zinc-400">-</span>
+                                )}
+                              </td>
+                              <td className="p-4">
+                                {srv.redirecionar_whatsapp || srv.status_agendamento === "whatsapp" ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/50">
+                                    <MessageCircle size={11} /> Ativo Parcial
+                                  </span>
+                                ) : !srv.ativo || srv.status_agendamento === "inativo" ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200/50">
+                                    <Ban size={11} /> Inativo
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/50">
+                                    <CheckCircle2 size={11} /> Ativo Online
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-4 font-mono font-bold text-zinc-900 dark:text-zinc-100">
+                                {srv.preco ? `R$ ${Number(srv.preco).toFixed(2)}` : "R$ 0,00"}
+                              </td>
+                              <td className="p-4 text-zinc-600 dark:text-zinc-400">
+                                {srv.dias_bloqueio_padrao > 0
+                                  ? `${srv.dias_bloqueio_padrao} ${srv.tipo_contagem_dias || "dias"}`
+                                  : "Imediato"}
+                              </td>
+                              <td className="p-4 text-right whitespace-nowrap">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    onClick={() => handleOpenForm(srv)}
+                                    className="px-3 py-1.5 rounded-xl bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 text-xs font-bold transition-all cursor-pointer border border-zinc-200/80 dark:border-zinc-700"
+                                  >
+                                    Editar
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteServico(srv)}
+                                    className="p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl transition-colors cursor-pointer border border-transparent hover:border-red-200/60"
+                                    title="Excluir especialista permanentemente"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               ) : (
+                /* VISUALIZAÇÃO EM CARDS */
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {filteredServicos.map((srv) => (
-                    <ServicoCard key={srv.id} srv={srv} onEdit={handleOpenForm} />
+                    <ServicoCard
+                      key={srv.id}
+                      srv={srv}
+                      onEdit={handleOpenForm}
+                      onDelete={handleDeleteServico}
+                    />
                   ))}
                 </div>
               )}
             </div>
           )}
 
-          {/* SUB-ABA 2: ESPECIALIDADES MÉDICAS & EXAMES */}
+          {/* SUB-ABA 2: ESPECIALIDADES MÉDICAS & EXAMES (COM LISTA, CARDS, EDIÇÃO E DURAÇÃO) */}
           {subTab === "especialidades" && (
             <div className="space-y-6">
               <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm space-y-6">
@@ -827,25 +1299,55 @@ export default function EquipeView({
                       <Layers size={18} className="text-emerald-500" strokeWidth={1.5} /> Especialidades Médicas & Exames
                     </h3>
                     <p className="text-xs text-zinc-500 mt-0.5">
-                      Cadastre as especialidades atendidas na clínica, atribua um Código URI para links diretos e defina a categoria e duração padrão de cada atendimento.
+                      Cadastre as especialidades atendidas na clínica, atribua um Código URI e defina o tempo/duração exato de cada atendimento.
                     </p>
                   </div>
 
-                  {/* FILTRO POR CATEGORIA */}
-                  <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar">
-                    {["Todas", "Consultas", "Exames"].map((cat) => (
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    {/* ALTERNADOR DE VISUALIZAÇÃO EM ESPECIALIDADES: LISTA VS CARDS */}
+                    <div className="flex items-center bg-zinc-100 dark:bg-zinc-800/80 p-1 rounded-xl border border-zinc-200/70 dark:border-zinc-700/60 shadow-inner">
                       <button
-                        key={cat}
-                        onClick={() => setFiltroCategoria(cat)}
-                        className={`px-3 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
-                          filtroCategoria === cat
-                            ? "bg-zinc-950 dark:bg-white text-white dark:text-black shadow-sm"
-                            : "bg-zinc-100/70 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+                        type="button"
+                        onClick={() => handleToggleViewModeEspecialidades("lista")}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          viewModeEspecialidades === "lista"
+                            ? "bg-white dark:bg-black text-zinc-950 dark:text-white shadow-sm"
+                            : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
                         }`}
+                        title="Visualizar Especialidades em Lista"
                       >
-                        {cat}
+                        <List size={14} /> Lista
                       </button>
-                    ))}
+                      <button
+                        type="button"
+                        onClick={() => handleToggleViewModeEspecialidades("cards")}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          viewModeEspecialidades === "cards"
+                            ? "bg-white dark:bg-black text-zinc-950 dark:text-white shadow-sm"
+                            : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+                        }`}
+                        title="Visualizar Especialidades em Cards"
+                      >
+                        <LayoutGrid size={14} /> Cards
+                      </button>
+                    </div>
+
+                    {/* FILTRO POR CATEGORIA */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar">
+                      {["Todas", "Consultas", "Exames"].map((cat) => (
+                        <button
+                          key={cat}
+                          onClick={() => setFiltroCategoria(cat)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                            filtroCategoria === cat
+                              ? "bg-zinc-950 dark:bg-white text-white dark:text-black shadow-sm"
+                              : "bg-zinc-100/70 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+                          }`}
+                        >
+                          {cat}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
@@ -886,7 +1388,7 @@ export default function EquipeView({
                     <select
                       value={novaEspecialidadeCat}
                       onChange={(e) => setNovaEspecialidadeCat(e.target.value)}
-                      className="w-full px-2.5 py-2 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none text-zinc-800 dark:text-zinc-200 font-bold"
+                      className="w-full px-2.5 py-2 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none text-zinc-800 dark:text-zinc-200 font-bold cursor-pointer"
                     >
                       <option value="Consultas">Consultas</option>
                       <option value="Exames">Exames</option>
@@ -895,12 +1397,12 @@ export default function EquipeView({
 
                   <div className="sm:col-span-2">
                     <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider block mb-1">
-                      Duração (Slot)
+                      Duração (Tempo)
                     </label>
                     <select
                       value={novaEspecialidadeDuracao}
                       onChange={(e) => setNovaEspecialidadeDuracao(Number(e.target.value))}
-                      className="w-full px-2.5 py-2 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none text-zinc-800 dark:text-zinc-200 font-bold"
+                      className="w-full px-2.5 py-2 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none text-zinc-800 dark:text-zinc-200 font-bold cursor-pointer"
                     >
                       <option value={10}>10 min</option>
                       <option value={15}>15 min</option>
@@ -926,14 +1428,258 @@ export default function EquipeView({
                   </div>
                 </div>
 
-                {/* LISTA DE ESPECIALIDADES CADASTRADAS */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2">
-                  {especialidadesFiltradas.length === 0 ? (
-                    <div className="col-span-full py-12 text-center text-xs text-zinc-400 border border-dashed border-zinc-200 dark:border-zinc-800 rounded-2xl">
-                      Nenhuma especialidade encontrada nesta categoria.
+                {/* MODAL DE EDIÇÃO DE ESPECIALIDADE */}
+                <AnimatePresence>
+                  {editingEspecialidade && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+                    >
+                      <div className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl">
+                        <div className="flex justify-between items-center border-b border-zinc-100 dark:border-zinc-800 pb-3">
+                          <h4 className="font-bold text-sm text-zinc-950 dark:text-white flex items-center gap-2">
+                            <Pencil size={15} className="text-blue-500" /> Editar Especialidade
+                          </h4>
+                          <button
+                            type="button"
+                            onClick={() => setEditingEspecialidade(null)}
+                            className="text-zinc-400 hover:text-zinc-950 dark:hover:text-white font-bold cursor-pointer"
+                          >
+                            ✕
+                          </button>
+                        </div>
+
+                        <div className="space-y-3.5">
+                          <TextInput
+                            label="Nome da Especialidade *"
+                            value={editingEspecialidade.nome}
+                            onChange={(e) =>
+                              setEditingEspecialidade({ ...editingEspecialidade, nome: e.target.value })
+                            }
+                          />
+
+                          <TextInput
+                            label="Código URI (URL)"
+                            placeholder="Ex: 8"
+                            value={editingEspecialidade.codigo_uri || ""}
+                            onChange={(e) =>
+                              setEditingEspecialidade({
+                                ...editingEspecialidade,
+                                codigo_uri: e.target.value
+                              })
+                            }
+                          />
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">
+                                Categoria
+                              </label>
+                              <select
+                                value={editingEspecialidade.categoria || "Consultas"}
+                                onChange={(e) =>
+                                  setEditingEspecialidade({
+                                    ...editingEspecialidade,
+                                    categoria: e.target.value
+                                  })
+                                }
+                                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs font-bold outline-none text-zinc-800 dark:text-zinc-200"
+                              >
+                                <option value="Consultas">Consultas</option>
+                                <option value="Exames">Exames</option>
+                              </select>
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">
+                                Duração (Tempo)
+                              </label>
+                              <select
+                                value={editingEspecialidade.duracao_minutos || 30}
+                                onChange={(e) =>
+                                  setEditingEspecialidade({
+                                    ...editingEspecialidade,
+                                    duracao_minutos: Number(e.target.value)
+                                  })
+                                }
+                                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs font-bold outline-none text-blue-600 dark:text-blue-400"
+                              >
+                                <option value={10}>10 min</option>
+                                <option value={15}>15 min</option>
+                                <option value={20}>20 min</option>
+                                <option value={30}>30 min</option>
+                                <option value={40}>40 min</option>
+                                <option value={45}>45 min</option>
+                                <option value={60}>60 min (1h)</option>
+                                <option value={90}>90 min</option>
+                                <option value={120}>120 min (2h)</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex justify-end gap-2 pt-3 border-t border-zinc-100 dark:border-zinc-800">
+                          <button
+                            type="button"
+                            onClick={() => setEditingEspecialidade(null)}
+                            className="px-4 py-2 rounded-xl text-xs font-bold bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 cursor-pointer"
+                          >
+                            Cancelar
+                          </button>
+                          <ButtonPrimary
+                            onClick={() =>
+                              handleSaveEditedEspecialidade(
+                                editingEspecialidade.originalNome || editingEspecialidade.nome,
+                                editingEspecialidade
+                              )
+                            }
+                            icon={CheckCircle2}
+                            className="px-5 py-2 text-xs rounded-xl"
+                          >
+                            Salvar Alterações
+                          </ButtonPrimary>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* LISTAGEM DE ESPECIALIDADES EM LISTA OU CARDS */}
+                {especialidadesFiltradas.length === 0 ? (
+                  <div className="py-12 text-center text-xs text-zinc-400 border border-dashed border-zinc-200 dark:border-zinc-800 rounded-2xl">
+                    Nenhuma especialidade encontrada nesta categoria.
+                  </div>
+                ) : viewModeEspecialidades === "lista" ? (
+                  /* VISUALIZAÇÃO EM LISTA (TABELA) */
+                  <div className="bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="border-b border-zinc-200/80 dark:border-zinc-800 bg-zinc-100/70 dark:bg-zinc-800/70 text-zinc-400 font-bold uppercase tracking-wider text-[10px] select-none">
+                            <th className="p-3.5 w-12 text-center">#</th>
+                            <th
+                              onClick={() => handleSortEspecialidades("nome")}
+                              className="p-3.5 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                            >
+                              <div className="flex items-center gap-1">
+                                <span>Especialidade / Exame</span>
+                                {sortEspecialidades.key === "nome" ? (
+                                  sortEspecialidades.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                                ) : (
+                                  <ArrowUpDown size={11} className="opacity-40" />
+                                )}
+                              </div>
+                            </th>
+                            <th
+                              onClick={() => handleSortEspecialidades("uri")}
+                              className="p-3.5 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                            >
+                              <div className="flex items-center gap-1">
+                                <span>Código URI</span>
+                                {sortEspecialidades.key === "uri" ? (
+                                  sortEspecialidades.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                                ) : (
+                                  <ArrowUpDown size={11} className="opacity-40" />
+                                )}
+                              </div>
+                            </th>
+                            <th
+                              onClick={() => handleSortEspecialidades("categoria")}
+                              className="p-3.5 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                            >
+                              <div className="flex items-center gap-1">
+                                <span>Categoria</span>
+                                {sortEspecialidades.key === "categoria" ? (
+                                  sortEspecialidades.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                                ) : (
+                                  <ArrowUpDown size={11} className="opacity-40" />
+                                )}
+                              </div>
+                            </th>
+                            <th
+                              onClick={() => handleSortEspecialidades("duracao")}
+                              className="p-3.5 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                            >
+                              <div className="flex items-center gap-1">
+                                <span>Duração (Slot)</span>
+                                {sortEspecialidades.key === "duracao" ? (
+                                  sortEspecialidades.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                                ) : (
+                                  <ArrowUpDown size={11} className="opacity-40" />
+                                )}
+                              </div>
+                            </th>
+                            <th className="p-3.5 text-right whitespace-nowrap">Ações</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800 font-medium">
+                          {especialidadesFiltradas.map((esp, idx) => (
+                            <tr key={esp.nome} className="hover:bg-white dark:hover:bg-zinc-800/50 transition-colors">
+                              <td className="p-3.5 text-center font-bold text-zinc-400 font-mono text-[11px]">
+                                {idx + 1}
+                              </td>
+                              <td className="p-3.5 font-bold text-zinc-950 dark:text-white">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 flex items-center justify-center">
+                                    <Stethoscope size={14} />
+                                  </div>
+                                  <span className="text-sm">{esp.nome}</span>
+                                </div>
+                              </td>
+                              <td className="p-3.5">
+                                {esp.codigo_uri ? (
+                                  <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/50">
+                                    #{esp.codigo_uri}
+                                  </span>
+                                ) : (
+                                  <span className="text-zinc-400">-</span>
+                                )}
+                              </td>
+                              <td className="p-3.5">
+                                <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300">
+                                  {esp.categoria || "Consultas"}
+                                </span>
+                              </td>
+                              <td className="p-3.5 font-bold text-blue-600 dark:text-blue-400">
+                                {esp.duracao_minutos || 30} min
+                              </td>
+                              <td className="p-3.5 text-right whitespace-nowrap">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setEditingEspecialidade({
+                                        ...esp,
+                                        originalNome: esp.nome
+                                      })
+                                    }
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 border border-zinc-200/80 dark:border-zinc-700 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
+                                    title="Editar especialidade"
+                                  >
+                                    <Pencil size={11} /> Editar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveEspecialidade(esp.nome)}
+                                    className="p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition-colors cursor-pointer border border-transparent hover:border-red-200/60"
+                                    title="Excluir especialidade"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
-                  ) : (
-                    especialidadesFiltradas.map((esp) => (
+                  </div>
+                ) : (
+                  /* VISUALIZAÇÃO EM CARDS */
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2">
+                    {especialidadesFiltradas.map((esp) => (
                       <div
                         key={esp.nome}
                         className="p-4 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl flex flex-col justify-between gap-3 group hover:border-zinc-300 dark:hover:border-zinc-700 transition-all shadow-sm"
@@ -952,13 +1698,28 @@ export default function EquipeView({
                             </div>
                           </div>
 
-                          <button
-                            onClick={() => handleRemoveEspecialidade(esp.nome)}
-                            className="p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition-colors shrink-0"
-                            title="Excluir especialidade"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditingEspecialidade({
+                                  ...esp,
+                                  originalNome: esp.nome
+                                })
+                              }
+                              className="p-1.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-lg transition-colors cursor-pointer"
+                              title="Editar especialidade"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              onClick={() => handleRemoveEspecialidade(esp.nome)}
+                              className="p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition-colors cursor-pointer"
+                              title="Excluir especialidade"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
                         </div>
 
                         <div className="grid grid-cols-3 gap-2 pt-2 border-t border-zinc-100 dark:border-white/5">
@@ -1015,14 +1776,120 @@ export default function EquipeView({
                           </div>
                         </div>
                       </div>
-                    ))
-                  )}
+                    ))}
+                  </div>
+                )}
+              </section>
+            </div>
+          )}
+
+          {/* SUB-ABA 3: MODALIDADES & CONVÊNIOS */}
+          {subTab === "modalidades" && (
+            <div className="space-y-6">
+              <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm">
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-6 gap-4 border-b border-zinc-100 dark:border-white/5 pb-4">
+                  <div>
+                    <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">
+                      <ShieldCheck size={18} strokeWidth={1.5} className="text-emerald-500" /> Modalidades de Atendimento & Convênios
+                    </h3>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      Configure os planos aceitos, coberturas particulares e seus códigos URI para acesso direto por link.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddModalidade}
+                    className="flex items-center justify-center gap-2 px-4 py-2 bg-zinc-950 dark:bg-white text-white dark:text-black text-xs font-bold rounded-xl transition-all shadow-sm min-h-[38px] cursor-pointer"
+                  >
+                    <Plus size={15} /> Adicionar Modalidade
+                  </button>
+                </div>
+
+                <div className="mb-6 p-4 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex-1">
+                    <CustomSelect
+                      label="Modalidade Padrão Inicial"
+                      value={modalidadePadrao}
+                      onChange={(v) => {
+                        setModalidadePadrao(v);
+                        persistirModalidades(modalidadesOpcoes, v);
+                      }}
+                      options={modalidadesOpcoes.map((m) => ({
+                        value: m.nome,
+                        label: `${m.nome} (${m.codigo_uri ? `ID URI: ${m.codigo_uri}` : `ID: ${m.id}`})`
+                      }))}
+                    />
+                  </div>
+                  <div className="text-[11px] text-blue-700 dark:text-blue-300 font-medium bg-blue-100/60 dark:bg-blue-900/40 p-3 rounded-xl">
+                    💡 <strong>Link Direto:</strong> Adicione <code className="font-mono bg-white dark:bg-black px-1 py-0.5 rounded">?modalidade=ID</code> ao link da clínica para pré-selecionar a modalidade automaticamente.
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {modalidadesOpcoes.map((mod, index) => {
+                    const idExibicao = mod.codigo_uri || String(index + 1);
+                    return (
+                      <div
+                        key={mod.id}
+                        className="p-4 sm:p-5 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl flex flex-col md:flex-row gap-4 items-start md:items-center justify-between shadow-sm"
+                      >
+                        <div className="flex items-center gap-2 mb-2 md:mb-0">
+                          <span className="px-2.5 py-1 rounded-lg bg-zinc-950 text-white dark:bg-white dark:text-black font-mono text-[11px] font-extrabold whitespace-nowrap shadow-sm">
+                            # ID: {idExibicao}
+                          </span>
+                        </div>
+
+                        <div className="flex-1 w-full grid sm:grid-cols-3 gap-3">
+                          <TextInput
+                            label="Nome da Modalidade / Convênio"
+                            placeholder="Ex: Particular, Unimed, Bradesco"
+                            value={mod.nome}
+                            onChange={(e) => handleUpdateModalidade(mod.id, "nome", e.target.value)}
+                          />
+                          <TextInput
+                            label="Código / ID na URI (URL)"
+                            placeholder="Ex: 1, 2, unimed"
+                            value={mod.codigo_uri || ""}
+                            onChange={(e) => handleUpdateModalidade(mod.id, "codigo_uri", e.target.value)}
+                          />
+                          {mod.exige_senha ? (
+                            <TextInput
+                              label="Senha / Token Exigido"
+                              placeholder="Senha de autorização"
+                              value={mod.senha || ""}
+                              onChange={(e) => handleUpdateModalidade(mod.id, "senha", e.target.value)}
+                            />
+                          ) : (
+                            <div className="hidden sm:flex items-center text-[10px] text-zinc-400 font-mono">
+                              Link: ?modalidade={idExibicao}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
+                          <ToggleSwitch
+                            checked={mod.exige_senha}
+                            onChange={(v) => handleUpdateModalidade(mod.id, "exige_senha", v)}
+                            label="Exigir Senha"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveModalidade(mod.id)}
+                            className="p-2 rounded-xl text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
+                            title="Remover modalidade"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </section>
             </div>
           )}
 
-          {/* SUB-ABA 3: PAUSAS NA AGENDA */}
+          {/* SUB-ABA 4: PAUSAS NA AGENDA */}
           {subTab === "pausas" && (
             <div className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm space-y-6">
               <div className="border-b border-zinc-100 dark:border-white/5 pb-4">
@@ -1065,7 +1932,7 @@ export default function EquipeView({
                       </div>
                       <button
                         onClick={() => handleOpenForm(s)}
-                        className="px-4 py-2 bg-white dark:bg-zinc-800 border border-amber-200 text-amber-900 dark:text-amber-300 text-xs font-bold rounded-xl"
+                        className="px-4 py-2 bg-white dark:bg-zinc-800 border border-amber-200 text-amber-900 dark:text-amber-300 text-xs font-bold rounded-xl cursor-pointer"
                       >
                         Editar Pausa
                       </button>
