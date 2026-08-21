@@ -52,7 +52,7 @@ const DockItem = ({ href, icon: Icon, label, activeMatch }) => {
   );
 };
 
-export default function Navbar() {
+export default function Navbar({ hasBottomBar = false }) {
   const [isDark, setIsDark] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [lastSlug, setLastSlug] = useState('');
@@ -60,8 +60,6 @@ export default function Navbar() {
   const pathname = usePathname();
   const params = useParams();
   const currentSlug = params?.slug;
-
-  const isAgendamentoFlow = pathname?.includes('/agendamentos');
 
   useEffect(() => {
     setMounted(true);
@@ -109,13 +107,13 @@ export default function Navbar() {
     <nav
       aria-label="Navegação Principal"
       className={`md:hidden fixed ${
-        isAgendamentoFlow ? 'bottom-[74px]' : 'bottom-4'
-      } left-0 right-0 z-[99999] flex justify-center pointer-events-none px-4 transition-all duration-300`}
+        hasBottomBar ? 'bottom-[78px]' : 'bottom-3.5 sm:bottom-4'
+      } left-0 right-0 z-[99999] flex justify-center pointer-events-none px-4 transition-all duration-300 ease-out`}
     >
       <motion.div
         layout
         transition={liquidSpring}
-        className="relative flex items-center p-1.5 rounded-full bg-white/60 dark:bg-[#0c0c0e]/65 backdrop-blur-[40px] saturate-[1.8] border border-zinc-200/60 dark:border-white/[0.08] shadow-[0_15px_40px_-10px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.7)] dark:shadow-[0_15px_40px_-10px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.06)] pointer-events-auto gap-1"
+        className="relative flex items-center p-1.5 rounded-full bg-white/70 dark:bg-[#0c0c0e]/75 backdrop-blur-[36px] saturate-[1.8] border border-zinc-200/70 dark:border-white/[0.08] shadow-[0_12px_36px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.75)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.65),inset_0_1px_0_rgba(255,255,255,0.06)] pointer-events-auto gap-1"
       >
         <DockItem href="/" icon={House} label="Início" />
         <DockItem

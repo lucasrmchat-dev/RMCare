@@ -2,9 +2,18 @@
 
 import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
-import { ChevronLeft, Stethoscope,
+import {
+  Stethoscope,
   MessageCircle,
-  Sparkles, User, Search, Check, Tag } from "lucide-react";
+  Sparkles,
+  User,
+  Search,
+  Check,
+  Tag,
+  ArrowLeft,
+  CalendarDays,
+  Activity
+} from "lucide-react";
 import { useAgendamento } from "../context";
 import { playDopamineSound, triggerHaptic } from "@/lib/dopamine";
 
@@ -128,13 +137,16 @@ export default function ModuleEspecialidade() {
       className="max-w-2xl mx-auto space-y-6 text-left"
     >
       <div>
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 text-[11px] font-bold uppercase tracking-wider mb-2.5 shadow-sm">
+          <Stethoscope size={13} strokeWidth={2} /> Atendimento Clínico
+        </div>
         <h2 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-zinc-950 dark:text-white leading-tight">
           Direcionamento Clínico
         </h2>
         <p className="text-zinc-500 dark:text-zinc-400 text-xs sm:text-sm mt-1.5 leading-relaxed">
           {!formData.especialidade
-            ? "Selecione o atendimento ou especialidade desejada para listar os profissionais disponíveis."
-            : `Especialidade: ${formData.especialidade}. Escolha o especialista.`}
+            ? "Selecione a especialidade ou procedimento desejado para visualizar os especialistas disponíveis."
+            : `Especialidade selecionada: ${formData.especialidade}. Escolha o profissional de sua preferência.`}
         </p>
       </div>
 
@@ -220,7 +232,7 @@ export default function ModuleEspecialidade() {
                     value={filterSearch}
                     onChange={(e) => setFilterSearch(e.target.value)}
                     placeholder="Filtrar por especialidade ou procedimento..."
-                    className="w-full min-h-[44px] pl-10 pr-4 py-2.5 bg-white/70 dark:bg-white/[0.04] backdrop-blur-xl border border-zinc-200/80 dark:border-white/10 rounded-2xl text-xs font-medium outline-none focus:border-[#9FC131] transition-all"
+                    className="w-full min-h-[46px] pl-11 pr-4 py-2.5 bg-white/70 dark:bg-white/[0.04] backdrop-blur-xl border border-zinc-200/80 dark:border-white/10 rounded-2xl text-xs sm:text-sm font-medium outline-none focus:border-[#9FC131] transition-all"
                   />
                 </div>
               )}
@@ -234,10 +246,10 @@ export default function ModuleEspecialidade() {
                       whileTap={{ scale: 0.97 }}
                       key={esp.nome}
                       onClick={() => handleSelectEspecialidade(esp)}
-                      className="min-h-[58px] p-4 sm:p-5 border rounded-2xl flex items-center justify-between text-left transition-all border-zinc-200/80 dark:border-white/10 hover:border-[#9FC131] bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-xl shadow-sm hover:shadow-md group"
+                      className="min-h-[64px] p-4 sm:p-5 border rounded-2xl flex items-center justify-between text-left transition-all border-zinc-200/80 dark:border-white/10 hover:border-[#9FC131] bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-xl shadow-sm hover:shadow-md group cursor-pointer"
                     >
                       <div className="flex items-center gap-3.5 min-w-0">
-                        <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 border border-blue-500/20 group-hover:bg-[#9FC131]/20 group-hover:text-[#86a621] dark:group-hover:text-[#9FC131] transition-colors">
+                        <div className="w-11 h-11 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 border border-blue-500/20 group-hover:bg-[#9FC131]/20 group-hover:text-[#86a621] dark:group-hover:text-[#9FC131] transition-colors">
                           <Stethoscope size={20} strokeWidth={2} />
                         </div>
                         <div className="truncate">
@@ -260,17 +272,27 @@ export default function ModuleEspecialidade() {
             </div>
           ) : (
             <motion.div initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
-              <button
-                onClick={() => {
-                  playDopamineSound("click");
-                  setValue("especialidade", "");
-                  setValue("medico_profissional", "");
-                  setValue("subtipo_exame", "");
-                }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-zinc-100 dark:bg-zinc-800/80 rounded-full text-xs font-bold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 transition-colors min-h-[36px]"
-              >
-                <ChevronLeft size={15} /> Voltar para Especialidades
-              </button>
+              {/* BADGE DE CONTEXTO ATUAL */}
+              <div className="flex items-center justify-between p-3 rounded-2xl bg-zinc-100/80 dark:bg-white/[0.04] border border-zinc-200/70 dark:border-white/[0.08]">
+                <div className="flex items-center gap-2.5">
+                  <span className="w-2 h-2 rounded-full bg-[#9FC131] animate-pulse" />
+                  <span className="text-xs font-extrabold text-zinc-900 dark:text-white">
+                    {formData.especialidade}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    playDopamineSound("click");
+                    setValue("especialidade", "");
+                    setValue("medico_profissional", "");
+                    setValue("subtipo_exame", "");
+                  }}
+                  className="text-[11px] font-bold text-zinc-500 hover:text-zinc-950 dark:hover:text-white transition-colors underline"
+                >
+                  Alterar especialidade
+                </button>
+              </div>
 
               {specialistRedirecting ? (
                 /* TELA DEDICADA DE REDIRECIONAMENTO PARA ATENDENTE / WHATSAPP */
@@ -358,7 +380,7 @@ export default function ModuleEspecialidade() {
                         );
                         window.open(`https://wa.me/${wppNum}?text=${textoMsg}`, "_blank");
                       }}
-                      className="w-full min-h-[52px] py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full font-black text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-2.5 transition-all shadow-lg shadow-emerald-600/25"
+                      className="w-full min-h-[52px] py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full font-black text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-2.5 transition-all shadow-lg shadow-emerald-600/25 cursor-pointer"
                     >
                       <MessageCircle size={19} />
                       Falar com Atendente no WhatsApp
@@ -371,7 +393,7 @@ export default function ModuleEspecialidade() {
                         setValue("medico_profissional", "");
                         setValue("subtipo_exame", "");
                       }}
-                      className="w-full min-h-[44px] py-2.5 text-zinc-500 hover:text-zinc-950 dark:hover:text-white text-xs font-bold transition-colors"
+                      className="w-full min-h-[44px] py-2.5 text-zinc-500 hover:text-zinc-950 dark:hover:text-white text-xs font-bold transition-colors cursor-pointer"
                     >
                       ← Escolher outro especialista ou especialidade
                     </button>
@@ -390,12 +412,12 @@ export default function ModuleEspecialidade() {
                         whileTap={{ scale: 0.97 }}
                         key={m.id}
                         onClick={() => handleSelectProfissional(m)}
-                        className={`min-h-[64px] p-4 sm:p-5 border rounded-2xl flex items-center justify-between text-left transition-all ${
+                        className={`min-h-[68px] p-4 sm:p-5 border rounded-2xl flex items-center justify-between text-left transition-all cursor-pointer ${
                           isSelected
-                            ? "border-zinc-950 bg-zinc-50 dark:border-white dark:bg-white/[0.08] shadow-md ring-2 ring-[#9FC131]"
+                            ? "border-zinc-950 bg-zinc-50/90 dark:border-white dark:bg-white/[0.08] shadow-md ring-2 ring-[#9FC131]"
                             : isWppRedirect
                             ? "border-purple-200/80 dark:border-purple-900/40 hover:border-purple-400 bg-purple-50/20 dark:bg-purple-950/10 backdrop-blur-xl"
-                            : "border-zinc-200/80 dark:border-white/10 hover:border-zinc-400 bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-xl"
+                            : "border-zinc-200/80 dark:border-white/10 hover:border-zinc-400 bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-xl shadow-sm"
                         }`}
                       >
                         <div className="flex items-center gap-3.5 min-w-0">

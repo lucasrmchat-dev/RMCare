@@ -37,6 +37,7 @@ function AgendamentoOrquestrador() {
     const currentStepRef = useRef(0);
     currentStepRef.current = currentStepIndex;
     const [minStepIndex, setMinStepIndex] = useState(0);
+    const contentContainerRef = useRef(null);
 
     const [empresaDados, setEmpresaDados] = useState(null);
     const [loadingConfig, setLoadingConfig] = useState(true);
@@ -63,6 +64,16 @@ function AgendamentoOrquestrador() {
     useEffect(() => {
       timeLeftRef.current = timeLeft;
     }, [timeLeft]);
+
+    // Reseta o scroll para o topo em cada mudança de etapa
+    useEffect(() => {
+      if (contentContainerRef.current) {
+        contentContainerRef.current.scrollTo({ top: 0, behavior: "instant" });
+      }
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, behavior: "instant" });
+      }
+    }, [currentStepIndex]);
 
     const [context, setContext] = useState({
       isSmartLink: false,
@@ -145,7 +156,7 @@ function AgendamentoOrquestrador() {
             setPerguntasDB(pergsFull);
           }
 
-// Função Universal e Abstrata de Resolução de Especialidade / Exame / Procedimento
+          // Função Universal e Abstrata de Resolução de Especialidade / Exame / Procedimento
           const resolveEspecialidadeUniversal = (inputRaw, confObj, empObj, srvsList) => {
             if (!inputRaw || String(inputRaw).trim() === "") return null;
             const input = String(inputRaw).trim();
@@ -181,15 +192,12 @@ function AgendamentoOrquestrador() {
             if (/^\d+$/.test(input)) {
               const num = parseInt(input, 10);
               if (num > 0) {
-                // 3a. Pelo índice em especialidades_categorizadas
                 if (confCats[num - 1]?.nome) {
                   return confCats[num - 1].nome;
                 }
-                // 3b. Pelo índice em empresa.especialidades
                 if (empEsps[num - 1]) {
                   return empEsps[num - 1];
                 }
-                // 3c. Pelo índice na lista global de especialidades
                 if (allEspsList[num - 1]) {
                   return allEspsList[num - 1];
                 }
@@ -296,7 +304,7 @@ function AgendamentoOrquestrador() {
           // 3. Resolução Universal da Especialidade / Exame da URL
           let resolvedEspFromUrl = null;
           if (espRaw && String(espRaw).trim() !== "") {
-            resolvedEspFromUrl = resolveEspecialidadeUniversal(espRaw, conf, emp, servicosDB);
+            resolvedEspFromUrl = resolveEspecialidadeUniversal(espRaw, conf, empresa, srvsAtivos);
           }
 
           // 4. Resolução Estrita do Médico por Código URI / Número nos Serviços ATIVOS
@@ -306,7 +314,6 @@ function AgendamentoOrquestrador() {
           if (medicoUrl && String(medicoUrl).trim() !== "") {
             const cleanTarget = String(medicoUrl).trim().toLowerCase();
 
-            // A. Busca estrita por codigo_uri, numero_especialista ou id nos serviços ATIVOS
             foundSrv = srvsAtivos.find(
               (s) =>
                 s.ativo !== false &&
@@ -315,7 +322,6 @@ function AgendamentoOrquestrador() {
                  String(s.id || "").trim() === cleanTarget)
             );
 
-            // B. Busca por nome exato do médico ativo
             if (!foundSrv) {
               const cleanUrlMedico = cleanTarget.replace(/dra\.|dr\./g, "").trim();
               foundSrv = srvsAtivos.find((s) => {
@@ -331,7 +337,6 @@ function AgendamentoOrquestrador() {
                 ? foundSrv.especialidade.split(",").map((e) => e.trim()).filter(Boolean)
                 : [];
 
-              // Se a especialidade veio na URL (ex: "Endoscopia + Colonoscopia"), NUNCA sobrescrever com a 1ª especialidade do médico!
               let especialidadeFinal = resolvedEspFromUrl;
               if (!especialidadeFinal || /^\d+$/.test(especialidadeFinal)) {
                 especialidadeFinal = medicoEsps.length > 0 ? medicoEsps[0] : "Consulta";
@@ -376,12 +381,11 @@ function AgendamentoOrquestrador() {
             setValue("subtipo_exame", isExame ? resolvedEspFromUrl : "");
           }
 
-                    // 5. Construção Inteligente da Jornada
+          // 5. Construção Inteligente da Jornada
           const hasPerguntas = urlSrvId ? (pergs || []).some((p) => p.servico_id === urlSrvId) : false;
           let jornada = buildJourney(conf, hasPerguntas);
 
           if (isSmartLinkComDados) {
-            // Em Smart Links com dados de paciente, remove telas iniciais redundantes
             jornada = jornada.filter((m) => m !== "boas_vindas" && m !== "identificacao");
 
             if ((foundSrv || resolvedEspFromUrl) && hideFlag) {
@@ -392,7 +396,6 @@ function AgendamentoOrquestrador() {
               jornada = jornada.filter((m) => m !== "modalidade");
             }
 
-            // Determina a etapa exata de pouso
             let targetStep = "agenda";
             if (jornada.includes("triagem") && hasPerguntas) {
               targetStep = "triagem";
@@ -483,7 +486,6 @@ function AgendamentoOrquestrador() {
 
       const cleanTarget = String(nomeProfissional).trim().toLowerCase();
 
-      // 1. Busca exata por código URI, número de especialista ou ID
       let srv = servicosDB.find(
         (s) =>
           s.ativo !== false &&
@@ -492,14 +494,12 @@ function AgendamentoOrquestrador() {
            String(s.id || "").trim() === cleanTarget)
       );
 
-      // 2. Busca por nome exato
       if (!srv) {
         srv = servicosDB.find(
           (s) => s.ativo !== false && s.nome.trim().toLowerCase() === cleanTarget
         );
       }
 
-      // 3. Busca por substring ou sem dr./dra.
       if (!srv) {
         const nomeLimpo = cleanTarget.replace(/dra\.|dr\./g, "").trim();
         srv = servicosDB.find((s) => {
@@ -701,7 +701,6 @@ function AgendamentoOrquestrador() {
           const subNorm = (formData.subtipo_exame || "").toLowerCase().trim();
           const profNorm = (formData.medico_profissional || "").toLowerCase().trim();
 
-          // 1. Identificar regras aplicáveis e pool de agenda compartilhada
           const sharedRules = (regrasGlobais || []).filter((r) => {
             if (r.ativo === false) return false;
             if (r.servico_id && selectedSrv?.id && r.servico_id === selectedSrv.id) return true;
@@ -736,13 +735,11 @@ function AgendamentoOrquestrador() {
             return Number(ruleMatch?.duracao_slot_minutos) || 30;
           };
 
-          // Duração da especialidade atual selecionada pelo paciente
           const duracaoPacienteAtual = getDurationForAppointment(formData.especialidade, formData.subtipo_exame);
 
           const occupiedIntervals = [];
           const slots = [];
 
-          // Processar agendamentos existentes que colidem ou compartilham a mesma agenda
           (ag || []).forEach((a) => {
             const aProf = (a.medico_profissional || "").toLowerCase().trim();
             const aSub = (a.subtipo_exame || "").toLowerCase().trim();
@@ -761,7 +758,6 @@ function AgendamentoOrquestrador() {
             }
           });
 
-          // Processar bloqueios manuais na agenda
           (bl || []).forEach((b) => {
             const bProf = (b.medico_profissional || "").toLowerCase().trim();
             const bEsp = (b.especialidade || "").toLowerCase().trim();
@@ -825,7 +821,6 @@ function AgendamentoOrquestrador() {
           return { id: result.appointmentId, rescheduled: true };
         }
 
-        // 1. Identificar ou Criar Paciente com tratamento defensivo
         let pacienteId = null;
         try {
           const { data: pExistente } = await supabase
@@ -878,7 +873,6 @@ function AgendamentoOrquestrador() {
           }
         }
 
-        // 2. Validação de Retorno (se aplicável)
         let consultaInicialId = null;
         if (formData.tipo_servico === "Retorno" && pacienteId) {
           try {
@@ -913,7 +907,6 @@ function AgendamentoOrquestrador() {
             ? confCampos.modalidade_padrao || "Convênio"
             : confCampos.modalidade_padrao || "Particular");
 
-        // 3. Inserir Agendamento com Fallback defensivo
         const appointmentPayload = {
           paciente_id: pacienteId,
           empresa_id: empresaDados?.id,
@@ -936,7 +929,6 @@ function AgendamentoOrquestrador() {
           .select("id")
           .single();
 
-        // Se houver erro 400 ou coluna inexistente (como categoria_atendimento ou consulta_inicial_id), retenta sem campos opcionais
         if (errAgendamento) {
           console.warn("Aviso ao salvar agendamento completo, tentando payload simplificado:", errAgendamento);
           const simplePayload = {
@@ -1025,10 +1017,27 @@ function AgendamentoOrquestrador() {
       }
     };
 
+    const currentModuleKey = modulosAtivos[currentStepIndex];
+    const isBoasVindas = currentModuleKey === "boas_vindas";
+    const isConcluido = currentModuleKey === "concluido";
+    const showActionButtons = !isBoasVindas && !isConcluido;
+
+    // Sub-etapa de especialidade (usuário escolhendo médico/procedimento para a especialidade selecionada)
+    const isEspecialidadeSubStep =
+      currentModuleKey === "especialidade" && !!formData.especialidade && !flags.exibirConfUri;
+
     const handleGoBack = () => {
+      playDopamineSound("click");
+      triggerHaptic("light");
+
+      if (isEspecialidadeSubStep) {
+        setValue("especialidade", "");
+        setValue("medico_profissional", "");
+        setValue("subtipo_exame", "");
+        return;
+      }
+
       if (currentStepIndex > minStepIndex) {
-        playDopamineSound("click");
-        triggerHaptic("light");
         const prevModule = modulosAtivos[currentStepIndex - 1];
         if (prevModule === "especialidade") {
           setValue("especialidade", "");
@@ -1038,6 +1047,8 @@ function AgendamentoOrquestrador() {
         setCurrentStepIndex((p) => p - 1);
       }
     };
+
+    const backButtonLabel = isEspecialidadeSubStep ? "Voltar para Especialidades" : "Voltar";
 
     const nextStep = async () => {
       setLoading(true);
@@ -1429,7 +1440,10 @@ function AgendamentoOrquestrador() {
       onSubmitMP,
       loading,
       regrasGlobais,
-      handleNovoAgendamento
+      handleNovoAgendamento,
+      handleGoBack,
+      isEspecialidadeSubStep,
+      backButtonLabel
     };
 
     if (loadingConfig)
@@ -1450,7 +1464,7 @@ function AgendamentoOrquestrador() {
           </p>
           <button
             onClick={() => (window.location.href = "/")}
-            className="mt-8 bg-zinc-900 dark:bg-white text-white dark:text-black px-8 py-4 rounded-full font-bold text-sm transition-transform hover:scale-105 shadow-xl min-h-[48px]"
+            className="mt-8 bg-zinc-950 dark:bg-white text-white dark:text-black px-8 py-4 rounded-full font-bold text-sm transition-transform hover:scale-105 shadow-xl min-h-[48px]"
           >
             Buscar Clínicas na RMAgenda
           </button>
@@ -1458,7 +1472,6 @@ function AgendamentoOrquestrador() {
       );
     }
 
-    const currentModuleKey = modulosAtivos[currentStepIndex];
     const CurrentComponent = MODULE_REGISTRY[currentModuleKey];
     const stepLabels = {
       boas_vindas: "Boas-vindas",
@@ -1471,15 +1484,33 @@ function AgendamentoOrquestrador() {
       concluido: "Tudo certo"
     };
 
-    const isBoasVindas = currentModuleKey === "boas_vindas";
-    const isConcluido = currentModuleKey === "concluido";
-    const showActionButtons = !isBoasVindas && !isConcluido;
     const logoUrl = empresaDados?.logo_url || empresaDados?.config_campos?.logo_url;
+    const formatoLogo = empresaDados?.config_campos?.formato_logo || empresaDados?.formato_logo || "arredondada";
+
+    const getHeaderShapeClass = (fmt) => {
+      switch (fmt) {
+        case "circular":
+          return "w-11 h-11 rounded-full";
+        case "quadrada":
+          return "w-11 h-11 rounded-lg";
+        case "original":
+          return "w-14 h-10 rounded-xl";
+        case "arredondada":
+        default:
+          return "w-11 h-11 rounded-2xl";
+      }
+    };
+
+    const headerLogoShapeClass = getHeaderShapeClass(formatoLogo);
 
     return (
       <AgendamentoContext.Provider value={contextValue}>
         {/* CABEÇALHO DYNAMIC ISLAND */}
-        <div className="absolute top-16 md:top-6 left-0 right-0 w-full z-[9999] px-4 flex justify-center pointer-events-none">
+        <div
+          className={`absolute left-0 right-0 w-full z-[9999] px-4 flex justify-center pointer-events-none transition-all duration-300 ease-out ${
+            isBoasVindas ? "top-3.5 sm:top-4 md:top-6" : "top-[70px] sm:top-[74px] md:top-6"
+          }`}
+        >
           <motion.div
             layout
             transition={{ type: "spring", stiffness: 450, damping: 30 }}
@@ -1489,7 +1520,7 @@ function AgendamentoOrquestrador() {
                 : islandState === "success"
                 ? "bg-[#9FC131] text-black font-extrabold"
                 : islandState === "loading"
-                ? "bg-zinc-900 text-white"
+                ? "bg-zinc-950 text-white"
                 : "bg-white/85 dark:bg-[#121216]/85 backdrop-blur-2xl text-zinc-900 dark:text-white border border-zinc-200/80 dark:border-white/10"
             }`}
           >
@@ -1564,34 +1595,47 @@ function AgendamentoOrquestrador() {
         </div>
 
         {/* CONTAINER PRINCIPAL */}
-        <div className="w-full h-[100dvh] flex flex-col items-center justify-start md:justify-center p-0 md:p-8 md:pt-[80px] z-10 relative">
+        <div className="w-full h-[100dvh] flex flex-col items-center justify-start md:justify-center p-0 md:p-8 md:pt-[76px] z-10 relative">
           
-          {/* HEADER MOBILE COM LOGO E NOME DA CLÍNICA */}
-          <div className="md:hidden w-full max-w-[860px] px-5 pt-3 pb-1 flex items-center justify-between z-20">
-            <div className="flex items-center gap-3">
-              {logoUrl ? (
-                <div className="w-11 h-11 rounded-2xl bg-white dark:bg-[#111116] border border-zinc-200/80 dark:border-white/10 p-1 flex items-center justify-center shadow-sm shrink-0 overflow-hidden">
-                  <img
-                    src={logoUrl}
-                    alt={empresaDados?.nome || "Clínica"}
-                    className="max-h-full max-w-full object-contain"
-                  />
+          {/* HEADER MOBILE COM LOGO E NOME DA CLÍNICA (EXIBIDO APENAS APÓS SAIR DE BOAS-VINDAS) */}
+          <AnimatePresence>
+            {!isBoasVindas && (
+              <motion.div
+                key="mobile-header"
+                initial={{ opacity: 0, y: -16 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -16 }}
+                transition={{ type: "spring", stiffness: 420, damping: 32 }}
+                className="md:hidden w-full max-w-[860px] px-5 pt-3 pb-1 flex items-center justify-between z-20"
+              >
+                <div className="flex items-center gap-3">
+                  {logoUrl ? (
+                    <div
+                      className={`${headerLogoShapeClass} overflow-hidden bg-white dark:bg-[#111116] border border-zinc-200/80 dark:border-white/10 flex items-center justify-center shadow-sm shrink-0`}
+                    >
+                      <img
+                        src={logoUrl}
+                        alt={empresaDados?.nome || "Clínica"}
+                        className="w-full h-full object-cover select-none"
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-11 h-11 rounded-2xl bg-zinc-950 dark:bg-white text-white dark:text-black flex items-center justify-center shadow-sm shrink-0 font-bold">
+                      <Activity size={20} strokeWidth={2.2} />
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <span className="font-black text-sm text-zinc-950 dark:text-white truncate block leading-tight">
+                      {empresaDados?.nome || "Portal de Agendamento"}
+                    </span>
+                    <span className="text-[10px] font-bold text-[#86a621] dark:text-[#9FC131] uppercase tracking-widest block">
+                      Agendamento Oficial
+                    </span>
+                  </div>
                 </div>
-              ) : (
-                <div className="w-11 h-11 rounded-2xl bg-zinc-950 dark:bg-white text-white dark:text-black flex items-center justify-center shadow-sm shrink-0 font-bold">
-                  <Activity size={20} strokeWidth={2.2} />
-                </div>
-              )}
-              <div className="min-w-0">
-                <span className="font-black text-sm text-zinc-950 dark:text-white truncate block leading-tight">
-                  {empresaDados?.nome || "Portal de Agendamento"}
-                </span>
-                <span className="text-[10px] font-bold text-[#86a621] dark:text-[#9FC131] uppercase tracking-widest block">
-                  Agendamento Oficial
-                </span>
-              </div>
-            </div>
-          </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           <motion.div
             layout
@@ -1602,12 +1646,12 @@ function AgendamentoOrquestrador() {
             {showActionButtons && (
               <div className="hidden md:flex flex-none items-center justify-between px-8 py-3.5 border-b border-zinc-200/70 dark:border-white/[0.06] bg-white/70 dark:bg-[#0a0a0d]/70 backdrop-blur-2xl z-20">
                 <div className="flex items-center gap-4">
-                  {currentStepIndex > minStepIndex ? (
+                  {currentStepIndex > minStepIndex || isEspecialidadeSubStep ? (
                     <button
                       onClick={handleGoBack}
-                      className="min-h-[40px] px-3 flex items-center gap-1 text-zinc-500 hover:text-zinc-950 dark:hover:text-white text-xs font-bold transition-colors rounded-xl"
+                      className="min-h-[40px] px-3.5 flex items-center gap-1.5 text-zinc-600 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-white text-xs font-bold transition-colors rounded-xl bg-zinc-100/60 dark:bg-white/[0.04] border border-zinc-200/60 dark:border-white/[0.08] cursor-pointer"
                     >
-                      <ChevronLeft size={16} strokeWidth={2.5} /> Voltar
+                      <ChevronLeft size={16} strokeWidth={2.5} /> {backButtonLabel}
                     </button>
                   ) : null}
 
@@ -1640,7 +1684,7 @@ function AgendamentoOrquestrador() {
                         nextStep();
                       }}
                       disabled={loading || !isModuleValid(currentModuleKey)}
-                      className={`min-h-[44px] font-extrabold text-xs px-6 py-2.5 rounded-full flex items-center justify-center gap-2 transition-all duration-300 shadow-md whitespace-nowrap ${
+                      className={`min-h-[44px] font-extrabold text-xs px-6 py-2.5 rounded-full flex items-center justify-center gap-2 transition-all duration-300 shadow-md whitespace-nowrap cursor-pointer ${
                         isModuleValid(currentModuleKey)
                           ? "bg-zinc-950 hover:bg-black dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black shadow-zinc-900/20"
                           : "bg-zinc-200/80 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-600 opacity-60 cursor-not-allowed"
@@ -1662,8 +1706,17 @@ function AgendamentoOrquestrador() {
               </div>
             )}
 
-            {/* ÁREA DE CONTEÚDO COM PADDING INFERIOR */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar px-5 pt-6 pb-44 md:p-8 md:pb-10 overscroll-contain">
+            {/* ÁREA DE CONTEÚDO COM ESPAÇAMENTO REFINADO PARA O DYNAMIC ISLAND */}
+            <div
+              ref={contentContainerRef}
+              className={`flex-1 overflow-y-auto custom-scrollbar px-5 ${
+                isBoasVindas
+                  ? "pt-14 sm:pt-16 pb-[84px] sm:pb-24 flex flex-col"
+                  : isConcluido
+                  ? "pt-16 pb-28"
+                  : "pt-[124px] sm:pt-[130px] pb-44"
+              } md:p-8 md:pb-10 overscroll-contain`}
+            >
               <AnimatePresence mode="wait" initial={false}>
                 {CurrentComponent ? (
                   <motion.div
@@ -1683,14 +1736,14 @@ function AgendamentoOrquestrador() {
 
             {/* BARRA DE AÇÕES FIXADA NA BASE DA TELA NO CELULAR */}
             {showActionButtons && (
-              <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 px-5 py-3.5 bg-white/80 dark:bg-[#0a0a0d]/85 backdrop-blur-3xl saturate-150 border-t border-zinc-200/80 dark:border-white/[0.08] flex items-center justify-between shadow-[0_-10px_30px_rgba(0,0,0,0.08)]">
+              <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 px-5 py-3.5 bg-white/85 dark:bg-[#0a0a0d]/90 backdrop-blur-3xl saturate-150 border-t border-zinc-200/80 dark:border-white/[0.08] flex items-center justify-between shadow-[0_-10px_30px_rgba(0,0,0,0.08)]">
                 <div>
-                  {currentStepIndex > minStepIndex ? (
+                  {currentStepIndex > minStepIndex || isEspecialidadeSubStep ? (
                     <button
                       onClick={handleGoBack}
-                      className="min-h-[46px] px-4 flex items-center gap-1 text-zinc-600 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white text-xs font-bold transition-colors rounded-xl bg-zinc-100/70 dark:bg-white/[0.06] border border-zinc-200/60 dark:border-white/[0.08]"
+                      className="min-h-[46px] px-4 flex items-center gap-1.5 text-zinc-700 dark:text-zinc-200 hover:text-zinc-950 dark:hover:text-white text-xs font-bold transition-colors rounded-xl bg-zinc-100/80 dark:bg-white/[0.06] border border-zinc-200/60 dark:border-white/[0.08] cursor-pointer"
                     >
-                      <ChevronLeft size={16} strokeWidth={2.5} /> Voltar
+                      <ChevronLeft size={16} strokeWidth={2.5} /> {backButtonLabel}
                     </button>
                   ) : (
                     <div />
@@ -1714,7 +1767,7 @@ function AgendamentoOrquestrador() {
                         nextStep();
                       }}
                       disabled={loading || !isModuleValid(currentModuleKey)}
-                      className={`min-h-[46px] font-extrabold text-xs px-7 py-3 rounded-full flex items-center justify-center gap-2 transition-all shadow-md whitespace-nowrap ${
+                      className={`min-h-[46px] font-extrabold text-xs px-7 py-3 rounded-full flex items-center justify-center gap-2 transition-all shadow-md whitespace-nowrap cursor-pointer ${
                         isModuleValid(currentModuleKey)
                           ? "bg-zinc-950 hover:bg-black dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black shadow-zinc-900/20"
                           : "bg-zinc-200/80 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-600 opacity-60 cursor-not-allowed"
@@ -1737,6 +1790,9 @@ function AgendamentoOrquestrador() {
             )}
           </motion.div>
         </div>
+
+        {/* NAVBAR COM POSICIONAMENTO DINÂMICO CONTEXTUAL */}
+        <Navbar hasBottomBar={showActionButtons} />
       </AgendamentoContext.Provider>
     );
   }
@@ -1747,7 +1803,6 @@ export default function AgendamentoPremium() {
   return (
     <div className="flex min-h-[100dvh] w-full bg-[#F8FAFC] dark:bg-[#060A12] text-zinc-900 dark:text-zinc-50 transition-colors duration-400 font-sans antialiased">
       <SidebarPremium isExpanded={isSidebarExpanded} setIsExpanded={setIsSidebarExpanded} />
-      <Navbar />
       <main
         className={`flex-1 relative flex flex-col items-center transition-[margin] duration-500 ease-out w-full min-h-[100dvh] overflow-hidden ${
           isSidebarExpanded ? "md:ml-[240px]" : "md:ml-[68px]"

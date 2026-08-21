@@ -33,11 +33,11 @@ export default function ModuleTriagem() {
       className="max-w-xl mx-auto space-y-6 text-left"
     >
       <div className="mb-6">
-        <div className="flex items-center justify-between gap-4 mb-3">
-          <div className="w-11 h-11 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/50 dark:border-emerald-800/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-sm">
-            <ClipboardCheck size={21} strokeWidth={2} />
+        <div className="flex items-center justify-between gap-4 mb-2.5">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[11px] font-bold uppercase tracking-wider shadow-sm">
+            <ClipboardCheck size={13} strokeWidth={2} /> Triagem Prévia
           </div>
-          <span className="text-xs font-bold text-zinc-500 bg-zinc-100 dark:bg-zinc-800/60 px-3 py-1 rounded-full border border-zinc-200/60 dark:border-zinc-700/60">
+          <span className="text-[11px] font-bold text-zinc-500 bg-zinc-100 dark:bg-white/[0.06] px-3 py-1 rounded-full border border-zinc-200/60 dark:border-white/[0.06]">
             {respondidasCount} de {totalCount} respondida(s)
           </span>
         </div>
@@ -50,7 +50,7 @@ export default function ModuleTriagem() {
         </p>
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-5">
         {perguntasAtuais.map((pergunta, pIdx) => {
           const selecionada = respostasTriagem[pergunta.id];
 
@@ -78,7 +78,10 @@ export default function ModuleTriagem() {
 
               <div className="grid gap-2.5 pt-1 pl-9">
                 {(pergunta.opcoes || []).map((opcao) => {
-                  const isChecked = selecionada?.id === opcao.id || selecionada === opcao.id || selecionada === opcao.texto;
+                  const isChecked =
+                    selecionada?.id === opcao.id ||
+                    selecionada === opcao.id ||
+                    selecionada === opcao.texto;
                   return (
                     <motion.button
                       key={opcao.id || opcao.texto}
@@ -86,13 +89,15 @@ export default function ModuleTriagem() {
                       whileTap={{ scale: 0.98 }}
                       type="button"
                       onClick={() => handleSelectOption(pergunta.id, opcao)}
-                      className={`w-full min-h-[48px] p-3.5 sm:p-4 rounded-2xl border text-left flex items-center justify-between gap-3 transition-all ${
+                      className={`w-full min-h-[48px] p-3.5 sm:p-4 rounded-2xl border text-left flex items-center justify-between gap-3 transition-all cursor-pointer ${
                         isChecked
                           ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white font-bold shadow-md"
                           : "bg-zinc-50/70 dark:bg-zinc-900/50 border-zinc-200/80 dark:border-zinc-800 hover:border-zinc-300 text-zinc-800 dark:text-zinc-200 font-medium"
                       }`}
                     >
-                      <span className="text-xs sm:text-sm">{opcao.texto || opcao.nome || opcao.label}</span>
+                      <span className="text-xs sm:text-sm font-medium">
+                        {opcao.texto || opcao.nome || opcao.label}
+                      </span>
                       <div
                         className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
                           isChecked

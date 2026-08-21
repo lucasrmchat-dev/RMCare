@@ -1,0 +1,32 @@
+# Task Checklist: Refinamentos e Correções no RM Care
+
+- [x] 1. Diagnóstico e Mapeamento Detalhado dos Problemas e Arquitetura UI/UX
+- [x] 2. Navbar Inferior e Dock Flutuante:
+  - [x] 2.1 Remover a barra de fundo gigante/opaca atrás da navbar (deixar área atrás 100% transparente/invisível)
+  - [x] 2.2 Tornar a Navbar translúcida/parcialmente transparente com blur e visual premium
+  - [x] 2.3 Posicionamento dinâmico da Navbar:
+    - Na tela de boas-vindas: posicionar bem rente à base inferior da tela (bottom mais baixo)
+    - Nas etapas de agendamento com barra inferior ("Voltar" e "Continuar"): posicionar a Navbar suspensa alguns pixels acima da barra de ações
+    - Na etapa final ("Agendamento Finalizado" / Concluído): posicionar a Navbar no ponto mais inferior possível da tela, sem sobreposição com os botões de ação ("Falar no WhatsApp" / "Realizar Novo Agendamento")
+- [x] 3. Logotipo da Clínica & Moldura:
+  - [x] 3.1 Evitar duplicação da logo na tela de Boas-Vindas (exibir apenas no hero central/abaixo, nunca duplicada no cabeçalho)
+  - [x] 3.2 Transição suave da logo ao clicar em "Iniciar Agendamento" (recolhendo com animação para o topo nas etapas seguintes)
+  - [x] 3.3 Moldura da logo 100% preenchida (sem sensação de 'dentro e fora', a logo é o próprio formato/moldura)
+  - [x] 3.4 Configuração de formatos no Admin/PersonalizacaoView (Quadrada/Retangular, 100% Redonda/Circular, Parcialmente Arredondada/Boleada) refletindo dinamicamente em todo o sistema
+- [x] 4. Espaçamento Superior & Dynamic Island (Prevenção de Sobreposição):
+  - [x] 4.1 Ajustar o padding-top e posicionamento para que o título e conteúdo de "Direcionamento Clínico" fiquem abaixo do Dynamic Island, sem sobreposição inicial
+  - [x] 4.2 Ajustar espaçamento e scroll container da etapa "Como será o atendimento?" (Modalidade) para não sobrepor o cabeçalho
+  - [x] 4.3 Garantir que todas as telas de etapas tenham scroll suave e folga visual elegante abaixo do Dynamic Island
+- [x] 5. Correção do Fluxo e Botão "Voltar" nas Especialidades:
+  - [x] 5.1 Ao selecionar uma especialidade e visualizar os especialistas, o botão inferior "Voltar" se adapta dinamicamente para "Voltar para Especialidades" e retorna à lista de especialidades
+  - [x] 5.2 Desabilitar/unificar botões redundantes de voltar para manter consistência e dinâmica
+- [x] 6. Centralização e Scroll dos Horários Disponíveis:
+  - [x] 6.1 Ao clicar em uma data, scrollar com precisão para centralizar a grade de horários disponíveis na tela
+  - [x] 6.2 Otimizar o layout da grade de horários (8h às 17h40+) para visualização clara, profissional e sem cortes
+- [x] 7. Etapa Final ("Agendamento Finalizado"):
+  - [x] 7.1 Forçar scroll automático para o topo (top: 0) imediatamente ao entrar na tela de conclusão
+  - [x] 7.2 Garantir visibilidade total do cabeçalho "Agendamento Confirmado!" e dos dados de confirmação sem corte
+  - [x] 7.3 Posicionamento inferior da Navbar sem interferir no acesso aos botões do WhatsApp e novo agendamento
+- [x] 8. Elevação Visual Geral (Design System 100% Profissional):
+  - [x] 8.1 Refinar tipografia, micro-interações, contraste, bordas sutis e glassmorphism profissional
+- [x] 9. Testes, Verificação de Build/Lint e Entrega do Checklist Final

@@ -14,7 +14,8 @@ import {
   User,
   Stethoscope,
   Shield,
-  Clock
+  Clock,
+  CheckCircle2
 } from "lucide-react";
 import { useAgendamento } from "../context";
 import { playDopamineSound, triggerConfetti, triggerHaptic } from "@/lib/dopamine";
@@ -24,6 +25,15 @@ export default function ModuleConcluido() {
     useAgendamento();
 
   useEffect(() => {
+    // Forçar scroll para o topo imediatamente
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "instant" });
+    }
+    const scrollContainers = document.querySelectorAll(".overflow-y-auto, .custom-scrollbar");
+    scrollContainers.forEach((container) => {
+      container.scrollTo({ top: 0, behavior: "instant" });
+    });
+
     playDopamineSound("success");
     triggerHaptic("success");
     triggerConfetti({ count: 110, origin: { x: 0.5, y: 0.35 } });
@@ -64,16 +74,16 @@ export default function ModuleConcluido() {
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ type: "spring", stiffness: 420, damping: 30 }}
-      className="flex flex-col items-center justify-center text-center max-w-lg mx-auto py-6 pb-32 sm:pb-12"
+      className="flex flex-col items-center justify-center text-center max-w-lg mx-auto py-4 pb-36 sm:pb-24"
     >
       <motion.div
         initial={{ scale: 0, rotate: -20 }}
         animate={{ scale: 1, rotate: 0 }}
         transition={{ type: "spring", stiffness: 500, damping: 25, delay: 0.1 }}
-        className="relative mb-6"
+        className="relative mb-5"
       >
         <div
-          className={`w-20 h-20 rounded-[2rem] ${
+          className={`w-20 h-20 sm:w-22 sm:h-22 rounded-[2rem] ${
             pixData
               ? "bg-gradient-to-br from-blue-600 to-indigo-600 shadow-blue-500/25"
               : "bg-gradient-to-br from-[#9FC131] to-[#86a621] shadow-[#9FC131]/30"
@@ -95,7 +105,11 @@ export default function ModuleConcluido() {
         </motion.div>
       </motion.div>
 
-      <h2 className="text-2xl sm:text-3xl font-black text-zinc-950 dark:text-white tracking-tight leading-tight">
+      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold uppercase tracking-wider mb-2.5 shadow-sm">
+        <CheckCircle2 size={13} strokeWidth={2.5} /> Agendamento Concluído com Sucesso
+      </div>
+
+      <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-zinc-950 dark:text-white tracking-tight leading-tight">
         {pixData ? "Finalize seu pagamento Pix" : "Agendamento Confirmado!"}
       </h2>
 
@@ -133,7 +147,7 @@ export default function ModuleConcluido() {
               />
               <button
                 onClick={copyPixCode}
-                className="min-h-[38px] px-4 rounded-xl bg-zinc-950 hover:bg-black text-white dark:bg-white dark:hover:bg-zinc-200 dark:text-black text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 shadow-sm"
+                className="min-h-[38px] px-4 rounded-xl bg-zinc-950 hover:bg-black text-white dark:bg-white dark:hover:bg-zinc-200 dark:text-black text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 shadow-sm cursor-pointer"
               >
                 <Copy size={13} />
                 Copiar
@@ -160,7 +174,7 @@ export default function ModuleConcluido() {
           <span className="text-zinc-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
             <User size={14} className="text-blue-500" /> Paciente
           </span>
-          <span className="font-bold text-zinc-950 dark:text-white text-sm">
+          <span className="font-extrabold text-zinc-950 dark:text-white text-sm">
             {formData.nome} {formData.sobrenome}
           </span>
         </div>
@@ -204,14 +218,14 @@ export default function ModuleConcluido() {
         )}
 
         <div className="flex justify-between items-center text-xs border-t border-zinc-100 dark:border-white/5 pt-3">
-          <span className="text-zinc-400 font-bold uppercase tracking-wider">Status</span>
+          <span className="text-zinc-400 font-bold uppercase tracking-wider">Status do Agendamento</span>
           <span className="font-extrabold px-2.5 py-0.5 rounded-md text-[10px] uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
             {pixData ? "Aguardando Pix" : "Confirmado no Sistema"}
           </span>
         </div>
       </div>
 
-      {/* BOTÕES DE AÇÃO */}
+      {/* BOTÕES DE AÇÃO COM VISIBILIDADE TOTAL E ESPAÇAMENTO CONFORTÁVEL */}
       <div className="mt-6 flex flex-col gap-3 w-full">
         <motion.button
           whileHover={{ scale: 1.02 }}
@@ -226,9 +240,9 @@ export default function ModuleConcluido() {
             );
             window.open(cleanNum ? `https://wa.me/${cleanNum}?text=${msg}` : `https://wa.me/?text=${msg}`, "_blank");
           }}
-          className="w-full min-h-[50px] py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-600/20"
+          className="w-full min-h-[52px] py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-2.5 transition-all shadow-lg shadow-emerald-600/20 cursor-pointer"
         >
-          <MessageCircle size={18} />
+          <MessageCircle size={19} />
           Falar no WhatsApp da Clínica
         </motion.button>
 
@@ -240,7 +254,7 @@ export default function ModuleConcluido() {
             playDopamineSound("click");
             handleNovoAgendamento ? handleNovoAgendamento() : window.location.reload();
           }}
-          className="w-full min-h-[50px] py-3.5 border border-zinc-200/80 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-900 text-zinc-900 dark:text-white rounded-full font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-2 transition-colors"
+          className="w-full min-h-[50px] py-3.5 border border-zinc-200/80 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-900 text-zinc-900 dark:text-white rounded-full font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-2 transition-colors cursor-pointer"
         >
           <CalendarPlus size={17} />
           Realizar Novo Agendamento

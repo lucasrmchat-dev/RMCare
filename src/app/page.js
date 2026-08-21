@@ -157,6 +157,13 @@ export default function Home() {
                   filtered.map((emp, index) => {
                     const isSelected = selectedIndex === index;
                     const logo = emp.logo_url || emp.config_campos?.logo_url;
+                    const formato = emp.config_campos?.formato_logo || "arredondada";
+                    const shapeClass =
+                      formato === "circular"
+                        ? "rounded-full"
+                        : formato === "quadrada"
+                        ? "rounded-lg"
+                        : "rounded-xl";
                     return (
                       <Link
                         key={emp.slug}
@@ -174,9 +181,9 @@ export default function Home() {
                               : "hover:bg-zinc-50 dark:hover:bg-white/5"
                           }`}
                         >
-                          <div className="w-9 h-9 rounded-xl bg-[#9FC131]/10 border border-[#9FC131]/20 flex items-center justify-center text-[#9FC131] shrink-0 overflow-hidden shadow-inner">
+                          <div className={`w-9 h-9 ${shapeClass} bg-[#9FC131]/10 border border-[#9FC131]/20 flex items-center justify-center text-[#9FC131] shrink-0 overflow-hidden shadow-sm`}>
                             {logo ? (
-                              <img src={logo} alt={emp.nome} className="max-h-full max-w-full object-contain p-0.5" />
+                              <img src={logo} alt={emp.nome} className="w-full h-full object-cover" />
                             ) : (
                               <Building2 size={16} strokeWidth={1.5} />
                             )}

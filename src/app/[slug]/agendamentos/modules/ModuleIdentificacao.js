@@ -26,27 +26,27 @@ export default function ModuleIdentificacao() {
         show: { opacity: 1, y: 0, transition: { staggerChildren: 0.06 } },
         exit: { opacity: 0, y: -10 }
       }}
-      className="max-w-xl mx-auto"
+      className="max-w-xl mx-auto text-left"
     >
-      <div className="mb-6 text-left">
-        <div className="w-11 h-11 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200/50 dark:border-blue-800/50 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-4 shadow-sm">
-          <UserRound size={21} strokeWidth={2} />
+      <div className="mb-6">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 text-[11px] font-bold uppercase tracking-wider mb-2.5 shadow-sm">
+          <UserRound size={13} strokeWidth={2} /> Identificação do Paciente
         </div>
         <h2 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-zinc-950 dark:text-white leading-tight">
           Como podemos chamar você?
         </h2>
         <p className="text-zinc-500 dark:text-zinc-400 text-xs sm:text-sm mt-1.5 leading-relaxed">
-          Utilizamos estes dados para identificar seu histórico e enviar o comprovante com os lembretes de atendimento.
+          Preencha seus dados para localizarmos seu histórico e enviarmos o comprovante oficial com lembretes de atendimento.
         </p>
 
         {context.userFound && (
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="mt-4 p-3 bg-emerald-500/10 border border-emerald-500/25 rounded-2xl text-xs font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-2"
+            className="mt-4 p-3.5 bg-emerald-500/10 border border-emerald-500/25 rounded-2xl text-xs font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-2.5 shadow-sm"
           >
-            <ShieldCheck size={16} className="text-emerald-500 shrink-0" />
-            <span>Cadastro localizado! Dados preenchidos automaticamente.</span>
+            <ShieldCheck size={18} className="text-emerald-500 shrink-0" />
+            <span>Cadastro localizado com sucesso! Dados preenchidos automaticamente.</span>
           </motion.div>
         )}
       </div>
@@ -55,10 +55,10 @@ export default function ModuleIdentificacao() {
         {config.mostrar_cpf !== false &&
           renderLockedOrInput("cpf", "CPF do Paciente", null, false, masks.cpf, "000.000.000-00", 14)}
 
-        {renderLockedOrInput("nome", "Nome", null, false, null, "Seu primeiro nome", 50)}
+        {renderLockedOrInput("nome", "Primeiro Nome", null, false, null, "Seu primeiro nome", 50)}
 
         {config.mostrar_sobrenome !== false &&
-          renderLockedOrInput("sobrenome", "Sobrenome", null, false, null, "Seu sobrenome", 50)}
+          renderLockedOrInput("sobrenome", "Sobrenome", null, false, null, "Seu sobrenome completo", 50)}
 
         {config.mostrar_whatsapp !== false &&
           renderLockedOrInput("telefone_whatsapp", "WhatsApp / Telefone", null, false, masks.phone, "(00) 00000-0000", 15)}

@@ -65,6 +65,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
     ocultar_modalidade: false,
     ocultar_checkout: false,
     logo_url: "",
+    formato_logo: "arredondada",
     modalidade_padrao: "Particular",
     modalidades_opcoes: [
       { id: "1", codigo_uri: "1", nome: "Particular", exige_senha: false, senha: "" },
@@ -144,6 +145,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
             ...emp.config_campos,
             whatsapp_atendimento: emp.whatsapp_atendimento || emp.telefone || emp.config_campos?.whatsapp_atendimento || prev.whatsapp_atendimento || "",
             logo_url: emp.logo_url || emp.config_campos.logo_url || prev.logo_url,
+            formato_logo: emp.config_campos.formato_logo || prev.formato_logo || "arredondada",
             modalidades_opcoes: emp.config_campos.modalidades_opcoes || prev.modalidades_opcoes,
             modalidade_padrao: emp.config_campos.modalidade_padrao || prev.modalidade_padrao,
             categorias_atendimento:
@@ -507,8 +509,8 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                   </div>
                 </div>
 
-                <div className="grid md:grid-cols-2 gap-6 items-center">
-                  <div className="space-y-3">
+                <div className="grid md:grid-cols-2 gap-6 items-start">
+                  <div className="space-y-4">
                     <TextInput
                       label="URL Direta da Imagem"
                       placeholder="https://suaclinica.com.br/logo.png"
@@ -536,18 +538,60 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                         </button>
                       )}
                     </div>
+
+                    {/* FORMATO / MOLDURA DA LOGO */}
+                    <div className="space-y-2 pt-2 border-t border-zinc-100 dark:border-white/5">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
+                        Moldura & Formato do Logotipo (100% Preenchimento)
+                      </label>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {[
+                          { id: "arredondada", label: "Arredondada", desc: "Boleada moderna" },
+                          { id: "circular", label: "Circular", desc: "100% Redonda" },
+                          { id: "quadrada", label: "Quadrada", desc: "Cantos retos/nítidos" },
+                          { id: "original", label: "Retangular", desc: "Formato original" }
+                        ].map((f) => {
+                          const isSelected = (campos.formato_logo || "arredondada") === f.id;
+                          return (
+                            <button
+                              key={f.id}
+                              type="button"
+                              onClick={() => setCampos({ ...campos, formato_logo: f.id })}
+                              className={`p-2.5 rounded-xl border text-left transition-all ${
+                                isSelected
+                                  ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-sm font-bold ring-2 ring-[#9FC131]"
+                                  : "bg-zinc-50/70 dark:bg-zinc-900/60 border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300"
+                              }`}
+                            >
+                              <div className="text-xs font-bold">{f.label}</div>
+                              <div className="text-[9px] opacity-70 mt-0.5">{f.desc}</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="p-6 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/60 flex flex-col items-center justify-center text-center min-h-[140px]">
-                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">
-                      Prévia do Logotipo
+                  <div className="p-6 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/60 flex flex-col items-center justify-center text-center min-h-[180px]">
+                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-3">
+                      Prévia do Logotipo no Portal
                     </span>
                     {campos.logo_url ? (
-                      <div className="p-2.5 bg-white dark:bg-black rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm max-w-[200px]">
+                      <div
+                        className={`overflow-hidden border border-zinc-200/80 dark:border-zinc-800 shadow-md bg-white dark:bg-[#111116] flex items-center justify-center transition-all ${
+                          campos.formato_logo === "circular"
+                            ? "w-24 h-24 rounded-full"
+                            : campos.formato_logo === "quadrada"
+                            ? "w-24 h-24 rounded-lg"
+                            : campos.formato_logo === "original"
+                            ? "w-36 h-24 rounded-2xl"
+                            : "w-24 h-24 rounded-[1.75rem]"
+                        }`}
+                      >
                         <img
                           src={campos.logo_url}
                           alt="Logo da Clínica"
-                          className="max-h-12 max-w-full object-contain mx-auto"
+                          className="w-full h-full object-cover"
                         />
                       </div>
                     ) : (
