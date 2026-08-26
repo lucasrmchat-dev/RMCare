@@ -33,7 +33,16 @@ import {
   Lock,
   ArrowUp,
   ArrowDown,
-  ArrowUpDown
+  ArrowUpDown,
+  MessageSquare,
+  Send,
+  Paperclip,
+  Edit3,
+  AlertCircle,
+  Check,
+  Sparkles,
+  RefreshCw,
+  SlidersHorizontal
 } from "lucide-react";
 import {
   getHojeLocal,
@@ -49,7 +58,12 @@ import {
   actionRemarcarAgendamentoAdmin,
   fetchAdminCustomization,
   actionSalvarEnfermidadesPaciente,
-  actionSalvarCatalogoEnfermidades
+  actionSalvarCatalogoEnfermidades,
+  actionBuscarMensagensDoAgendamento,
+  actionAtualizarMensagemFila,
+  actionCancelarMensagemFila,
+  actionCriarMensagemFilaAvulsa,
+  actionDispararMensagemManualAdmin
 } from "@/actions/adminData";
 import { playDopamineSound, triggerHaptic } from "@/lib/dopamine";
 
@@ -65,6 +79,24 @@ const calcularIdadeDataNasc = (dataNasc) => {
   const mesAtual = hoje.getMonth() + 1;
   if (mesAtual < m || (mesAtual === m && hoje.getDate() < d)) idade--;
   return idade;
+};
+
+// Formatação amigável de data e hora ISO
+const formatarDataHoraAmigavel = (isoString) => {
+  if (!isoString) return "--/--/---- às --:--";
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return isoString;
+    return d.toLocaleString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+  } catch (e) {
+    return isoString;
+  }
 };
 
 export default function AgendaView({
@@ -114,8 +146,9 @@ export default function AgendaView({
   const [newDate, setNewDate] = useState("");
   const [newTime, setNewTime] = useState("");
 
-  // Modal de Dados Sensíveis e Enfermidades
+  // Modal de Dados Sensíveis, Enfermidades & Mensagens da Fila
   const [sensitiveModalItem, setSensitiveModalItem] = useState(null);
+  const [fichaSubTab, setFichaSubTab] = useState("dados"); // "dados" | "mensagens"
   const [enfermidadesPaciente, setEnfermidadesPaciente] = useState([]);
   const [catalogoEnfermidades, setCatalogoEnfermidades] = useState([
     "Refluxo",
@@ -129,6 +162,19 @@ export default function AgendaView({
   ]);
   const [searchEnfermidade, setSearchEnfermidade] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Estados da Fila de Mensagens do Agendamento / Exame
+  const [mensagensAgendamento, setMensagensAgendamento] = useState([]);
+  const [loadingMensagens, setLoadingMensagens] = useState(false);
+  const [editingMsgId, setEditingMsgId] = useState(null);
+  const [editMsgTexto, setEditMsgTexto] = useState("");
+  const [editMsgDataHora, setEditMsgDataHora] = useState("");
+  const [editMsgAnexoUrl, setEditMsgAnexoUrl] = useState("");
+  const [isCriandoMensagem, setIsCriandoMensagem] = useState(false);
+  const [novaMsgTexto, setNovaMsgTexto] = useState("");
+  const [novaMsgDataHora, setNovaMsgDataHora] = useState("");
+  const [novaMsgAnexoUrl, setNovaMsgAnexoUrl] = useState("");
+  const [disparandoMsgId, setDisparandoMsgId] = useState(null);
 
   useEffect(() => {
     const carregarConfigGeral = async () => {
@@ -195,6 +241,53 @@ export default function AgendaView({
         ? a.enfermidades
         : [];
 
+      // 1. Identificar o Especialista real (Médico/Profissional humano)
+      let especialistaHumano = a.medico_profissional || null;
+      if (
+        !especialistaHumano ||
+        especialistaHumano === "A definir" ||
+        especialistaHumano === "Corpo Clínico" ||
+        especialistaHumano === "Todos"
+      ) {
+        especialistaHumano = null;
+      }
+
+      // Procedimento/Exame vs Médico Humano
+      const isNomeExame =
+        especialistaHumano &&
+        (especialistaHumano.toLowerCase().includes("endoscopia") ||
+          especialistaHumano.toLowerCase().includes("colonoscopia") ||
+          especialistaHumano.toLowerCase().includes("ultrassom") ||
+          especialistaHumano.toLowerCase().includes("tomografia") ||
+          especialistaHumano.toLowerCase().includes("ressonancia") ||
+          especialistaHumano.toLowerCase().includes("raio-x") ||
+          especialistaHumano.toLowerCase().includes("exame") ||
+          especialistaHumano === a.subtipo_exame);
+
+      if (isNomeExame) {
+        especialistaHumano = null;
+      }
+
+      // 2. Identificar a Especialidade clínica real
+      let especialidadeClinica = a.especialidade;
+      if (!especialidadeClinica || especialidadeClinica === "Consulta" || especialidadeClinica === "Exame") {
+        if (a.subtipo_exame && a.subtipo_exame !== "Consulta" && a.subtipo_exame !== "Exame") {
+          especialidadeClinica = a.subtipo_exame;
+        } else if (a.medico_profissional && isNomeExame) {
+          especialidadeClinica = a.medico_profissional;
+        } else {
+          // Buscar a especialidade cadastrada do médico no banco de serviços
+          const srv = (servicos || []).find((s) => s.nome === a.medico_profissional);
+          if (srv?.especialidade) {
+            especialidadeClinica = srv.especialidade.split(",")[0].trim();
+          }
+        }
+      }
+
+      if (!especialidadeClinica || especialidadeClinica === "Consulta" || especialidadeClinica === "Exame") {
+        especialidadeClinica = a.tipo_servico === "Exame" ? "Exame Clínico" : "Clínica Geral";
+      }
+
       return {
         id: a.id,
         pacienteId: a.paciente_id || pac.id,
@@ -207,8 +300,10 @@ export default function AgendaView({
         emailPaciente: pac.email || null,
         dataNascimento: pac.data_nascimento || null,
         enfermidades: enfermidadesList,
-        medicoProfissional: a.tipo_servico === "Exame" ? (a.subtipo_exame || a.medico_profissional) : a.medico_profissional,
-        especialidade: a.tipo_servico || "Consulta",
+        medicoProfissional: especialistaHumano || "Corpo Clínico",
+        especialidade: especialidadeClinica,
+        subtipoExame: a.subtipo_exame || null,
+        tipoServico: a.tipo_servico || (a.especialidade?.toLowerCase().includes("exame") ? "Exame" : "Consulta"),
         modalidade: a.modalidade || "Particular",
         statusAtendimento: a.status_atendimento || "agendado",
         pago: a.status_pagamento_antecipado,
@@ -354,6 +449,23 @@ export default function AgendaView({
     }
   };
 
+  // Carregar mensagens da fila para este agendamento/exame
+  const carregarMensagensPaciente = async (itemAlvo) => {
+    if (!itemAlvo) return;
+    setLoadingMensagens(true);
+    try {
+      const msgs = await actionBuscarMensagensDoAgendamento({
+        agendamentoId: itemAlvo.id,
+        telefone: itemAlvo.telefonePaciente
+      });
+      setMensagensAgendamento(msgs || []);
+    } catch (err) {
+      console.error("Erro ao buscar mensagens do agendamento:", err);
+    } finally {
+      setLoadingMensagens(false);
+    }
+  };
+
   // Abrir Ficha do Paciente e Dados Sensíveis com Proteção de Permissão
   const handleOpenSensitiveModal = (item) => {
     if (!temPermissaoSigiloClinico) {
@@ -367,6 +479,13 @@ export default function AgendaView({
     setSensitiveModalItem(item);
     setEnfermidadesPaciente(item.enfermidades || []);
     setSearchEnfermidade("");
+    setFichaSubTab("dados");
+    setEditingMsgId(null);
+    setIsCriandoMensagem(false);
+    setNovaMsgTexto("");
+    setNovaMsgDataHora(item.data ? `${item.data}T08:00` : "");
+    setNovaMsgAnexoUrl("");
+    carregarMensagensPaciente(item);
   };
 
   // Adicionar / Vincular Enfermidade ao Paciente
@@ -430,6 +549,134 @@ export default function AgendaView({
     }
   };
 
+  // Iniciar edição de mensagem
+  const handleStartEditMensagem = (msg) => {
+    playDopamineSound("click");
+    setEditingMsgId(msg.id);
+    setEditMsgTexto(msg.mensagem || "");
+    const dateFormatted = msg.data_hora_programada
+      ? new Date(msg.data_hora_programada).toISOString().slice(0, 16)
+      : "";
+    setEditMsgDataHora(dateFormatted);
+    setEditMsgAnexoUrl(msg.anexo_url || "");
+  };
+
+  // Salvar edição de mensagem na fila
+  const handleSalvarEdicaoMensagem = async (msgId) => {
+    if (!editMsgTexto.trim()) {
+      showToast("O texto da mensagem não pode estar vazio.", "error");
+      return;
+    }
+    setIsProcessing(true);
+    playDopamineSound("select");
+    triggerHaptic("light");
+    try {
+      await actionAtualizarMensagemFila({
+        id: msgId,
+        mensagem: editMsgTexto.trim(),
+        data_hora_programada: editMsgDataHora ? new Date(editMsgDataHora).toISOString() : undefined,
+        anexo_url: editMsgAnexoUrl?.trim() || null
+      });
+
+      setMensagensAgendamento((prev) =>
+        prev.map((m) =>
+          m.id === msgId
+            ? {
+                ...m,
+                mensagem: editMsgTexto.trim(),
+                data_hora_programada: editMsgDataHora ? new Date(editMsgDataHora).toISOString() : m.data_hora_programada,
+                anexo_url: editMsgAnexoUrl?.trim() || null
+              }
+            : m
+        )
+      );
+
+      setEditingMsgId(null);
+      showToast("Mensagem atualizada na fila com sucesso!");
+    } catch (err) {
+      showToast(`Erro ao atualizar mensagem: ${err.message}`, "error");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Cancelar envio de uma mensagem específica
+  const handleCancelarMensagemFila = async (msgId) => {
+    setIsProcessing(true);
+    playDopamineSound("click");
+    try {
+      await actionCancelarMensagemFila(msgId);
+      setMensagensAgendamento((prev) =>
+        prev.map((m) => (m.id === msgId ? { ...m, status: "cancelada" } : m))
+      );
+      showToast("Envio da mensagem cancelado!");
+    } catch (err) {
+      showToast(`Erro ao cancelar mensagem: ${err.message}`, "error");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Disparar mensagem imediatamente pelo WhatsApp
+  const handleDispararAgora = async (msgId) => {
+    setDisparandoMsgId(msgId);
+    playDopamineSound("select");
+    triggerHaptic("success");
+    try {
+      await actionDispararMensagemManualAdmin(msgId);
+      setMensagensAgendamento((prev) =>
+        prev.map((m) => (m.id === msgId ? { ...m, status: "enviada" } : m))
+      );
+      showToast("Mensagem disparada com sucesso para o WhatsApp!");
+    } catch (err) {
+      showToast(`Erro ao disparar: ${err.message}`, "error");
+    } finally {
+      setDisparandoMsgId(null);
+    }
+  };
+
+  // Criar e enfileirar nova mensagem personalizada para este paciente/exame
+  const handleCriarMensagemAvulsa = async () => {
+    if (!novaMsgTexto.trim()) {
+      showToast("Digite o conteúdo da mensagem.", "error");
+      return;
+    }
+    if (!sensitiveModalItem?.telefonePaciente) {
+      showToast("Este paciente não possui telefone de WhatsApp cadastrado.", "error");
+      return;
+    }
+
+    setIsProcessing(true);
+    playDopamineSound("select");
+    triggerHaptic("success");
+    try {
+      const nova = await actionCriarMensagemFilaAvulsa({
+        agendamentoId: sensitiveModalItem.id,
+        telefone: sensitiveModalItem.telefonePaciente,
+        nomePaciente: sensitiveModalItem.nomePaciente,
+        mensagem: novaMsgTexto.trim(),
+        dataHoraProgramada: novaMsgDataHora ? new Date(novaMsgDataHora).toISOString() : new Date().toISOString(),
+        anexo_url: novaMsgAnexoUrl?.trim() || null,
+        gatilho: "avulsa_manual"
+      });
+
+      if (nova) {
+        setMensagensAgendamento((prev) => [...prev, nova]);
+      } else {
+        await carregarMensagensPaciente(sensitiveModalItem);
+      }
+
+      setIsCriandoMensagem(false);
+      setNovaMsgTexto("");
+      setNovaMsgAnexoUrl("");
+      showToast("Nova mensagem agendada com sucesso!");
+    } catch (err) {
+      showToast(`Erro ao agendar mensagem: ${err.message}`, "error");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   // Sugestões de busca de enfermidade
   const sugestoesEnfermidades = useMemo(() => {
     if (!searchEnfermidade.trim()) return [];
@@ -443,6 +690,15 @@ export default function AgendaView({
     const term = searchEnfermidade.toLowerCase().trim();
     return catalogoEnfermidades.some((e) => e.toLowerCase() === term);
   }, [catalogoEnfermidades, searchEnfermidade]);
+
+  // Contagem de status das mensagens daquele agendamento
+  const statsMensagensAgendamento = useMemo(() => {
+    const total = mensagensAgendamento.length;
+    const pendentes = mensagensAgendamento.filter((m) => m.status === "pendente" || m.status === "rascunho").length;
+    const enviadas = mensagensAgendamento.filter((m) => m.status === "enviada" || m.status === "enviado").length;
+    const canceladas = mensagensAgendamento.filter((m) => m.status === "cancelada" || m.status === "falha").length;
+    return { total, pendentes, enviadas, canceladas };
+  }, [mensagensAgendamento]);
 
   return (
     <motion.div
@@ -748,17 +1004,27 @@ export default function AgendaView({
                                 </div>
 
                                 <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-zinc-600 dark:text-zinc-400">
-                                  <span>
-                                    <strong>Especialista:</strong> {item.medicoProfissional}
-                                  </span>
-                                  {item.especialidade && (
+                                  {item.medicoProfissional && item.medicoProfissional !== "Corpo Clínico" && (
                                     <span>
-                                      <strong>Especialidade:</strong> {item.especialidade}
+                                      <strong>Especialista:</strong> {item.medicoProfissional}
                                     </span>
                                   )}
-                                  {item.convenio && (
+                                  <span>
+                                    <strong>Especialidade:</strong> {item.especialidade}
+                                  </span>
+                                  {item.subtipoExame && item.subtipoExame !== item.especialidade && item.subtipoExame !== item.tipoServico && (
                                     <span>
-                                      <strong>Convênio:</strong> {item.convenio}
+                                      <strong>Procedimento:</strong> {item.subtipoExame}
+                                    </span>
+                                  )}
+                                  {item.tipoServico && (
+                                    <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-[10px] font-bold uppercase text-zinc-700 dark:text-zinc-300">
+                                      {item.tipoServico}
+                                    </span>
+                                  )}
+                                  {(item.modalidade || item.convenio) && (
+                                    <span>
+                                      <strong>Modalidade:</strong> {item.modalidade || item.convenio}
                                     </span>
                                   )}
                                   {item.telefonePaciente && (
@@ -790,7 +1056,7 @@ export default function AgendaView({
                                 <button
                                   onClick={() => handleOpenSensitiveModal(item)}
                                   className="min-h-[40px] px-3.5 py-2 rounded-xl border border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 flex items-center gap-1.5 text-xs font-bold transition-colors shadow-sm cursor-pointer"
-                                  title="Verificar Ficha Clínica & Enfermidades"
+                                  title="Ver Ficha Clínica, Enfermidades & Mensagens"
                                 >
                                   <ShieldCheck size={14} className="text-blue-500" />
                                   <span>Ficha</span>
@@ -956,9 +1222,17 @@ export default function AgendaView({
                               </td>
                               <td className="p-4">
                                 <div className="text-zinc-800 dark:text-zinc-200 font-bold">
-                                  {item.medicoProfissional}
+                                  {item.medicoProfissional && item.medicoProfissional !== "Corpo Clínico" ? item.medicoProfissional : (item.subtipoExame || item.especialidade)}
                                 </div>
-                                <div className="text-[10px] text-zinc-400">{item.especialidade}</div>
+                                <div className="text-[10px] text-zinc-400">
+                                  {item.especialidade}
+                                  {item.medicoProfissional && item.medicoProfissional !== "Corpo Clínico" && item.subtipoExame && item.subtipoExame !== item.especialidade ? ` • ${item.subtipoExame}` : ""}
+                                </div>
+                                {item.tipoServico && (
+                                  <span className="inline-block mt-0.5 px-1.5 py-0.2 rounded text-[9px] font-bold uppercase bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400">
+                                    {item.tipoServico}
+                                  </span>
+                                )}
                               </td>
                               <td className="p-4">
                                 <span
@@ -979,7 +1253,7 @@ export default function AgendaView({
                                     <button
                                       onClick={() => handleOpenSensitiveModal(item)}
                                       className="min-h-[34px] px-3 py-1.5 border border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 text-[11px] font-bold inline-flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
-                                      title="Verificar Ficha Clínica & Enfermidades"
+                                      title="Ver Ficha Clínica, Enfermidades & Mensagens"
                                     >
                                       <ShieldCheck size={13} className="text-blue-500" />
                                       <span>Ficha</span>
@@ -1026,7 +1300,8 @@ export default function AgendaView({
                                 </div>
                               </td>
                             </tr>
-                          ))}
+                          ))
+                        }
                         </tbody>
                       </table>
                     </div>
@@ -1114,15 +1389,27 @@ export default function AgendaView({
                               </div>
 
                               <p className="text-xs text-zinc-500 mt-1 flex flex-wrap gap-3">
-                                <span>
-                                  <strong>Especialista:</strong> {item.medicoProfissional}
-                                </span>
+                                {item.medicoProfissional && item.medicoProfissional !== "Corpo Clínico" && (
+                                  <span>
+                                    <strong>Especialista:</strong> {item.medicoProfissional}
+                                  </span>
+                                )}
                                 <span>
                                   <strong>Especialidade:</strong> {item.especialidade}
                                 </span>
-                                {item.modalidade && (
+                                {item.subtipoExame && item.subtipoExame !== item.especialidade && item.subtipoExame !== item.tipoServico && (
                                   <span>
-                                    <strong>Modalidade:</strong> {item.modalidade}
+                                    <strong>Procedimento:</strong> {item.subtipoExame}
+                                  </span>
+                                )}
+                                {item.tipoServico && (
+                                  <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-[10px] font-bold uppercase text-zinc-700 dark:text-zinc-300">
+                                    {item.tipoServico}
+                                  </span>
+                                )}
+                                {(item.modalidade || item.convenio) && (
+                                  <span>
+                                    <strong>Modalidade:</strong> {item.modalidade || item.convenio}
                                   </span>
                                 )}
                                 {item.telefonePaciente && (
@@ -1157,7 +1444,7 @@ export default function AgendaView({
                               <button
                                 onClick={() => handleOpenSensitiveModal(item)}
                                 className="min-h-[40px] px-3.5 py-2 border border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl text-xs font-bold hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
-                                title="Verificar Ficha Clínica & Enfermidades"
+                                title="Ver Ficha Clínica, Enfermidades & Mensagens"
                               >
                                 <ShieldCheck size={14} className="text-blue-500" />
                                 <span>Ficha</span>
@@ -1212,7 +1499,7 @@ export default function AgendaView({
         </div>
       </div>
 
-      {/* MODAL: FICHA CLÍNICA & DADOS SENSÍVEIS (ENFERMIDADES) - PROTEGIDO POR PERMISSÃO */}
+      {/* MODAL: FICHA CLÍNICA, DADOS SENSÍVEIS & FILA DE MENSAGENS DO WHATSAPP DO EXAME */}
       <AnimatePresence>
         {sensitiveModalItem && temPermissaoSigiloClinico && (
           <div
@@ -1224,216 +1511,660 @@ export default function AgendaView({
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white/95 dark:bg-[#0c0c0e]/95 backdrop-blur-3xl rounded-[2.5rem] p-6 md:p-8 max-w-xl w-full shadow-2xl border border-zinc-200/80 dark:border-white/10 space-y-6 max-h-[90vh] overflow-y-auto custom-scrollbar"
+              className="bg-white/95 dark:bg-[#0c0c0e]/95 backdrop-blur-3xl rounded-[2.5rem] p-6 md:p-8 max-w-3xl w-full shadow-2xl border border-zinc-200/80 dark:border-white/10 space-y-6 max-h-[90vh] overflow-y-auto custom-scrollbar flex flex-col"
             >
-              <div className="flex justify-between items-start border-b border-zinc-100 dark:border-white/5 pb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center shadow-sm">
-                    <ShieldCheck size={22} strokeWidth={1.75} />
+              {/* CABEÇALHO DO MODAL COM ABAS DE NAVEGAÇÃO */}
+              <div className="flex flex-col gap-4 border-b border-zinc-100 dark:border-white/5 pb-4">
+                <div className="flex justify-between items-start">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center shadow-sm border border-blue-200/40">
+                      <ShieldCheck size={24} strokeWidth={1.75} />
+                    </div>
+                    <div>
+                      <h3 className="font-black text-xl md:text-2xl text-zinc-950 dark:text-white tracking-tight flex items-center gap-2">
+                        <span>Ficha do Paciente & Atendimento</span>
+                      </h3>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                        {sensitiveModalItem.nomePaciente} • {sensitiveModalItem.especialidade} ({sensitiveModalItem.medicoProfissional})
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-extrabold text-xl text-zinc-950 dark:text-white tracking-tight">
-                      Ficha do Paciente & Dados Clínicos
-                    </h3>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                      Visualização protegida de dados cadastrais e histórico de enfermidades.
-                    </p>
-                  </div>
+                  <button
+                    onClick={() => setSensitiveModalItem(null)}
+                    className="p-2 text-zinc-400 hover:text-zinc-950 dark:hover:text-white rounded-full cursor-pointer transition-colors"
+                  >
+                    <X size={20} />
+                  </button>
                 </div>
-                <button
-                  onClick={() => setSensitiveModalItem(null)}
-                  className="p-2 text-zinc-400 hover:text-zinc-950 dark:hover:text-white rounded-full cursor-pointer"
-                >
-                  <X size={18} />
-                </button>
+
+                {/* SELETOR DE ABAS INTERNO DA FICHA DO PACIENTE */}
+                <div className="flex p-1.5 bg-zinc-100/80 dark:bg-zinc-900/80 rounded-2xl border border-zinc-200/70 dark:border-zinc-800 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playDopamineSound("click");
+                      setFichaSubTab("dados");
+                    }}
+                    className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                      fichaSubTab === "dados"
+                        ? "bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white shadow-sm ring-1 ring-zinc-200/50 dark:ring-zinc-700/50"
+                        : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                    }`}
+                  >
+                    <HeartPulse size={15} className="text-rose-500" />
+                    <span>Ficha & Enfermidades</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playDopamineSound("click");
+                      setFichaSubTab("mensagens");
+                      carregarMensagensPaciente(sensitiveModalItem);
+                    }}
+                    className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                      fichaSubTab === "mensagens"
+                        ? "bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white shadow-sm ring-1 ring-zinc-200/50 dark:ring-zinc-700/50"
+                        : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                    }`}
+                  >
+                    <MessageSquare size={15} className="text-emerald-500" />
+                    <span>Mensagens do WhatsApp ({statsMensagensAgendamento.total})</span>
+                    {statsMensagensAgendamento.pendentes > 0 && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-black">
+                        {statsMensagensAgendamento.pendentes} pendente(s)
+                      </span>
+                    )}
+                  </button>
+                </div>
               </div>
 
-              {/* CARD DE DADOS CADASTRAIS */}
-              <div className="p-5 bg-zinc-50/80 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl space-y-3 text-xs">
-                <div className="grid sm:grid-cols-2 gap-3">
-                  <div>
-                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
-                      Nome Completo
-                    </span>
-                    <span className="font-extrabold text-sm text-zinc-950 dark:text-white block mt-0.5">
-                      {sensitiveModalItem.nomePaciente}
-                    </span>
-                  </div>
+              {/* CONTEÚDO DA ABA 1: FICHA CLÍNICA & ENFERMIDADES */}
+              {fichaSubTab === "dados" && (
+                <div className="space-y-6">
+                  {/* CARD DE DADOS CADASTRAIS */}
+                  <div className="p-5 bg-zinc-50/80 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl space-y-3 text-xs">
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <div>
+                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
+                          Nome Completo
+                        </span>
+                        <span className="font-extrabold text-sm text-zinc-950 dark:text-white block mt-0.5">
+                          {sensitiveModalItem.nomePaciente}
+                        </span>
+                      </div>
 
-                  <div>
-                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
-                      Documento CPF
-                    </span>
-                    <span className="font-bold text-zinc-800 dark:text-zinc-200 block mt-0.5 font-mono">
-                      {sensitiveModalItem.cpfPaciente || "Não informado"}
-                    </span>
-                  </div>
-                </div>
+                      <div>
+                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
+                          Documento CPF
+                        </span>
+                        <span className="font-bold text-zinc-800 dark:text-zinc-200 block mt-0.5 font-mono">
+                          {sensitiveModalItem.cpfPaciente || "Não informado"}
+                        </span>
+                      </div>
+                    </div>
 
-                <div className="grid sm:grid-cols-2 gap-3 pt-2 border-t border-zinc-200/60 dark:border-zinc-800">
-                  <div>
-                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
-                      Nascimento & Idade
-                    </span>
-                    <span className="font-bold text-zinc-800 dark:text-zinc-200 block mt-0.5">
-                      {sensitiveModalItem.dataNascimento
-                        ? `${sensitiveModalItem.dataNascimento.split("-").reverse().join("/")} (${
-                            calcularIdadeDataNasc(sensitiveModalItem.dataNascimento) || "--"
-                          } anos)`
-                        : "Não informado"}
-                    </span>
-                  </div>
+                    <div className="grid sm:grid-cols-2 gap-3 pt-2 border-t border-zinc-200/60 dark:border-zinc-800">
+                      <div>
+                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
+                          Nascimento & Idade
+                        </span>
+                        <span className="font-bold text-zinc-800 dark:text-zinc-200 block mt-0.5">
+                          {sensitiveModalItem.dataNascimento
+                            ? `${sensitiveModalItem.dataNascimento.split("-").reverse().join("/")} (${
+                                calcularIdadeDataNasc(sensitiveModalItem.dataNascimento) || "--"
+                              } anos)`
+                            : "Não informado"}
+                        </span>
+                      </div>
 
-                  <div>
-                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
-                      WhatsApp / Celular
-                    </span>
-                    {sensitiveModalItem.telefonePaciente ? (
-                      <a
-                        href={`https://wa.me/55${sensitiveModalItem.telefonePaciente.replace(
-                          /\D/g,
-                          ""
-                        )}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="font-bold text-emerald-600 dark:text-emerald-400 hover:underline inline-flex items-center gap-1 mt-0.5"
-                      >
-                        <Phone size={11} /> {sensitiveModalItem.telefonePaciente}{" "}
-                        <ExternalLink size={10} />
-                      </a>
-                    ) : (
-                      <span className="text-zinc-400">Não informado</span>
+                      <div>
+                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
+                          WhatsApp / Celular
+                        </span>
+                        {sensitiveModalItem.telefonePaciente ? (
+                          <a
+                            href={`https://wa.me/55${sensitiveModalItem.telefonePaciente.replace(
+                              /\D/g,
+                              ""
+                            )}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-bold text-emerald-600 dark:text-emerald-400 hover:underline inline-flex items-center gap-1 mt-0.5"
+                          >
+                            <Phone size={11} /> {sensitiveModalItem.telefonePaciente}{" "}
+                            <ExternalLink size={10} />
+                          </a>
+                        ) : (
+                          <span className="text-zinc-400">Não informado</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {sensitiveModalItem.emailPaciente && (
+                      <div className="pt-2 border-t border-zinc-200/60 dark:border-zinc-800">
+                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
+                          E-mail
+                        </span>
+                        <span className="font-bold text-zinc-800 dark:text-zinc-200 block mt-0.5">
+                          {sensitiveModalItem.emailPaciente}
+                        </span>
+                      </div>
                     )}
                   </div>
-                </div>
 
-                {sensitiveModalItem.emailPaciente && (
-                  <div className="pt-2 border-t border-zinc-200/60 dark:border-zinc-800">
-                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
-                      E-mail
-                    </span>
-                    <span className="font-bold text-zinc-800 dark:text-zinc-200 block mt-0.5">
-                      {sensitiveModalItem.emailPaciente}
-                    </span>
-                  </div>
-                )}
-              </div>
+                  {/* SEÇÃO: ENFERMIDADES DIAGNOSTICADAS / ASSOCIADAS */}
+                  <div className="space-y-3.5">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-900 dark:text-white flex items-center gap-1.5">
+                        <HeartPulse size={15} className="text-rose-500" /> Enfermidades do Paciente
+                      </h4>
+                      <span className="text-[10px] text-zinc-400 font-bold">
+                        {enfermidadesPaciente.length} vinculada(s)
+                      </span>
+                    </div>
 
-              {/* SEÇÃO: ENFERMIDADES DIAGNOSTICADAS / ASSOCIADAS */}
-              <div className="space-y-3.5">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-900 dark:text-white flex items-center gap-1.5">
-                    <HeartPulse size={15} className="text-rose-500" /> Enfermidades do Paciente
-                  </h4>
-                  <span className="text-[10px] text-zinc-400 font-bold">
-                    {enfermidadesPaciente.length} vinculada(s)
-                  </span>
-                </div>
-
-                {/* TAGS ATUAIS */}
-                <div className="flex flex-wrap gap-2 min-h-[38px] p-3 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl">
-                  {enfermidadesPaciente.length === 0 ? (
-                    <p className="text-xs text-zinc-400 italic py-0.5">
-                      Nenhuma enfermidade vinculada a este paciente.
-                    </p>
-                  ) : (
-                    enfermidadesPaciente.map((enf) => (
-                      <div
-                        key={enf}
-                        className="px-3 py-1 bg-rose-50 dark:bg-rose-950/40 border border-rose-200/60 dark:border-rose-900/40 text-rose-900 dark:text-rose-200 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm"
-                      >
-                        <HeartPulse size={12} className="text-rose-500" />
-                        <span>{enf}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveEnfermidadeFromPatient(enf)}
-                          className="text-rose-400 hover:text-red-600 transition-colors p-0.5 cursor-pointer"
-                          title={`Desvincular "${enf}"`}
-                        >
-                          <X size={12} />
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                {/* BARRA DE BUSCA E AUTOCOMPLETE DE ENFERMIDADES */}
-                <div className="relative space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block ml-1">
-                    Buscar ou Cadastrar Enfermidade
-                  </label>
-                  <div className="relative">
-                    <Search
-                      size={15}
-                      className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400"
-                    />
-                    <input
-                      type="text"
-                      value={searchEnfermidade}
-                      onChange={(e) => setSearchEnfermidade(e.target.value)}
-                      placeholder="Digite para buscar (ex: Refluxo, Gastrite, Hipertensão...)"
-                      className="w-full pl-9 pr-4 py-2.5 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none focus:border-[#9FC131]"
-                    />
-                  </div>
-
-                  {/* SUGESTÕES DE AUTOCOMPLETE */}
-                  {searchEnfermidade.trim() && (
-                    <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white dark:bg-[#15151a] border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xl p-2 space-y-1 max-h-48 overflow-y-auto custom-scrollbar">
-                      {sugestoesEnfermidades.map((sug) => (
-                        <button
-                          key={sug}
-                          type="button"
-                          onClick={() => handleAddEnfermidadeToPatient(sug)}
-                          className="w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-zinc-800 dark:text-zinc-200 hover:bg-rose-50 dark:hover:bg-rose-950/30 flex items-center justify-between transition-colors cursor-pointer"
-                        >
-                          <span className="flex items-center gap-2">
-                            <HeartPulse size={13} className="text-rose-500" />
-                            {sug}
-                          </span>
-                          <span className="text-[10px] text-zinc-400 uppercase font-bold">
-                            + Vincular
-                          </span>
-                        </button>
-                      ))}
-
-                      {!exactMatchExists && (
-                        <button
-                          type="button"
-                          onClick={handleCreateAndLinkEnfermidade}
-                          className="w-full text-left px-3 py-2.5 rounded-xl text-xs font-extrabold text-white bg-zinc-950 dark:bg-white dark:text-black hover:bg-black transition-colors flex items-center gap-2 shadow-sm cursor-pointer"
-                        >
-                          <Plus size={14} />
-                          <span>Cadastrar "{searchEnfermidade.trim()}" no catálogo e vincular</span>
-                        </button>
+                    {/* TAGS ATUAIS */}
+                    <div className="flex flex-wrap gap-2 min-h-[38px] p-3 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl">
+                      {enfermidadesPaciente.length === 0 ? (
+                        <p className="text-xs text-zinc-400 italic py-0.5">
+                          Nenhuma enfermidade vinculada a este paciente.
+                        </p>
+                      ) : (
+                        enfermidadesPaciente.map((enf) => (
+                          <div
+                            key={enf}
+                            className="px-3 py-1 bg-rose-50 dark:bg-rose-950/40 border border-rose-200/60 dark:border-rose-900/40 text-rose-900 dark:text-rose-200 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm"
+                          >
+                            <HeartPulse size={12} className="text-rose-500" />
+                            <span>{enf}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveEnfermidadeFromPatient(enf)}
+                              className="text-rose-400 hover:text-red-600 transition-colors p-0.5 cursor-pointer"
+                              title={`Desvincular "${enf}"`}
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        ))
                       )}
                     </div>
-                  )}
+
+                    {/* BARRA DE BUSCA E AUTOCOMPLETE DE ENFERMIDADES */}
+                    <div className="relative space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block ml-1">
+                        Buscar ou Cadastrar Enfermidade
+                      </label>
+                      <div className="relative">
+                        <Search
+                          size={15}
+                          className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400"
+                        />
+                        <input
+                          type="text"
+                          value={searchEnfermidade}
+                          onChange={(e) => setSearchEnfermidade(e.target.value)}
+                          placeholder="Digite para buscar (ex: Refluxo, Gastrite, Hipertensão...)"
+                          className="w-full pl-9 pr-4 py-2.5 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none focus:border-[#9FC131]"
+                        />
+                      </div>
+
+                      {/* SUGESTÕES DE AUTOCOMPLETE */}
+                      {searchEnfermidade.trim() && (
+                        <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white dark:bg-[#15151a] border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xl p-2 space-y-1 max-h-48 overflow-y-auto custom-scrollbar">
+                          {sugestoesEnfermidades.map((sug) => (
+                            <button
+                              key={sug}
+                              type="button"
+                              onClick={() => handleAddEnfermidadeToPatient(sug)}
+                              className="w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-zinc-800 dark:text-zinc-200 hover:bg-rose-50 dark:hover:bg-rose-950/30 flex items-center justify-between transition-colors cursor-pointer"
+                            >
+                              <span className="flex items-center gap-2">
+                                <HeartPulse size={13} className="text-rose-500" />
+                                {sug}
+                              </span>
+                              <span className="text-[10px] text-zinc-400 uppercase font-bold">
+                                + Vincular
+                              </span>
+                            </button>
+                          ))}
+
+                          {!exactMatchExists && (
+                            <button
+                              type="button"
+                              onClick={handleCreateAndLinkEnfermidade}
+                              className="w-full text-left px-3 py-2.5 rounded-xl text-xs font-extrabold text-white bg-zinc-950 dark:bg-white dark:text-black hover:bg-black transition-colors flex items-center gap-2 shadow-sm cursor-pointer"
+                            >
+                              <Plus size={14} />
+                              <span>Cadastrar \"{searchEnfermidade.trim()}\" no catálogo e vincular</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <p className="text-[11px] text-zinc-400 leading-relaxed">
+                      As enfermidades vinculadas permitem que a clínica envie orientações, lembretes de exames e mensagens personalizadas de WhatsApp automaticamente para esse grupo de pacientes.
+                    </p>
+                  </div>
+
+                  {/* BOTÕES DE AÇÃO DA ABA DADOS */}
+                  <div className="grid grid-cols-2 gap-3 pt-3 border-t border-zinc-100 dark:border-white/5">
+                    <button
+                      type="button"
+                      onClick={() => setSensitiveModalItem(null)}
+                      disabled={isProcessing}
+                      className="min-h-[44px] rounded-xl border border-zinc-200/80 dark:border-zinc-800 font-bold text-xs uppercase text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 transition-colors cursor-pointer"
+                    >
+                      Fechar
+                    </button>
+                    <ButtonPrimary
+                      onClick={handleSaveSensitiveData}
+                      disabled={isProcessing}
+                      icon={CheckCircle2}
+                      className="min-h-[44px] text-xs rounded-xl justify-center cursor-pointer"
+                    >
+                      {isProcessing ? "Salvando..." : "Salvar Alterações"}
+                    </ButtonPrimary>
+                  </div>
                 </div>
+              )}
 
-                <p className="text-[11px] text-zinc-400 leading-relaxed">
-                  As enfermidades vinculadas permitem que a clínica envie orientações, lembretes de exames e mensagens personalizadas de WhatsApp automaticamente para esse grupo de pacientes.
-                </p>
-              </div>
+              {/* CONTEÚDO DA ABA 2: MENSAGENS DO WHATSAPP DO EXAME / ATENDIMENTO */}
+              {fichaSubTab === "mensagens" && (
+                <div className="space-y-5">
+                  {/* SUMÁRIO E BOTÃO DE CRIAR NOVA MENSAGEM */}
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/70 dark:border-zinc-800 rounded-2xl">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="font-bold text-zinc-700 dark:text-zinc-300">
+                        Status da Fila:
+                      </span>
+                      <span className="px-2.5 py-0.5 rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-extrabold text-[11px]">
+                        {statsMensagensAgendamento.pendentes} Pendente(s)
+                      </span>
+                      <span className="px-2.5 py-0.5 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-extrabold text-[11px]">
+                        {statsMensagensAgendamento.enviadas} Enviada(s)
+                      </span>
+                      {statsMensagensAgendamento.canceladas > 0 && (
+                        <span className="px-2.5 py-0.5 rounded-lg bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300 font-extrabold text-[11px]">
+                          {statsMensagensAgendamento.canceladas} Cancelada(s)
+                        </span>
+                      )}
+                    </div>
 
-              {/* BOTÕES DE AÇÃO */}
-              <div className="grid grid-cols-2 gap-3 pt-3 border-t border-zinc-100 dark:border-white/5">
-                <button
-                  type="button"
-                  onClick={() => setSensitiveModalItem(null)}
-                  disabled={isProcessing}
-                  className="min-h-[44px] rounded-xl border border-zinc-200/80 dark:border-zinc-800 font-bold text-xs uppercase text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 transition-colors cursor-pointer"
-                >
-                  Fechar
-                </button>
-                <ButtonPrimary
-                  onClick={handleSaveSensitiveData}
-                  disabled={isProcessing}
-                  icon={CheckCircle2}
-                  className="min-h-[44px] text-xs rounded-xl justify-center cursor-pointer"
-                >
-                  {isProcessing ? "Salvando..." : "Salvar Alterações"}
-                </ButtonPrimary>
-              </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        playDopamineSound("click");
+                        setIsCriandoMensagem(!isCriandoMensagem);
+                      }}
+                      className="min-h-[38px] px-3.5 py-1.5 bg-zinc-950 dark:bg-white text-white dark:text-black hover:bg-black font-extrabold text-xs rounded-xl flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                    >
+                      <Plus size={14} />
+                      <span>{isCriandoMensagem ? "Fechar Formulário" : "Nova Mensagem"}</span>
+                    </button>
+                  </div>
+
+                  {/* FORMULÁRIO DE NOVA MENSAGEM AVULSA / PROGRAMADA */}
+                  <AnimatePresence>
+                    {isCriandoMensagem && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="p-5 bg-emerald-500/5 dark:bg-emerald-950/20 border border-emerald-500/30 rounded-2xl space-y-4 shadow-sm">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-xs font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
+                              <Sparkles size={15} /> Agendar Mensagem Personalizada
+                            </h4>
+                            <span className="text-[10px] text-zinc-400">
+                              Destino: {sensitiveModalItem.telefonePaciente || "Não informado"}
+                            </span>
+                          </div>
+
+                          {/* TEXTAREA DO CONTEÚDO */}
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest block">
+                              Texto da Mensagem
+                            </label>
+                            <textarea
+                              rows={4}
+                              value={novaMsgTexto}
+                              onChange={(e) => setNovaMsgTexto(e.target.value)}
+                              placeholder="Ex: Olá {nome}, segue em anexo a guia de preparo para o seu exame de {servico}..."
+                              className="w-full p-3 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none focus:border-[#9FC131] leading-relaxed custom-scrollbar"
+                            />
+                            <div className="flex flex-wrap gap-1.5 pt-1">
+                              <span className="text-[10px] text-zinc-400 font-bold mr-1">
+                                Variáveis rápidas:
+                              </span>
+                              {Object.entries({
+                                "{nome}": "Primeiro Nome",
+                                "{servico}": "Exame / Procedimento",
+                                "{especialista}": "Especialista",
+                                "{data}": "Data Agendada",
+                                "{hora}": "Horário Agendado",
+                                "{clinica}": "Nome da Clínica"
+                              }).map(([tag, desc]) => (
+                                <button
+                                  key={tag}
+                                  type="button"
+                                  onClick={() => setNovaMsgTexto((prev) => `${prev} ${tag}`)}
+                                  className="text-[10px] font-bold px-2 py-0.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-[#9FC131]/20 hover:text-black dark:hover:text-white rounded-md border border-zinc-200/50 dark:border-zinc-700 transition-colors cursor-pointer"
+                                  title={desc}
+                                >
+                                  {tag}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* DATA/HORA PROGRAMADA E ANEXO */}
+                          <div className="grid sm:grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest block">
+                                Data e Horário de Envio
+                              </label>
+                              <input
+                                type="datetime-local"
+                                value={novaMsgDataHora}
+                                onChange={(e) => setNovaMsgDataHora(e.target.value)}
+                                className="w-full min-h-[42px] px-3 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none focus:border-[#9FC131]"
+                              />
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest block flex items-center gap-1">
+                                <Paperclip size={11} /> Link do Anexo / Documento (PDF / Foto)
+                              </label>
+                              <input
+                                type="url"
+                                value={novaMsgAnexoUrl}
+                                onChange={(e) => setNovaMsgAnexoUrl(e.target.value)}
+                                placeholder="https://clinica.com/preparo.pdf"
+                                className="w-full min-h-[42px] px-3 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none focus:border-[#9FC131]"
+                              />
+                            </div>
+                          </div>
+
+                          {/* NOTA SOBRE ARMAZENAMENTO DE ARQUIVOS */}
+                          <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-[11px] text-blue-800 dark:text-blue-300 flex items-start gap-2">
+                            <Info size={14} className="text-blue-500 shrink-0 mt-0.5" />
+                            <p>
+                              <strong>Armazenamento Leve:</strong> O sistema guarda apenas o link do documento ou foto. No envio para o WhatsApp, o arquivo é transmitido diretamente pelo RM Chat sem sobrecarregar o banco de dados da clínica.
+                            </p>
+                          </div>
+
+                          {/* BOTÕES DO FORMULÁRIO */}
+                          <div className="flex justify-end gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => setIsCriandoMensagem(false)}
+                              className="min-h-[38px] px-4 rounded-xl border border-zinc-200 dark:border-zinc-800 text-xs font-bold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 cursor-pointer"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleCriarMensagemAvulsa}
+                              disabled={isProcessing}
+                              className="min-h-[38px] px-5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center gap-1.5 cursor-pointer"
+                            >
+                              {isProcessing ? (
+                                <Activity size={14} className="animate-spin" />
+                              ) : (
+                                <CheckCircle2 size={14} />
+                              )}
+                              <span>Agendar Mensagem</span>
+                            </button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* LISTA DE MENSAGENS DO AGENDAMENTO */}
+                  {loadingMensagens ? (
+                    <div className="py-12 flex flex-col items-center justify-center text-zinc-400 gap-2">
+                      <Activity size={24} className="animate-spin text-[#9FC131]" />
+                      <span className="text-xs font-semibold">Carregando mensagens da fila...</span>
+                    </div>
+                  ) : mensagensAgendamento.length === 0 ? (
+                    <div className="py-12 text-center rounded-2xl border border-dashed border-zinc-200 dark:border-zinc-800 bg-white/40 dark:bg-white/[0.02] p-6 space-y-2">
+                      <div className="w-12 h-12 mx-auto rounded-2xl bg-zinc-100 dark:bg-zinc-800 text-zinc-400 flex items-center justify-center">
+                        <MessageSquare size={20} />
+                      </div>
+                      <h5 className="text-sm font-bold text-zinc-800 dark:text-zinc-200">
+                        Nenhuma mensagem encontrada na fila
+                      </h5>
+                      <p className="text-xs text-zinc-400 max-w-md mx-auto">
+                        As mensagens de confirmação e lembrete são geradas automaticamente de acordo com as regras cadastradas em Personalização. Você também pode agendar uma mensagem avulsa acima.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3.5">
+                      {mensagensAgendamento.map((msg, idx) => {
+                        const isEditing = editingMsgId === msg.id;
+                        const isSent = msg.status === "enviada" || msg.status === "enviado";
+                        const isCanceled = msg.status === "cancelada";
+                        const isPending = msg.status === "pendente" || msg.status === "rascunho";
+                        const isDisparando = disparandoMsgId === msg.id;
+
+                        return (
+                          <div
+                            key={msg.id || idx}
+                            className={`p-4 md:p-5 rounded-2xl border transition-all ${
+                              isSent
+                                ? "bg-emerald-500/[0.03] border-emerald-500/20"
+                                : isCanceled
+                                ? "bg-zinc-100/50 dark:bg-zinc-900/30 border-zinc-200/60 dark:border-zinc-800 opacity-60"
+                                : "bg-white dark:bg-[#111116] border-zinc-200/80 dark:border-white/10 shadow-sm"
+                            }`}
+                          >
+                            {/* CABEÇALHO DO CARD DA MENSAGEM */}
+                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 dark:border-white/5 pb-3">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 border border-zinc-200/60 dark:border-zinc-700/60 flex items-center gap-1">
+                                  <Tag size={10} />
+                                  {msg.gatilho === "imediato"
+                                    ? "Confirmação Imediata"
+                                    : msg.gatilho === "agendado"
+                                    ? "Lembrete Programado"
+                                    : msg.gatilho === "remarcado"
+                                    ? "Notificação Remarcação"
+                                    : msg.gatilho === "cancelado"
+                                    ? "Notificação Cancelamento"
+                                    : msg.gatilho === "pos_atendimento"
+                                    ? "Pós-Atendimento"
+                                    : msg.gatilho || "Mensagem Automática"}
+                                </span>
+
+                                <span className="text-[11px] text-zinc-400 font-medium flex items-center gap-1">
+                                  <Clock3 size={11} /> Programada:{" "}
+                                  <strong>{formatarDataHoraAmigavel(msg.data_hora_programada)}</strong>
+                                </span>
+                              </div>
+
+                              {/* BADGE DE STATUS */}
+                              <div>
+                                <span
+                                  className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-md flex items-center gap-1 ${
+                                    isSent
+                                      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
+                                      : isCanceled
+                                      ? "bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-400"
+                                      : "bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300"
+                                  }`}
+                                >
+                                  {isSent ? (
+                                    <><CheckCircle2 size={11} /> Enviada</>
+                                  ) : isCanceled ? (
+                                    <><X size={11} /> Cancelada</>
+                                  ) : (
+                                    <><Clock3 size={11} /> Pendente na Fila</>
+                                  )}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* CONTEÚDO DA MENSAGEM OU EDITOR INLINE */}
+                            {isEditing ? (
+                              <div className="mt-4 space-y-3">
+                                <div className="space-y-1">
+                                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
+                                    Editar Texto da Mensagem
+                                  </label>
+                                  <textarea
+                                    rows={4}
+                                    value={editMsgTexto}
+                                    onChange={(e) => setEditMsgTexto(e.target.value)}
+                                    className="w-full p-3 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none focus:border-[#9FC131] leading-relaxed custom-scrollbar font-sans"
+                                  />
+                                </div>
+
+                                <div className="grid sm:grid-cols-2 gap-3">
+                                  <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
+                                      Reagendar Data/Hora de Envio
+                                    </label>
+                                    <input
+                                      type="datetime-local"
+                                      value={editMsgDataHora}
+                                      onChange={(e) => setEditMsgDataHora(e.target.value)}
+                                      className="w-full min-h-[40px] px-3 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none focus:border-[#9FC131]"
+                                    />
+                                  </div>
+
+                                  <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block flex items-center gap-1">
+                                      <Paperclip size={11} /> Anexo / Link de Documento (PDF/Foto)
+                                    </label>
+                                    <input
+                                      type="url"
+                                      value={editMsgAnexoUrl}
+                                      onChange={(e) => setEditMsgAnexoUrl(e.target.value)}
+                                      placeholder="https://clinica.com/preparo.pdf"
+                                      className="w-full min-h-[40px] px-3 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none focus:border-[#9FC131]"
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className="flex justify-end gap-2 pt-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingMsgId(null)}
+                                    className="min-h-[36px] px-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800 text-xs font-bold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 cursor-pointer"
+                                  >
+                                    Cancelar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSalvarEdicaoMensagem(msg.id)}
+                                    disabled={isProcessing}
+                                    className="min-h-[36px] px-4 bg-zinc-950 dark:bg-white text-white dark:text-black font-extrabold text-xs rounded-xl shadow-sm flex items-center gap-1.5 cursor-pointer"
+                                  >
+                                    {isProcessing ? (
+                                      <Activity size={14} className="animate-spin" />
+                                    ) : (
+                                      <Check size={14} />
+                                    )}
+                                    <span>Salvar Edição</span>
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              /* BALÃO DE MENSAGEM ESTILO WHATSAPP */
+                              <div className="mt-3 space-y-2.5">
+                                <div className="p-3.5 bg-emerald-50/50 dark:bg-[#081f14]/40 border border-emerald-500/20 rounded-2xl text-xs text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap leading-relaxed font-sans shadow-inner">
+                                  {msg.mensagem || "(Mensagem sem texto)"}
+                                </div>
+
+                                {/* SE HOUVER ANEXO VINCULADO */}
+                                {msg.anexo_url && (
+                                  <div className="flex items-center gap-2 p-2.5 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/70 dark:border-zinc-800 rounded-xl text-xs">
+                                    <Paperclip size={14} className="text-blue-500 shrink-0" />
+                                    <span className="font-bold text-zinc-600 dark:text-zinc-300 truncate flex-1">
+                                      Anexo: {msg.anexo_url}
+                                    </span>
+                                    <a
+                                      href={msg.anexo_url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-blue-600 dark:text-blue-400 hover:underline font-extrabold text-[11px] flex items-center gap-1 shrink-0"
+                                    >
+                                      <span>Abrir</span>
+                                      <ExternalLink size={10} />
+                                    </a>
+                                  </div>
+                                )}
+
+                                {/* LINHA DE AÇÕES DA MENSAGEM: RIGOROSAMENTE ALINHADA */}
+                                <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                                  {/* BOTÃO DE EDITAR */}
+                                  {!isCanceled && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleStartEditMensagem(msg)}
+                                      className="min-h-[34px] px-3 py-1.5 rounded-xl border border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                                      title="Editar texto ou horário de disparo desta mensagem"
+                                    >
+                                      <Edit3 size={13} className="text-blue-500" />
+                                      <span>Editar</span>
+                                    </button>
+                                  )}
+
+                                  {/* BOTÃO DE DISPARAR MANUALMENTE PELO WHATSAPP */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDispararAgora(msg.id)}
+                                    disabled={isDisparando || isProcessing}
+                                    className="min-h-[34px] px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                                    title="Enviar imediatamente pelo WhatsApp do paciente"
+                                  >
+                                    {isDisparando ? (
+                                      <Activity size={13} className="animate-spin" />
+                                    ) : (
+                                      <Send size={13} />
+                                    )}
+                                    <span>{isSent ? "Reenviar WhatsApp" : "Disparar Agora"}</span>
+                                  </button>
+
+                                  {/* BOTÃO DE CANCELAR DISPARO DA FILA */}
+                                  {isPending && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCancelarMensagemFila(msg.id)}
+                                      disabled={isProcessing}
+                                      className="min-h-[34px] px-3 py-1.5 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 hover:bg-red-500/20 text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                                      title="Cancelar o envio desta mensagem na fila"
+                                    >
+                                      <X size={13} />
+                                      <span>Cancelar Envio</span>
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* BOTÃO FECHAR */}
+                  <div className="pt-3 border-t border-zinc-100 dark:border-white/5 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setSensitiveModalItem(null)}
+                      className="min-h-[44px] px-6 rounded-xl border border-zinc-200/80 dark:border-zinc-800 font-bold text-xs uppercase text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 transition-colors cursor-pointer"
+                    >
+                      Fechar
+                    </button>
+                  </div>
+                </div>
+              )}
             </motion.div>
           </div>
         )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageSquare,
@@ -184,6 +184,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
   const [regrasMensagens, setRegrasMensagens] = useState([]);
   const [filterEspecialidade, setFilterEspecialidade] = useState("Todas");
   const [filterGatilho, setFilterGatilho] = useState("Todos");
+  const [filterTextoMensagem, setFilterTextoMensagem] = useState("");
   const [visualizacaoMensagens, setVisualizacaoMensagens] = useState("lista");
 
   // Estado para regra em edição inline / expandida
@@ -387,6 +388,8 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
       id: Date.now().toString(),
       alvo: filterEspecialidade !== "Todas" ? filterEspecialidade : "Todas",
       especialidade: filterEspecialidade !== "Todas" ? filterEspecialidade : "Todas",
+      tipo_envio: "whatsapp", // "whatsapp" | "webhook"
+      url_webhook_customizada: "",
       filtrar_enfermidade: false,
       enfermidade_alvo: "Refluxo",
       gatilho: filterGatilho !== "Todos" ? filterGatilho : "imediato",
@@ -438,6 +441,11 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
       mensagem_redirecionamento_whatsapp: `${prev.mensagem_redirecionamento_whatsapp || ""} ${tag}`.trim()
     }));
   };
+
+  const tipoEnvioOptions = [
+    { value: "whatsapp", label: "💬 Mensagem WhatsApp Normal (Texto / Anexo)" },
+    { value: "webhook", label: "⚡ Disparo de Webhook (Fluxo Inteligente / Chatbot)" }
+  ];
 
   const gatilhoOptions = [
     { value: "imediato", label: "Na hora do Agendamento (Instantâneo)" },
@@ -1335,38 +1343,77 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
               transition={spring}
               className="space-y-6"
             >
-              <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm">
-                <div className="p-4 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl mb-6 space-y-3">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
-                    <Filter size={13} /> Filtros de Mensagens
-                  </span>
-                  <div className="grid sm:grid-cols-2 gap-3">
-                    <CustomSelect
-                      label="Gatilho de Disparo"
-                      value={filterGatilho}
-                      onChange={setFilterGatilho}
-                      options={[{ value: "Todos", label: "Todos os Gatilhos" }, ...gatilhoOptions]}
-                    />
-                    <CustomSelect
-                      label="Nicho / Especialidade"
-                      value={filterEspecialidade}
-                      onChange={setFilterEspecialidade}
-                      options={[
-                        { value: "Todas", label: "Todas as Especialidades" },
-                        ...servicos.map((s) => ({ value: s.nome, label: s.nome }))
-                      ]}
-                    />
+              <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm space-y-6">
+                {/* PAINEL DE FILTROS RESPONSIVO E ALINHADO */}
+                <div className="p-4 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+                      <Filter size={13} /> Filtrar Automações de Mensagens
+                    </span>
+                    {(filterTextoMensagem || filterGatilho !== "Todos" || filterEspecialidade !== "Todas") && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFilterTextoMensagem("");
+                          setFilterGatilho("Todos");
+                          setFilterEspecialidade("Todas");
+                          showToast("Filtros limpos!");
+                        }}
+                        className="text-[11px] text-zinc-500 hover:text-zinc-900 dark:hover:text-white font-bold underline cursor-pointer"
+                      >
+                        Limpar Filtros
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                    <div className="md:col-span-6 space-y-1">
+                      <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider block ml-1">
+                        Buscar na Mensagem / Especialidade
+                      </label>
+                      <div className="relative">
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                        <input
+                          type="text"
+                          value={filterTextoMensagem}
+                          onChange={(e) => setFilterTextoMensagem(e.target.value)}
+                          placeholder="Digite para filtrar por texto, variável ou alvo..."
+                          className="w-full pl-8 pr-3 py-2 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none focus:border-[#9FC131] text-zinc-900 dark:text-white font-medium"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="md:col-span-3 space-y-1">
+                      <CustomSelect
+                        label="Gatilho de Disparo"
+                        value={filterGatilho}
+                        onChange={setFilterGatilho}
+                        options={[{ value: "Todos", label: "Todos os Gatilhos" }, ...gatilhoOptions]}
+                      />
+                    </div>
+
+                    <div className="md:col-span-3 space-y-1">
+                      <CustomSelect
+                        label="Nicho / Especialidade"
+                        value={filterEspecialidade}
+                        onChange={setFilterEspecialidade}
+                        options={[
+                          { value: "Todas", label: "Todas as Especialidades" },
+                          ...servicos.map((s) => ({ value: s.nome, label: s.nome }))
+                        ]}
+                      />
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b border-zinc-100 dark:border-white/5 pb-4 gap-3">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-zinc-100 dark:border-white/5 pb-4 gap-3">
                   <div>
                     <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">
                       <MessageSquare size={17} strokeWidth={1.5} className="text-emerald-500" />
                       Automações de WhatsApp ({regrasFiltradas.length})
                     </h3>
                     <p className="text-xs text-zinc-500">
-                      Mensagens enviadas automaticamente para o WhatsApp dos pacientes.
+                      Mensagens enviadas automaticamente para o WhatsApp dos pacientes com prévia compacta.
                     </p>
                   </div>
 
@@ -1416,7 +1463,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                     Nenhuma mensagem encontrada com os filtros selecionados.
                   </div>
                 ) : visualizacaoMensagens === "lista" ? (
-                  /* VISUALIZAÇÃO EM LISTA COMPACTA COM EXPANSÃO, EDIÇÃO E DUPLICAÇÃO */
+                  /* VISUALIZAÇÃO EM TABELA COMPACTA E PERFEITAMENTE ALINHADA SEM SCROLL EXCESSIVO */
                   <div className="bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
                     <div className="overflow-x-auto">
                       <table className="w-full text-left text-xs border-collapse">
@@ -1425,7 +1472,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                             <th className="p-3.5 w-12 text-center">#</th>
                             <th
                               onClick={() => handleSortMensagens("gatilho")}
-                              className="p-3.5 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                              className="p-3.5 w-44 lg:w-48 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
                             >
                               <div className="flex items-center gap-1">
                                 <span>Gatilho</span>
@@ -1438,7 +1485,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                             </th>
                             <th
                               onClick={() => handleSortMensagens("alvo")}
-                              className="p-3.5 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                              className="p-3.5 w-36 lg:w-40 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
                             >
                               <div className="flex items-center gap-1">
                                 <span>Alvo</span>
@@ -1454,7 +1501,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                               className="p-3.5 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
                             >
                               <div className="flex items-center gap-1">
-                                <span>Prévia da Mensagem</span>
+                                <span>Prévia do Texto</span>
                                 {sortMensagens.key === "mensagem" ? (
                                   sortMensagens.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
                                 ) : (
@@ -1462,7 +1509,10 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                                 )}
                               </div>
                             </th>
-                            <th className="p-3.5 text-right whitespace-nowrap">Ações</th>
+                            <th className="p-3.5 w-36 hidden lg:table-cell text-zinc-400">
+                              <span>Última Alteração</span>
+                            </th>
+                            <th className="p-3.5 w-40 text-right whitespace-nowrap pr-4">Ações</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800 font-medium">
@@ -1471,75 +1521,101 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                             const nomeAlvoLimpo = limparNomeAlvo(regra.alvo || regra.especialidade);
 
                             return (
-                              <tr key={regra.id} className="hover:bg-white dark:hover:bg-zinc-800/50 transition-colors group">
-                                <td colSpan={5} className="p-0">
-                                  <div className="flex items-center justify-between p-3.5 border-b border-zinc-100/60 dark:border-zinc-800/60 last:border-b-0">
-                                    <div className="w-10 text-center font-bold text-zinc-400 font-mono text-[11px] shrink-0">
-                                      {idx + 1}
-                                    </div>
+                              <React.Fragment key={regra.id}>
+                                <tr className="hover:bg-white dark:hover:bg-zinc-800/50 transition-colors group">
+                                  <td className="p-3.5 text-center font-bold text-zinc-400 font-mono text-[11px]">
+                                    {idx + 1}
+                                  </td>
 
-                                    <div className="w-48 shrink-0 px-2">
-                                      <span className="px-2.5 py-1 rounded-md bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-bold text-[10.5px] border border-blue-200/50 block truncate">
+                                  <td className="p-3.5">
+                                    <div className="space-y-1">
+                                      <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-bold text-[10.5px] border border-blue-200/50 block truncate">
                                         {gatilhoOptions.find((g) => g.value === regra.gatilho)?.label || regra.gatilho}
                                       </span>
+                                      {regra.tipo_envio === "webhook" ? (
+                                        <span className="px-1.5 py-0.2 rounded bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-[8.5px] font-extrabold uppercase inline-flex items-center gap-1 border border-amber-200/40">
+                                          <Zap size={8} /> Webhook
+                                        </span>
+                                      ) : (
+                                        <span className="px-1.5 py-0.2 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-[8.5px] font-extrabold uppercase inline-flex items-center gap-1 border border-emerald-200/40">
+                                          <MessageSquare size={8} /> WhatsApp
+                                        </span>
+                                      )}
                                     </div>
+                                  </td>
 
-                                    <div className="w-44 shrink-0 px-2 font-bold text-zinc-900 dark:text-white truncate">
+                                  <td className="p-3.5 font-bold text-zinc-900 dark:text-white">
+                                    <span className="truncate block max-w-[130px]" title={nomeAlvoLimpo}>
                                       {nomeAlvoLimpo}
-                                    </div>
+                                    </span>
+                                  </td>
 
-                                    <div className="flex-1 px-2 text-zinc-600 dark:text-zinc-400 text-xs truncate min-w-0">
-                                      <span title={regra.mensagem} className="truncate block">
-                                        {regra.mensagem}
-                                      </span>
-                                    </div>
+                                  <td className="p-3.5 text-zinc-600 dark:text-zinc-400 text-xs">
+                                    <span
+                                      title={regra.mensagem}
+                                      className="truncate block max-w-[200px] sm:max-w-xs md:max-w-sm lg:max-w-md xl:max-w-lg font-sans text-[11.5px] leading-relaxed cursor-help"
+                                    >
+                                      {regra.mensagem}
+                                    </span>
+                                  </td>
 
-                                    {/* BOTÕES DE AÇÃO RIGOROSAMENTE LADO A LADO */}
-                                    <div className="shrink-0 pl-2">
-                                      <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
-                                        <button
-                                          type="button"
-                                          onClick={() => setEditingRegraId(isExpanded ? null : regra.id)}
-                                          className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer border ${
-                                            isExpanded
-                                              ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs"
-                                              : "bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 border-zinc-200/80 dark:border-zinc-700"
-                                          }`}
-                                          title={isExpanded ? "Recolher edição" : "Editar mensagem"}
-                                        >
-                                          <Pencil size={11} /> {isExpanded ? "Recolher" : "Editar"}
-                                        </button>
-
-                                        <button
-                                          type="button"
-                                          onClick={() => duplicarRegra(regra)}
-                                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 border border-zinc-200/80 dark:border-zinc-700 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
-                                          title="Duplicar esta mensagem"
-                                        >
-                                          <Copy size={11} /> Duplicar
-                                        </button>
-
-                                        <button
-                                          type="button"
-                                          onClick={() => removerRegra(regra.id)}
-                                          className="p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition-colors cursor-pointer border border-transparent hover:border-red-200/60"
-                                          title="Excluir mensagem"
-                                        >
-                                          <Trash2 size={13} />
-                                        </button>
+                                  <td className="p-3.5 hidden lg:table-cell text-zinc-400 text-[10px]">
+                                    {regra.alterado_em ? (
+                                      <div>
+                                        <span className="font-semibold text-zinc-700 dark:text-zinc-300 block">
+                                          {new Date(regra.alterado_em).toLocaleDateString("pt-BR")} às {new Date(regra.alterado_em).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                                        </span>
+                                        <span className="opacity-70 block truncate max-w-[110px]">
+                                          por @{regra.alterado_por || "admin"}
+                                        </span>
                                       </div>
-                                    </div>
-                                  </div>
+                                    ) : (
+                                      <span className="text-zinc-400 italic">Padrão da Clínica</span>
+                                    )}
+                                  </td>
 
-                                  {/* PAINEL EXPANSÍVEL DE EDIÇÃO INLINE PARA A LISTA */}
-                                  <AnimatePresence>
-                                    {isExpanded && (
-                                      <motion.div
-                                        initial={{ opacity: 0, height: 0 }}
-                                        animate={{ opacity: 1, height: "auto" }}
-                                        exit={{ opacity: 0, height: 0 }}
-                                        className="p-5 bg-white dark:bg-[#0e0e12] border-t border-zinc-200/80 dark:border-zinc-800 space-y-4"
+                                  {/* BOTÕES DE AÇÃO RIGOROSAMENTE VISÍVEIS */}
+                                  <td className="p-3.5 text-right whitespace-nowrap pr-4">
+                                    <div className="flex items-center justify-end gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => setEditingRegraId(isExpanded ? null : regra.id)}
+                                        className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer border ${
+                                          isExpanded
+                                            ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs"
+                                            : "bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 border-zinc-200/80 dark:border-zinc-700"
+                                        }`}
+                                        title={isExpanded ? "Recolher edição" : "Editar mensagem"}
                                       >
+                                        <Pencil size={11} /> {isExpanded ? "Recolher" : "Editar"}
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => duplicarRegra(regra)}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 border border-zinc-200/80 dark:border-zinc-700 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
+                                        title="Duplicar esta mensagem"
+                                      >
+                                        <Copy size={11} /> Duplicar
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => removerRegra(regra.id)}
+                                        className="p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition-colors cursor-pointer border border-transparent hover:border-red-200/60"
+                                        title="Excluir mensagem"
+                                      >
+                                        <Trash2 size={13} />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+
+                                {/* PAINEL EXPANSÍVEL DE EDIÇÃO INLINE */}
+                                {isExpanded && (
+                                  <tr>
+                                    <td colSpan={6} className="p-0 border-t border-zinc-200/80 dark:border-zinc-800">
+                                      <div className="p-5 bg-white dark:bg-[#0e0e12] space-y-4 shadow-inner">
                                         <div className="grid lg:grid-cols-2 gap-5">
                                           <div className="space-y-3">
                                             <TextInput
@@ -1557,27 +1633,43 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                                                 options={gatilhoOptions}
                                               />
 
-                                              {regra.gatilho === "agendado" && (
-                                                <div className="grid grid-cols-2 gap-2">
-                                                  <TextInput
-                                                    type="number"
-                                                    label="Dias Antes"
-                                                    value={regra.dias_antes ?? 1}
-                                                    onChange={(e) =>
-                                                      atualizarRegra(regra.id, "dias_antes", e.target.value)
-                                                    }
-                                                  />
-                                                  <TextInput
-                                                    type="time"
-                                                    label="Hora Envio"
-                                                    value={regra.hora_envio || "08:00"}
-                                                    onChange={(e) =>
-                                                      atualizarRegra(regra.id, "hora_envio", e.target.value)
-                                                    }
-                                                  />
-                                                </div>
-                                              )}
+                                              <CustomSelect
+                                                label="Tipo de Disparo"
+                                                value={regra.tipo_envio || "whatsapp"}
+                                                onChange={(v) => atualizarRegra(regra.id, "tipo_envio", v)}
+                                                options={tipoEnvioOptions}
+                                              />
                                             </div>
+
+                                            {regra.tipo_envio === "webhook" && (
+                                              <TextInput
+                                                label="URL de Webhook Específica (Opcional)"
+                                                placeholder="https://n8n.exemplo.com/webhook/..."
+                                                value={regra.url_webhook_customizada || ""}
+                                                onChange={(e) => atualizarRegra(regra.id, "url_webhook_customizada", e.target.value)}
+                                              />
+                                            )}
+
+                                            {regra.gatilho === "agendado" && (
+                                              <div className="grid grid-cols-2 gap-2">
+                                                <TextInput
+                                                  type="number"
+                                                  label="Dias Antes"
+                                                  value={regra.dias_antes ?? 1}
+                                                  onChange={(e) =>
+                                                    atualizarRegra(regra.id, "dias_antes", e.target.value)
+                                                  }
+                                                />
+                                                <TextInput
+                                                  type="time"
+                                                  label="Hora Envio"
+                                                  value={regra.hora_envio || "08:00"}
+                                                  onChange={(e) =>
+                                                    atualizarRegra(regra.id, "hora_envio", e.target.value)
+                                                  }
+                                                />
+                                              </div>
+                                            )}
                                           </div>
 
                                           <div className="space-y-2 flex flex-col justify-between">
@@ -1612,11 +1704,11 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                                             </div>
                                           </div>
                                         </div>
-                                      </motion.div>
-                                    )}
-                                  </AnimatePresence>
-                                </td>
-                              </tr>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </React.Fragment>
                             );
                           })}
                         </tbody>
@@ -1676,27 +1768,43 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                               options={gatilhoOptions}
                             />
 
-                            {regra.gatilho === "agendado" && (
-                              <div className="grid grid-cols-2 gap-2">
-                                <TextInput
-                                  type="number"
-                                  label="Dias Antes"
-                                  value={regra.dias_antes ?? 1}
-                                  onChange={(e) =>
-                                    atualizarRegra(regra.id, "dias_antes", e.target.value)
-                                  }
-                                />
-                                <TextInput
-                                  type="time"
-                                  label="Hora Envio"
-                                  value={regra.hora_envio || "08:00"}
-                                  onChange={(e) =>
-                                    atualizarRegra(regra.id, "hora_envio", e.target.value)
-                                  }
-                                />
-                              </div>
-                            )}
+                            <CustomSelect
+                              label="Tipo de Disparo"
+                              value={regra.tipo_envio || "whatsapp"}
+                              onChange={(v) => atualizarRegra(regra.id, "tipo_envio", v)}
+                              options={tipoEnvioOptions}
+                            />
                           </div>
+
+                          {regra.tipo_envio === "webhook" && (
+                            <TextInput
+                              label="URL de Webhook Específica (Opcional)"
+                              placeholder="https://n8n.exemplo.com/webhook/..."
+                              value={regra.url_webhook_customizada || ""}
+                              onChange={(e) => atualizarRegra(regra.id, "url_webhook_customizada", e.target.value)}
+                            />
+                          )}
+
+                          {regra.gatilho === "agendado" && (
+                            <div className="grid grid-cols-2 gap-2">
+                              <TextInput
+                                type="number"
+                                label="Dias Antes"
+                                value={regra.dias_antes ?? 1}
+                                onChange={(e) =>
+                                  atualizarRegra(regra.id, "dias_antes", e.target.value)
+                                }
+                              />
+                              <TextInput
+                                type="time"
+                                label="Hora Envio"
+                                value={regra.hora_envio || "08:00"}
+                                onChange={(e) =>
+                                  atualizarRegra(regra.id, "hora_envio", e.target.value)
+                                }
+                              />
+                            </div>
+                          )}
                         </div>
 
                         <div className="flex-1 flex flex-col justify-between space-y-3">
@@ -1987,12 +2095,28 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                           return (
                             <tr key={item.id} className="hover:bg-zinc-50/60 dark:hover:bg-zinc-900/40 transition-colors">
                               <td className="p-3.5">
-                                <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider border ${statusBadgeClass}`}>
-                                  {statusLabel}
-                                </span>
+                                <div className="flex flex-col gap-1">
+                                  <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider border ${statusBadgeClass}`}>
+                                    {statusLabel}
+                                  </span>
+                                  {item.tipo_envio === "webhook" ? (
+                                    <span className="px-2 py-0.5 rounded bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-[9px] font-extrabold uppercase inline-flex items-center gap-1 border border-amber-200/40">
+                                      <Zap size={9} /> Webhook
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-[9px] font-extrabold uppercase inline-flex items-center gap-1 border border-emerald-200/40">
+                                      <MessageSquare size={9} /> WhatsApp
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                               <td className="p-3.5 font-bold text-zinc-900 dark:text-white">
-                                {item.nome_paciente || "Paciente"}
+                                <div>{item.nome_paciente || "Paciente"}</div>
+                                {item.resposta_recebida && (
+                                  <span className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 font-extrabold text-[10px]">
+                                    💬 Resposta: {item.resposta_recebida}
+                                  </span>
+                                )}
                               </td>
                               <td className="p-3.5 font-mono text-zinc-600 dark:text-zinc-400">
                                 {item.telefone_whatsapp || "-"}

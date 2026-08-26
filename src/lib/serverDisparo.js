@@ -56,7 +56,9 @@ export async function dispararGatilhoServidor({
 
     const nomeProfissional = ag.medico_profissional || ag.subtipo_exame || "Especialista";
     const nomeEspecialidade = ag.subtipo_exame || ag.tipo_servico || "Consulta";
-    const isExame = ag.tipo_servico === "Exame" || /(colonoscopia|endoscopia|ultrassom|exame)/i.test(`${nomeEspecialidade} ${nomeProfissional}`);
+    const isExame =
+      ag.tipo_servico === "Exame" ||
+      /(colonoscopia|endoscopia|ultrassom|exame)/i.test(`${nomeEspecialidade} ${nomeProfissional}`);
 
     const vars = {
       nome: primeiroNome,
@@ -71,33 +73,97 @@ export async function dispararGatilhoServidor({
       tipo_servico: isExame ? "Exame" : "Consulta",
       data: dataFormatada,
       hora: horaFinal || "",
-      motivo: motivo || "Solicitação realizada"
+      motivo: motivo || "Solicitação realizada",
+      clinica: emp.nome || "Clínica"
     };
 
-    const webhookUrl =
+    const configWebhooks = emp.config_campos?.config_webhooks || emp.config_chaves?.config_webhooks || {};
+
+    const urlWebhookPadrao =
       emp.rmchat_webhook_url ||
       emp.config_chaves?.rmchat_webhook_url ||
       emp.config_chaves?.url_rmchat ||
       emp.config_chaves?.webhook_url ||
       emp.config_campos?.rmchat_webhook_url;
 
+    const urlWebhookFluxoInteligente =
+      configWebhooks.webhook_url ||
+      emp.config_chaves?.webhook_url_inteligente ||
+      urlWebhookPadrao;
+
     for (const regra of regrasDoGatilho) {
+      const isWebhookTipo = regra.tipo_envio === "webhook";
+      const targetUrl = (regra.url_webhook_customizada || (isWebhookTipo ? urlWebhookFluxoInteligente : urlWebhookPadrao))?.trim();
+
       const msgFormatada = parseTemplate(regra.mensagem, vars);
       let enviadoComSucesso = false;
 
-      if (webhookUrl && webhookUrl.startsWith("http")) {
+      if (targetUrl && targetUrl.startsWith("http")) {
         try {
-          const payload = {
-            name: primeiroNome,
-            number: tel.replace(/\D/g, ""),
-            texto: msgFormatada,
-            mensagem: msgFormatada,
-            phone: tel.replace(/\D/g, "")
+          let payload;
+
+          if (isWebhookTipo) {
+            // Disparo de Webhook / Fluxo Inteligente com dados estruturados
+            payload = {
+              evento: "disparo_fluxo_inteligente",
+              tipo_disparo: "webhook",
+              gatilho: gatilho,
+              empresa: {
+                id: empresaId,
+                nome: emp.nome,
+                slug: emp.slug
+              },
+              agendamento: {
+                id: agendamentoId,
+                data: dataFinal,
+                horario: horaFinal,
+                servico: isExame ? nomeEspecialidade : nomeProfissional,
+                especialista: nomeProfissional,
+                especialidade: nomeEspecialidade,
+                modalidade: ag.modalidade || "Particular",
+                status_atual: ag.status_atendimento || "agendado"
+              },
+              paciente: {
+                id: paciente.id || null,
+                nome: nomeCompleto,
+                primeiro_nome: primeiroNome,
+                telefone: tel.replace(/\D/g, ""),
+                cpf: paciente.cpf || null,
+                email: paciente.email || null,
+                enfermidades: paciente.enfermidades || []
+              },
+              mensagem_formatada: msgFormatada,
+              opcoes_resposta: configWebhooks.respostas_mapping || {
+                confirmar: ["1", "sim", "confirmo"],
+                cancelar: ["2", "nao", "cancelar"],
+                remarcar: ["3", "remarcar", "reagendar"]
+              },
+              webhook_retorno_url: `${process.env.NEXT_PUBLIC_APP_URL || "https://rmagenda.com.br"}/api/webhook-resposta`
+            };
+          } else {
+            // Disparo padrão via WhatsApp (RM Chat)
+            payload = {
+              name: primeiroNome,
+              number: tel.replace(/\D/g, ""),
+              phone: tel.replace(/\D/g, ""),
+              texto: msgFormatada,
+              mensagem: msgFormatada,
+              media_url: regra.anexo_url || null
+            };
+          }
+
+          const headers = {
+            "Content-Type": "application/json",
+            "x-rmcare-event": isWebhookTipo ? "fluxo_inteligente" : "whatsapp_msg"
           };
 
-          const res = await fetch(webhookUrl, {
+          if (configWebhooks.webhook_secret) {
+            headers["x-webhook-secret"] = configWebhooks.webhook_secret;
+          }
+
+          const res = await fetch(targetUrl, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers,
             body: JSON.stringify(payload)
           });
 
@@ -109,16 +175,24 @@ export async function dispararGatilhoServidor({
 
       // Registra na fila_mensagens para auditoria
       try {
-        await supabaseAdmin.from("fila_mensagens").insert({
+        const payloadInsert = {
           empresa_id: empresaId,
           agendamento_id: agendamentoId,
           telefone_whatsapp: tel,
           nome_paciente: primeiroNome,
           mensagem: msgFormatada,
-          status: enviadoComSucesso ? "enviado" : "pendente",
+          status: enviadoComSucesso ? "enviada" : "pendente",
           gatilho: gatilho,
+          tipo_envio: isWebhookTipo ? "webhook" : "whatsapp",
           data_hora_programada: new Date().toISOString()
-        });
+        };
+
+        let { error: errIns } = await supabaseAdmin.from("fila_mensagens").insert(payloadInsert);
+
+        if (errIns && (errIns.code === "42703" || errIns.message?.includes("tipo_envio"))) {
+          delete payloadInsert.tipo_envio;
+          await supabaseAdmin.from("fila_mensagens").insert(payloadInsert);
+        }
       } catch (logErr) {
         console.warn("Aviso ao salvar log na fila_mensagens:", logErr);
       }

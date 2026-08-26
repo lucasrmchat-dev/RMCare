@@ -243,7 +243,8 @@ export default function EmpresaAdmin() {
         icon: KeyRound,
         subItems: [
           { id: "credenciais", label: "Minhas Credenciais" },
-          { id: "usuarios", label: "Usuários & Permissões" }
+          { id: "usuarios", label: "Usuários & Permissões" },
+          { id: "auditoria", label: "Auditoria do Sistema" }
         ]
       }
     ],

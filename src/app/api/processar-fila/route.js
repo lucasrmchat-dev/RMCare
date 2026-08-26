@@ -21,28 +21,45 @@ export async function GET(request) {
       .select('*')
       .eq('status', 'pendente')
       .lte('data_hora_programada', agora)
-      .limit(30);
+      .limit(50);
 
     if (error) throw error;
-    
-    if (!mensagens || mensagens.length === 0) {
-      return NextResponse.json({ message: 'Nenhuma mensagem pendente na fila para o horário atual.' });
-    }
 
-    // 2. Busca todas as empresas cadastradas para mapear a URL de RM Chat de cada uma
+    // 2. Busca todas as empresas cadastradas para carregar suas configurações e URLs
     const { data: todasEmpresas } = await supabaseAdmin
       .from('empresas')
       .select('*');
 
-    const mapaEmpresasChaves = new Map();
+    const mapaEmpresas = new Map();
     let empresaFallbackId = null;
 
     (todasEmpresas || []).forEach((emp, index) => {
       if (index === 0) empresaFallbackId = emp.id;
-      const urlConfigurada = emp.rmchat_webhook_url || emp.config_chaves?.rmchat_webhook_url || emp.config_chaves?.url_rmchat || null;
-      mapaEmpresasChaves.set(emp.id, {
+      const configChaves = emp.config_chaves || {};
+      const configCampos = emp.config_campos || {};
+      const configWebhooks = configCampos.config_webhooks || configChaves.config_webhooks || {};
+
+      const urlWhatsApp =
+        emp.rmchat_webhook_url ||
+        configChaves.rmchat_webhook_url ||
+        configChaves.url_rmchat ||
+        configCampos.rmchat_webhook_url ||
+        null;
+
+      const urlWebhookFluxo =
+        configWebhooks.webhook_url ||
+        configChaves.webhook_url_inteligente ||
+        urlWhatsApp;
+
+      mapaEmpresas.set(emp.id, {
+        id: emp.id,
         nome: emp.nome,
-        webhookUrl: urlConfigurada ? urlConfigurada.trim() : null
+        slug: emp.slug,
+        urlWhatsApp: urlWhatsApp ? urlWhatsApp.trim() : null,
+        urlWebhookFluxo: urlWebhookFluxo ? urlWebhookFluxo.trim() : null,
+        webhookSecret: configWebhooks.webhook_secret || null,
+        respostasMapping: configWebhooks.respostas_mapping || null,
+        automacaoPresenca: configCampos.automacoes_presenca || configChaves.automacoes_presenca || null
       });
     });
 
@@ -50,52 +67,160 @@ export async function GET(request) {
     let falhasCount = 0;
     let puladasSemUrlCount = 0;
 
-    for (const msg of mensagens) {
-      // Identifica o ID da empresa vinculada à mensagem ou usa a empresa padrão caso seja registro antigo
-      const targetEmpresaId = msg.empresa_id || empresaFallbackId;
-      const dadosEmpresa = targetEmpresaId ? mapaEmpresasChaves.get(targetEmpresaId) : null;
-      const urlDestino = dadosEmpresa?.webhookUrl;
+    if (mensagens && mensagens.length > 0) {
+      for (const msg of mensagens) {
+        const targetEmpresaId = msg.empresa_id || empresaFallbackId;
+        const dadosEmpresa = targetEmpresaId ? mapaEmpresas.get(targetEmpresaId) : null;
 
-      // Se a mensagem não possui empresa_id no banco, associa retroativamente
-      if (!msg.empresa_id && targetEmpresaId) {
-        await supabaseAdmin.from('fila_mensagens').update({ empresa_id: targetEmpresaId }).eq('id', msg.id);
+        // Se a mensagem não possui empresa_id no banco, associa retroativamente
+        if (!msg.empresa_id && targetEmpresaId) {
+          await supabaseAdmin.from('fila_mensagens').update({ empresa_id: targetEmpresaId }).eq('id', msg.id);
+        }
+
+        const isWebhook = msg.tipo_envio === 'webhook';
+        const urlDestino = (msg.url_webhook_customizada || (isWebhook ? dadosEmpresa?.urlWebhookFluxo : dadosEmpresa?.urlWhatsApp))?.trim();
+
+        // ⚠️ REGRA DE SEGURANÇA: Se a clínica não possui URL de webhook configurada, ignora
+        if (!urlDestino || !urlDestino.startsWith('http')) {
+          console.warn(`[Processar Fila] Mensagem ${msg.id} para ${msg.nome_paciente} ignorada: a clínica \"${dadosEmpresa?.nome || 'Não identificada'}\" não possui URL configurada.`);
+          puladasSemUrlCount++;
+          continue;
+        }
+
+        // Formata o número de telefone
+        let num = (msg.telefone_whatsapp || '').replace(/\D/g, '');
+        if (num.length === 11 && num.charAt(2) === '9') {
+          num = num.substring(0, 2) + num.substring(3);
+        }
+        const numeroLimpo = num.startsWith('55') ? num : '55' + num;
+
+        try {
+          let payload;
+          const headers = { 'Content-Type': 'application/json' };
+
+          if (isWebhook) {
+            headers['x-rmcare-event'] = 'fluxo_inteligente';
+            if (dadosEmpresa?.webhookSecret) {
+              headers['x-webhook-secret'] = dadosEmpresa.webhookSecret;
+            }
+
+            // Buscar dados adicionais do agendamento se disponível
+            let agInfo = null;
+            if (msg.agendamento_id) {
+              const { data: agData } = await supabaseAdmin
+                .from('agendamentos')
+                .select('*, pacientes(*)')
+                .eq('id', msg.agendamento_id)
+                .maybeSingle();
+              agInfo = agData;
+            }
+
+            payload = {
+              evento: 'disparo_fluxo_inteligente',
+              tipo_disparo: 'webhook',
+              mensagem_id: msg.id,
+              gatilho: msg.gatilho,
+              empresa: {
+                id: targetEmpresaId,
+                nome: dadosEmpresa?.nome,
+                slug: dadosEmpresa?.slug
+              },
+              agendamento: agInfo ? {
+                id: agInfo.id,
+                data: agInfo.data_agendamento,
+                horario: agInfo.horario_agendamento,
+                servico: agInfo.subtipo_exame || agInfo.medico_profissional || 'Atendimento',
+                especialista: agInfo.medico_profissional,
+                especialidade: agInfo.tipo_servico || 'Consulta',
+                modalidade: agInfo.modalidade || 'Particular',
+                status_atual: agInfo.status_atendimento || 'agendado'
+              } : { id: msg.agendamento_id },
+              paciente: {
+                nome: msg.nome_paciente,
+                telefone: numeroLimpo,
+                cpf: agInfo?.pacientes?.cpf || null,
+                enfermidades: agInfo?.pacientes?.enfermidades || []
+              },
+              mensagem: msg.mensagem,
+              anexo_url: msg.anexo_url || null,
+              opcoes_resposta: dadosEmpresa?.respostasMapping || {
+                confirmar: ['1', 'sim', 'confirmo'],
+                cancelar: ['2', 'nao', 'cancelar'],
+                remarcar: ['3', 'remarcar', 'reagendar']
+              },
+              webhook_retorno_url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://rmagenda.com.br'}/api/webhook-resposta`
+            };
+          } else {
+            headers['x-rmcare-event'] = 'whatsapp_msg';
+            let textoEnvio = msg.mensagem || '';
+            if (msg.anexo_url && !textoEnvio.includes(msg.anexo_url)) {
+              textoEnvio += `
+
+📎 Documento/Anexo: ${msg.anexo_url}`;
+            }
+
+            payload = {
+              name: msg.nome_paciente,
+              number: numeroLimpo,
+              phone: numeroLimpo,
+              texto: textoEnvio,
+              mensagem: textoEnvio,
+              media_url: msg.anexo_url || null
+            };
+          }
+
+          console.log(`[Processar Fila] Disparando (${isWebhook ? 'Webhook Inteligente' : 'WhatsApp'}) para ${msg.nome_paciente} (${numeroLimpo}) via ${urlDestino}`);
+
+          await axios.post(urlDestino, payload, { headers, timeout: 15000 });
+
+          // Atualiza o status no banco para 'enviada'
+          await supabaseAdmin.from('fila_mensagens').update({ status: 'enviada' }).eq('id', msg.id);
+          enviadasCount++;
+        } catch (err) {
+          console.error(`[Processar Fila] Erro ao enviar mensagem para ${msg.nome_paciente} via ${urlDestino}:`, err.message);
+          falhasCount++;
+        }
       }
+    }
 
-      // ⚠️ REGRA DE SEGURANÇA: Se a empresa não tem uma URL cadastrada no servidor, NÃO dispara para URL default
-      if (!urlDestino || !urlDestino.startsWith('http')) {
-        console.warn(`[Processar Fila] Mensagem ${msg.id} para ${msg.nome_paciente} ignorada: a clínica "${dadosEmpresa?.nome || 'Não identificada'}" não possui URL do RM Chat cadastrada no painel /admin/sistema.`);
-        puladasSemUrlCount++;
-        continue;
+    // 3. Processamento de Automações de Presença / Baixas Automáticas Pós-Horário
+    let baixasProcessadas = 0;
+    try {
+      const hojeDataStr = new Date().toISOString().substring(0, 10);
+      const horaAtualStr = new Date().toTimeString().substring(0, 5);
+
+      for (const [empId, empConfig] of mapaEmpresas.entries()) {
+        const autoPresenca = empConfig.automacaoPresenca;
+        if (autoPresenca?.ativo) {
+          const toleranciaMinutos = Number(autoPresenca.tolerancia_minutos || 60);
+          const acaoPadrao = autoPresenca.acao_padrao || 'compareceu'; // 'compareceu' | 'nao_compareceu'
+
+          // Busca agendamentos de hoje com horário passado + tolerância
+          const { data: agsPassados } = await supabaseAdmin
+            .from('agendamentos')
+            .select('id, data_agendamento, horario_agendamento, status_atendimento')
+            .eq('empresa_id', empId)
+            .lte('data_agendamento', hojeDataStr)
+            .in('status_atendimento', ['agendado', 'confirmado'])
+            .limit(40);
+
+          for (const ag of agsPassados || []) {
+            if (ag.data_agendamento < hojeDataStr || (ag.data_agendamento === hojeDataStr && ag.horario_agendamento <= horaAtualStr)) {
+              await supabaseAdmin
+                .from('agendamentos')
+                .update({
+                  status_atendimento: acaoPadrao,
+                  compareceu_em: acaoPadrao === 'compareceu' ? new Date().toISOString() : null,
+                  observacoes: `[Baixa automática como \"${acaoPadrao}\" aplicada pelo sistema em ${new Date().toLocaleString('pt-BR')}]`
+                })
+                .eq('id', ag.id);
+              baixasProcessadas++;
+            }
+          }
+        }
       }
-
-      // Formata o número removendo traços e o 9º dígito se for celular do Brasil
-      let num = (msg.telefone_whatsapp || "").replace(/\D/g, "");
-      if (num.length === 11 && num.charAt(2) === '9') {
-        num = num.substring(0, 2) + num.substring(3);
-      }
-      
-      // Garante que o DDI do Brasil (55) está presente
-      const numeroLimpo = num.startsWith("55") ? num : "55" + num;
-
-      try {
-        console.log(`[Processar Fila] Enviando mensagem para ${msg.nome_paciente} (${numeroLimpo}) via webhook da clínica "${dadosEmpresa.nome}": ${urlDestino}`);
-
-        await axios.post(urlDestino, { 
-          name: msg.nome_paciente, 
-          number: numeroLimpo,
-          texto: msg.mensagem
-        }, {
-          headers: { 'Content-Type': 'application/json' },
-          timeout: 12000
-        });
-        
-        // Atualiza o status no banco para 'enviada'
-        await supabaseAdmin.from('fila_mensagens').update({ status: 'enviada' }).eq('id', msg.id);
-        enviadasCount++;
-      } catch (err) {
-        console.error(`[Processar Fila] Erro ao enviar mensagem para ${msg.nome_paciente} via ${urlDestino}:`, err.message);
-        falhasCount++;
-      }
+    } catch (errAuto) {
+      console.warn('[Processar Fila] Aviso ao processar baixas automáticas:', errAuto.message);
     }
 
     return NextResponse.json({
@@ -103,15 +228,15 @@ export async function GET(request) {
       disparos: enviadasCount,
       falhas: falhasCount,
       puladasSemUrl: puladasSemUrlCount,
-      totalLote: mensagens.length
+      totalLote: mensagens?.length || 0,
+      baixasAutomaticas: baixasProcessadas
     });
   } catch (error) {
-    console.error("❌ Erro no processamento da fila de mensagens:", error);
+    console.error('❌ Erro no processamento da fila de mensagens:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
 
-// Suporte a requisições POST e HEAD enviadas por serviços de Cron Job (ex: cron-job.org)
 export async function POST(request) {
   return GET(request);
 }

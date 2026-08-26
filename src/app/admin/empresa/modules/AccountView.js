@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   KeyRound,
@@ -31,8 +31,11 @@ import {
   actionListarUsuariosEmpresa,
   actionCriarUsuarioEmpresa,
   actionAtualizarUsuarioEmpresa,
-  actionDeletarUsuarioEmpresa
+  actionDeletarUsuarioEmpresa,
+  fetchAdminAuditoriaLogs
 } from "@/actions/adminData";
+import { History, Search, Filter, RefreshCw, Calendar, Tag, ChevronDown, Eye, FileText, Database } from "lucide-react";
+import { CustomSelect } from "../components/SharedUI";
 
 const LISTA_PERMISSOES = [
   { id: "agenda", label: "Agenda & Pacientes", desc: "Visualizar e gerenciar agendamentos e calendário.", icon: CalendarDays, color: "text-blue-500" },
@@ -70,6 +73,42 @@ export default function AccountView({
     confirmPassword: ""
   });
   const [loadingPass, setLoadingPass] = useState(false);
+
+  // ==========================================
+  // ESTADOS: AUDITORIA DO SISTEMA
+  // ==========================================
+  const [logsAuditoria, setLogsAuditoria] = useState([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+  const [filtroResponsavel, setFiltroResponsavel] = useState("todos");
+  const [filtroModulo, setFiltroModulo] = useState("todos");
+  const [filtroDataInicio, setFiltroDataInicio] = useState("");
+  const [filtroDataFim, setFiltroDataFim] = useState("");
+  const [filtroSearchLog, setFiltroSearchLog] = useState("");
+  const [expandedLogId, setExpandedLogId] = useState(null);
+
+  const carregarLogsAuditoria = async () => {
+    setLoadingLogs(true);
+    try {
+      const logs = await fetchAdminAuditoriaLogs({
+        responsavel: filtroResponsavel,
+        modulo: filtroModulo,
+        dataInicio: filtroDataInicio,
+        dataFim: filtroDataFim,
+        search: filtroSearchLog
+      });
+      setLogsAuditoria(logs || []);
+    } catch (err) {
+      console.error("Erro ao carregar auditoria:", err);
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
+
+  useEffect(() => {
+    if (subTab === "auditoria") {
+      carregarLogsAuditoria();
+    }
+  }, [subTab, filtroResponsavel, filtroModulo, filtroDataInicio, filtroDataFim]);
 
   const passwordRules = useMemo(() => {
     const pwd = passwordForm.newPassword;

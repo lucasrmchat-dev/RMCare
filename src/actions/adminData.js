@@ -668,51 +668,149 @@ export async function actionMigrarNomeBloqueios(nomeAntigoERP, nomeOficialSistem
 }
 
 export async function fetchAdminRegras() {
-  const admin = await getAdminLogado(true);
+  try {
+    const admin = await getAdminLogado(true);
 
-  const { data, error } = await supabaseAdmin
-    .from("regras_agenda")
-    .select("*")
-    .eq("empresa_id", admin.empresa_id);
+    let { data, error } = await supabaseAdmin
+      .from("regras_agenda")
+      .select("*")
+      .eq("empresa_id", admin.empresa_id);
 
-  if (error) throw new Error(error.message);
-  return data || [];
+    if (error) {
+      console.warn("Aviso ao buscar regras de agenda:", error.message);
+      return [];
+    }
+    return data || [];
+  } catch (e) {
+    console.warn("Erro ao buscar regras de agenda:", e);
+    return [];
+  }
 }
 
 export async function actionCriarRegraAgenda(regra) {
-  const admin = await getAdminLogado(true);
+  try {
+    const admin = await getAdminLogado(true);
 
-  const payload = { ...regra, empresa_id: admin.empresa_id };
-  const { data, error } = await supabaseAdmin.from("regras_agenda").insert([payload]).select();
-  if (error) throw new Error(error.message);
-  return data;
+    const fullPayload = {
+      empresa_id: admin.empresa_id,
+      servico_id: regra.servico_id || null,
+      especialidade: regra.especialidade || null,
+      dias_semana: Array.isArray(regra.dias_semana) ? regra.dias_semana : [],
+      hora_inicio: regra.hora_inicio || "08:00",
+      hora_fim: regra.hora_fim || "18:00",
+      ultimo_horario_agendamento: regra.ultimo_horario_agendamento || null,
+      tipos_permitidos: Array.isArray(regra.tipos_permitidos) ? regra.tipos_permitidos : [],
+      duracao_slot_minutos: Number(regra.duracao_slot_minutos) || 0,
+      ocupacao_sequencial: Boolean(regra.ocupacao_sequencial),
+      tipo_bloqueio: regra.tipo_bloqueio || "total",
+      ativo: regra.ativo !== false
+    };
+
+    let { data, error } = await supabaseAdmin.from("regras_agenda").insert([fullPayload]).select();
+
+    // Fallback progressivo se colunas novas ainda não existirem no Supabase
+    if (error && (error.code === "42703" || error.code === "PGRST204" || error.message?.includes("column") || error.message?.includes("tipo_bloqueio") || error.message?.includes("especialidade") || error.message?.includes("schema cache"))) {
+      delete fullPayload.tipo_bloqueio;
+      const retry1 = await supabaseAdmin.from("regras_agenda").insert([fullPayload]).select();
+      if (retry1.error && (retry1.error.code === "42703" || retry1.error.code === "PGRST204" || retry1.error.message?.includes("column"))) {
+        const fallbackPayload = {
+          empresa_id: admin.empresa_id,
+          servico_id: regra.servico_id || null,
+          dias_semana: Array.isArray(regra.dias_semana) ? regra.dias_semana : [],
+          hora_inicio: regra.hora_inicio || "08:00",
+          hora_fim: regra.hora_fim || "18:00",
+          ativo: regra.ativo !== false
+        };
+        const retry2 = await supabaseAdmin.from("regras_agenda").insert([fallbackPayload]).select();
+        if (retry2.error) return { success: false, error: retry2.error.message };
+        data = retry2.data;
+      } else if (retry1.error) {
+        return { success: false, error: retry1.error.message };
+      } else {
+        data = retry1.data;
+      }
+    } else if (error) {
+      console.error("Erro ao criar regra de agenda:", error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data };
+  } catch (err) {
+    console.error("❌ Erro em actionCriarRegraAgenda:", err);
+    return { success: false, error: err.message || "Falha ao criar regra de agenda." };
+  }
 }
 
 export async function actionAtualizarRegraAgenda(id, regra) {
-  const admin = await getAdminLogado(true);
-  const allowed = {
-    servico_id: regra.servico_id || null,
-    especialidade: regra.especialidade || null,
-    dias_semana: regra.dias_semana,
-    hora_inicio: regra.hora_inicio,
-    hora_fim: regra.hora_fim,
-    ultimo_horario_agendamento: regra.ultimo_horario_agendamento,
-    tipos_permitidos: regra.tipos_permitidos || [],
-    duracao_slot_minutos: Number(regra.duracao_slot_minutos),
-    ocupacao_sequencial: Boolean(regra.ocupacao_sequencial),
-    ativo: regra.ativo !== false
-  };
+  try {
+    const admin = await getAdminLogado(true);
+    const allowed = {
+      servico_id: regra.servico_id || null,
+      especialidade: regra.especialidade || null,
+      dias_semana: Array.isArray(regra.dias_semana) ? regra.dias_semana : [],
+      hora_inicio: regra.hora_inicio,
+      hora_fim: regra.hora_fim,
+      ultimo_horario_agendamento: regra.ultimo_horario_agendamento,
+      tipos_permitidos: Array.isArray(regra.tipos_permitidos) ? regra.tipos_permitidos : [],
+      duracao_slot_minutos: Number(regra.duracao_slot_minutos) || 0,
+      ocupacao_sequencial: Boolean(regra.ocupacao_sequencial),
+      tipo_bloqueio: regra.tipo_bloqueio || "total",
+      ativo: regra.ativo !== false
+    };
 
-  const { data, error } = await supabaseAdmin
-    .from("regras_agenda")
-    .update(allowed)
-    .eq("id", id)
-    .eq("empresa_id", admin.empresa_id)
-    .select()
-    .single();
+    let { data, error } = await supabaseAdmin
+      .from("regras_agenda")
+      .update(allowed)
+      .eq("id", id)
+      .eq("empresa_id", admin.empresa_id)
+      .select()
+      .single();
 
-  if (error) throw new Error(error.message);
-  return data;
+    if (error && (error.code === "42703" || error.code === "PGRST204" || error.message?.includes("column") || error.message?.includes("tipo_bloqueio") || error.message?.includes("especialidade") || error.message?.includes("schema cache"))) {
+      delete allowed.tipo_bloqueio;
+      const retry1 = await supabaseAdmin
+        .from("regras_agenda")
+        .update(allowed)
+        .eq("id", id)
+        .eq("empresa_id", admin.empresa_id)
+        .select()
+        .single();
+
+      if (retry1.error && (retry1.error.code === "42703" || retry1.error.code === "PGRST204" || retry1.error.message?.includes("column"))) {
+        const basicPayload = {
+          servico_id: regra.servico_id || null,
+          dias_semana: Array.isArray(regra.dias_semana) ? regra.dias_semana : [],
+          hora_inicio: regra.hora_inicio,
+          hora_fim: regra.hora_fim,
+          ativo: regra.ativo !== false
+        };
+
+        const retry2 = await supabaseAdmin
+          .from("regras_agenda")
+          .update(basicPayload)
+          .eq("id", id)
+          .eq("empresa_id", admin.empresa_id)
+          .select()
+          .single();
+
+        if (retry2.error) {
+          return { success: false, error: retry2.error.message };
+        }
+        data = retry2.data;
+      } else if (retry1.error) {
+        return { success: false, error: retry1.error.message };
+      } else {
+        data = retry1.data;
+      }
+    } else if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data };
+  } catch (err) {
+    console.error("❌ Erro em actionAtualizarRegraAgenda:", err);
+    return { success: false, error: err.message || "Falha ao atualizar regra de agenda." };
+  }
 }
 
 export async function fetchAdminPolicies() {
@@ -772,27 +870,74 @@ export async function actionSalvarCustomization({ config_campos, config_mensagen
     .eq("id", admin.empresa_id);
 
   if (error) throw error;
+
+  // Registrar auditoria da alteração
+  await actionRegistrarAuditoria({
+    modulo: "personalizacao",
+    acao: "Atualização de Personalização & Mensagens",
+    detalhes: `Configurações da clínica e automações de mensagens salvas por ${admin.usuario}.`,
+    alterado_por: admin.usuario
+  });
+
   return true;
 }
 
 export async function actionCriarRegraMassa(regrasArray) {
-  const admin = await getAdminLogado(true);
-  const payload = regrasArray.map(r => ({ ...r, empresa_id: admin.empresa_id }));
-  const { data, error } = await supabaseAdmin.from("regras_agenda").insert(payload).select();
-  if (error) throw new Error(error.message);
-  return data;
+  try {
+    const admin = await getAdminLogado(true);
+    const payload = regrasArray.map((r) => ({
+      empresa_id: admin.empresa_id,
+      servico_id: r.servico_id || null,
+      especialidade: r.especialidade || null,
+      dias_semana: Array.isArray(r.dias_semana) ? r.dias_semana : [],
+      hora_inicio: r.hora_inicio || "08:00",
+      hora_fim: r.hora_fim || "18:00",
+      ultimo_horario_agendamento: r.ultimo_horario_agendamento || null,
+      tipos_permitidos: Array.isArray(r.tipos_permitidos) ? r.tipos_permitidos : [],
+      duracao_slot_minutos: Number(r.duracao_slot_minutos) || 0,
+      ocupacao_sequencial: Boolean(r.ocupacao_sequencial),
+      tipo_bloqueio: r.tipo_bloqueio || "total",
+      ativo: r.ativo !== false
+    }));
+
+    let { data, error } = await supabaseAdmin.from("regras_agenda").insert(payload).select();
+
+    if (error && (error.code === "42703" || error.code === "PGRST204" || error.message?.includes("column") || error.message?.includes("tipo_bloqueio") || error.message?.includes("especialidade") || error.message?.includes("schema cache"))) {
+      const fallbackPayload = payload.map((p) => ({
+        empresa_id: p.empresa_id,
+        servico_id: p.servico_id,
+        dias_semana: p.dias_semana,
+        hora_inicio: p.hora_inicio,
+        hora_fim: p.hora_fim,
+        ativo: p.ativo
+      }));
+      const retry = await supabaseAdmin.from("regras_agenda").insert(fallbackPayload).select();
+      if (retry.error) return { success: false, error: retry.error.message };
+      data = retry.data;
+    } else if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data };
+  } catch (err) {
+    return { success: false, error: err.message || "Falha ao criar regras." };
+  }
 }
 
 export async function actionDeletarRegra(id) {
-  const admin = await getAdminLogado(true);
-  const { error } = await supabaseAdmin
-    .from("regras_agenda")
-    .delete()
-    .eq("id", id)
-    .eq("empresa_id", admin.empresa_id);
+  try {
+    const admin = await getAdminLogado(true);
+    const { error } = await supabaseAdmin
+      .from("regras_agenda")
+      .delete()
+      .eq("id", id)
+      .eq("empresa_id", admin.empresa_id);
 
-  if (error) throw new Error(error.message);
-  return true;
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message || "Falha ao excluir regra." };
+  }
 }
 
 export async function actionProvisionarEmpresa({ nome, slug, usuario, senha }) {
@@ -1090,7 +1235,7 @@ export async function actionDispararMensagemManualAdmin(id) {
   const admin = await getAdminLogado(true);
   const { data: msg, error: errFetch } = await supabaseAdmin
     .from("fila_mensagens")
-    .select("*")
+    .select("*, agendamentos(*, pacientes(*))")
     .eq("id", id)
     .eq("empresa_id", admin.empresa_id)
     .single();
@@ -1099,31 +1244,104 @@ export async function actionDispararMensagemManualAdmin(id) {
 
   const { data: emp } = await supabaseAdmin
     .from("empresas")
-    .select("config_chaves")
+    .select("id, nome, slug, config_chaves, rmchat_webhook_url, config_campos")
     .eq("id", admin.empresa_id)
     .single();
 
-  const urlWebhook = emp?.config_chaves?.rmchat_webhook_url;
-  if (!urlWebhook) throw new Error("URL de Webhook do WhatsApp não configurada.");
+  const configWebhooks = emp?.config_campos?.config_webhooks || emp?.config_chaves?.config_webhooks || {};
+  const isWebhook = msg.tipo_envio === "webhook";
 
-  const payload = {
-    name: msg.nome_paciente || "Paciente",
-    number: (msg.telefone_whatsapp || "").replace(/\D/g, ""),
-    texto: msg.mensagem
-  };
+  const urlWebhookPadrao =
+    emp?.rmchat_webhook_url ||
+    emp?.config_chaves?.rmchat_webhook_url ||
+    emp?.config_chaves?.url_rmchat ||
+    emp?.config_campos?.rmchat_webhook_url;
 
-  const res = await fetch(urlWebhook, {
+  const urlDestino = (msg.url_webhook_customizada || (isWebhook ? configWebhooks.webhook_url : urlWebhookPadrao) || urlWebhookPadrao)?.trim();
+
+  if (!urlDestino || !urlDestino.startsWith("http")) {
+    throw new Error(isWebhook ? "URL do Webhook Inteligente não configurada." : "URL do Webhook do WhatsApp não configurada.");
+  }
+
+  let payload;
+  const headers = { "Content-Type": "application/json" };
+
+  if (isWebhook) {
+    headers["x-rmcare-event"] = "fluxo_inteligente_manual";
+    if (configWebhooks.webhook_secret) {
+      headers["x-webhook-secret"] = configWebhooks.webhook_secret;
+    }
+
+    const ag = msg.agendamentos;
+    const pac = ag?.pacientes;
+
+    payload = {
+      evento: "disparo_fluxo_inteligente",
+      tipo_disparo: "webhook",
+      disparado_manualmente: true,
+      mensagem_id: msg.id,
+      gatilho: msg.gatilho || "avulsa_manual",
+      empresa: {
+        id: emp.id,
+        nome: emp.nome,
+        slug: emp.slug
+      },
+      agendamento: ag ? {
+        id: ag.id,
+        data: ag.data_agendamento,
+        horario: ag.horario_agendamento,
+        servico: ag.subtipo_exame || ag.medico_profissional || "Atendimento",
+        especialista: ag.medico_profissional,
+        especialidade: ag.tipo_servico || "Consulta",
+        modalidade: ag.modalidade || "Particular",
+        status_atual: ag.status_atendimento || "agendado"
+      } : { id: msg.agendamento_id },
+      paciente: {
+        nome: msg.nome_paciente,
+        telefone: (msg.telefone_whatsapp || "").replace(/\D/g, ""),
+        cpf: pac?.cpf || null,
+        enfermidades: pac?.enfermidades || []
+      },
+      mensagem: msg.mensagem,
+      anexo_url: msg.anexo_url || null,
+      opcoes_resposta: configWebhooks.respostas_mapping || {
+        confirmar: ["1", "sim", "confirmo"],
+        cancelar: ["2", "nao", "cancelar"],
+        remarcar: ["3", "remarcar", "reagendar"]
+      },
+      webhook_retorno_url: `${process.env.NEXT_PUBLIC_APP_URL || "https://rmagenda.com.br"}/api/webhook-resposta`
+    };
+  } else {
+    headers["x-rmcare-event"] = "whatsapp_msg_manual";
+    let textoFinal = msg.mensagem || "";
+    if (msg.anexo_url && !textoFinal.includes(msg.anexo_url)) {
+      textoFinal += `
+
+📎 Documento/Anexo: ${msg.anexo_url}`;
+    }
+
+    payload = {
+      name: msg.nome_paciente || "Paciente",
+      number: (msg.telefone_whatsapp || "").replace(/\D/g, ""),
+      phone: (msg.telefone_whatsapp || "").replace(/\D/g, ""),
+      texto: textoFinal,
+      mensagem: textoFinal,
+      media_url: msg.anexo_url || null
+    };
+  }
+
+  const res = await fetch(urlDestino, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(payload)
   });
 
   if (!res.ok) {
     await supabaseAdmin.from("fila_mensagens").update({ status: "falha" }).eq("id", id);
-    throw new Error(`Falha ao disparar para o WhatsApp: status ${res.status}`);
+    throw new Error(`Falha ao disparar: status ${res.status}`);
   }
 
-  await supabaseAdmin.from("fila_mensagens").update({ status: "enviado" }).eq("id", id);
+  await supabaseAdmin.from("fila_mensagens").update({ status: "enviada" }).eq("id", id);
   return { success: true };
 }
 
@@ -1228,4 +1446,764 @@ export async function actionDeletarBloqueioERP(id) {
 
   if (error) throw error;
   return true;
+}
+
+/* ==========================================
+   GESTÃO DE MENSAGENS POR PACIENTE / EXAME ESPECÍFICO
+   ========================================== */
+export async function actionBuscarMensagensDoAgendamento({ agendamentoId, telefone }) {
+  const admin = await getAdminLogado(true);
+  const cleanPhone = telefone ? String(telefone).replace(/\D/g, "") : null;
+
+  try {
+    let query = supabaseAdmin
+      .from("fila_mensagens")
+      .select("*")
+      .eq("empresa_id", admin.empresa_id);
+
+    if (agendamentoId && cleanPhone) {
+      const lastDigits = cleanPhone.length >= 8 ? cleanPhone.slice(-8) : cleanPhone;
+      query = query.or(`agendamento_id.eq.${agendamentoId},telefone_whatsapp.ilike.%${lastDigits}%`);
+    } else if (agendamentoId) {
+      query = query.eq("agendamento_id", agendamentoId);
+    } else if (cleanPhone) {
+      const lastDigits = cleanPhone.length >= 8 ? cleanPhone.slice(-8) : cleanPhone;
+      query = query.ilike("telefone_whatsapp", `%${lastDigits}%`);
+    } else {
+      return [];
+    }
+
+    let { data, error } = await query.order("data_hora_programada", { ascending: true });
+
+    if (error && (error.code === "42703" || error.message?.includes("data_hora_programada"))) {
+      const fallbackQuery = await supabaseAdmin
+        .from("fila_mensagens")
+        .select("*")
+        .eq("empresa_id", admin.empresa_id)
+        .eq("agendamento_id", agendamentoId);
+      data = fallbackQuery.data || [];
+      error = fallbackQuery.error;
+    }
+
+    if (error) {
+      console.warn("Aviso ao buscar mensagens do agendamento:", error);
+      return [];
+    }
+
+    return data || [];
+  } catch (err) {
+    console.warn("Erro ao buscar mensagens do agendamento:", err);
+    return [];
+  }
+}
+
+export async function actionAtualizarMensagemFila({ id, mensagem, data_hora_programada, anexo_url, status, tipo_envio, url_webhook_customizada }) {
+  const admin = await getAdminLogado(true);
+  const payload = {};
+  if (mensagem !== undefined) payload.mensagem = mensagem;
+  if (data_hora_programada !== undefined) payload.data_hora_programada = data_hora_programada;
+  if (status !== undefined) payload.status = status;
+  if (anexo_url !== undefined) payload.anexo_url = anexo_url;
+  if (tipo_envio !== undefined) payload.tipo_envio = tipo_envio;
+  if (url_webhook_customizada !== undefined) payload.url_webhook_customizada = url_webhook_customizada;
+
+  let { data, error } = await supabaseAdmin
+    .from("fila_mensagens")
+    .update(payload)
+    .eq("id", id)
+    .eq("empresa_id", admin.empresa_id)
+    .select()
+    .single();
+
+  if (error && (error.code === "42703" || error.message?.includes("anexo_url") || error.message?.includes("column"))) {
+    delete payload.anexo_url;
+    delete payload.tipo_envio;
+    delete payload.url_webhook_customizada;
+    const retry = await supabaseAdmin
+      .from("fila_mensagens")
+      .update(payload)
+      .eq("id", id)
+      .eq("empresa_id", admin.empresa_id)
+      .select()
+      .single();
+    if (retry.error) throw new Error(retry.error.message);
+    data = retry.data;
+  } else if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
+export async function actionCancelarMensagemFila(id) {
+  const admin = await getAdminLogado(true);
+  const { error } = await supabaseAdmin
+    .from("fila_mensagens")
+    .update({ status: "cancelada" })
+    .eq("id", id)
+    .eq("empresa_id", admin.empresa_id);
+
+  if (error) throw new Error(error.message);
+  return true;
+}
+
+export async function actionCriarMensagemFilaAvulsa({
+  agendamentoId,
+  telefone,
+  nomePaciente,
+  mensagem,
+  dataHoraProgramada,
+  anexo_url = null,
+  gatilho = "avulsa",
+  tipo_envio = "whatsapp",
+  url_webhook_customizada = null
+}) {
+  const admin = await getAdminLogado(true);
+  if (!mensagem || !mensagem.trim()) throw new Error("A mensagem não pode estar vazia.");
+
+  const payload = {
+    empresa_id: admin.empresa_id,
+    agendamento_id: agendamentoId || null,
+    telefone_whatsapp: telefone || "",
+    nome_paciente: nomePaciente || "Paciente",
+    mensagem: mensagem.trim(),
+    data_hora_programada: dataHoraProgramada || new Date().toISOString(),
+    status: "pendente",
+    gatilho: gatilho,
+    tipo_envio: tipo_envio || "whatsapp",
+    url_webhook_customizada: url_webhook_customizada || null,
+    anexo_url: anexo_url || null
+  };
+
+  let { data, error } = await supabaseAdmin
+    .from("fila_mensagens")
+    .insert(payload)
+    .select()
+    .single();
+
+  if (error && (error.code === "42703" || error.message?.includes("anexo_url") || error.message?.includes("column"))) {
+    delete payload.anexo_url;
+    delete payload.tipo_envio;
+    delete payload.url_webhook_customizada;
+    const retry = await supabaseAdmin
+      .from("fila_mensagens")
+      .insert(payload)
+      .select()
+      .single();
+    if (retry.error) throw new Error(retry.error.message);
+    data = retry.data;
+  } else if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
+/* ==========================================
+   CICLO DE ATENDIMENTO E STATUS DE PRESENÇA
+   ========================================== */
+export async function actionAtualizarStatusAtendimento({ agendamentoId, novoStatus, motivo = null, observacoes = null }) {
+  const admin = await getAdminLogado(true);
+  if (!agendamentoId || !novoStatus) throw new Error("Parâmetros inválidos.");
+
+  const { data: ag, error: errAg } = await supabaseAdmin
+    .from("agendamentos")
+    .select("id, empresa_id, status_atendimento, observacoes, paciente_id")
+    .eq("id", agendamentoId)
+    .eq("empresa_id", admin.empresa_id)
+    .single();
+
+  if (errAg || !ag) throw new Error("Agendamento não encontrado.");
+
+  const agoraIso = new Date().toISOString();
+  const updatePayload = {
+    status_atendimento: novoStatus
+  };
+
+  if (novoStatus === "confirmado") {
+    updatePayload.confirmado_em = agoraIso;
+  } else if (novoStatus === "compareceu") {
+    updatePayload.compareceu_em = agoraIso;
+  } else if (novoStatus === "nao_compareceu") {
+    updatePayload.ausente_em = agoraIso;
+  } else if (novoStatus === "cancelado") {
+    updatePayload.cancelado_em = agoraIso;
+    updatePayload.motivo_cancelamento = motivo || "Cancelado pelo operador da clínica";
+  }
+
+  if (observacoes !== null && observacoes !== undefined) {
+    updatePayload.observacoes = observacoes;
+  }
+
+  let { error: errUp } = await supabaseAdmin
+    .from("agendamentos")
+    .update(updatePayload)
+    .eq("id", agendamentoId)
+    .eq("empresa_id", admin.empresa_id);
+
+  if (errUp && (errUp.code === "42703" || errUp.message?.includes("column"))) {
+    const simplePayload = { status_atendimento: novoStatus };
+    if (observacoes) simplePayload.observacoes = observacoes;
+    if (novoStatus === "cancelado") simplePayload.motivo_cancelamento = motivo || "Cancelado";
+    const retry = await supabaseAdmin
+      .from("agendamentos")
+      .update(simplePayload)
+      .eq("id", agendamentoId)
+      .eq("empresa_id", admin.empresa_id);
+    if (retry.error) throw new Error(retry.error.message);
+  } else if (errUp) {
+    throw new Error(errUp.message);
+  }
+
+  return { success: true, status_atendimento: novoStatus };
+}
+
+/* ==========================================
+   CONFIGURAÇÃO DE WEBHOOKS & FLUXOS INTELIGENTES
+   ========================================== */
+export async function actionSalvarConfigWebhooksEFluxos(configWebhooks) {
+  const admin = await getAdminLogado(true);
+  const { data: emp } = await supabaseAdmin
+    .from("empresas")
+    .select("config_campos, config_chaves")
+    .eq("id", admin.empresa_id)
+    .single();
+
+  const confCampos = emp?.config_campos || {};
+  const confChaves = emp?.config_chaves || {};
+
+  const cleanConfig = {
+    webhook_url: configWebhooks?.webhook_url ? configWebhooks.webhook_url.trim() : "",
+    webhook_secret: configWebhooks?.webhook_secret ? configWebhooks.webhook_secret.trim() : "",
+    webhook_tipo_padrao: configWebhooks?.webhook_tipo_padrao || "whatsapp",
+    respostas_mapping: configWebhooks?.respostas_mapping || {
+      confirmar: ["1", "sim", "confirmo", "confirmar"],
+      cancelar: ["2", "nao", "cancelar", "cancelo"],
+      remarcar: ["3", "remarcar", "reagendar"]
+    },
+    automacoes_presenca: {
+      ativo: Boolean(configWebhooks?.automacoes_presenca?.ativo),
+      acao_padrao: configWebhooks?.automacoes_presenca?.acao_padrao || "compareceu",
+      tolerancia_minutos: Number(configWebhooks?.automacoes_presenca?.tolerancia_minutos || 60)
+    }
+  };
+
+  const { error } = await supabaseAdmin
+    .from("empresas")
+    .update({
+      config_campos: {
+        ...confCampos,
+        config_webhooks: cleanConfig,
+        automacoes_presenca: cleanConfig.automacoes_presenca
+      },
+      config_chaves: {
+        ...confChaves,
+        config_webhooks: cleanConfig,
+        webhook_url_inteligente: cleanConfig.webhook_url
+      }
+    })
+    .eq("id", admin.empresa_id);
+
+  if (error) throw new Error(error.message);
+  return cleanConfig;
+}
+
+export async function actionTestarWebhookFluxoInteligente(urlWebhook, secret = "") {
+  const admin = await getAdminLogado(true);
+  if (!urlWebhook || !urlWebhook.startsWith("http")) {
+    throw new Error("URL de Webhook inválida. Informe uma URL completa iniciando com http:// ou https://.");
+  }
+
+  const { data: emp } = await supabaseAdmin
+    .from("empresas")
+    .select("id, nome, slug")
+    .eq("id", admin.empresa_id)
+    .single();
+
+  const payload = {
+    evento: "teste_conexao_webhook",
+    tipo_disparo: "webhook",
+    timestamp: new Date().toISOString(),
+    empresa: {
+      id: emp?.id || admin.empresa_id,
+      nome: emp?.nome || "Clínica de Teste",
+      slug: emp?.slug || "clinica-teste"
+    },
+    agendamento_exemplo: {
+      id: "teste-0000-0000-0000",
+      data: new Date().toISOString().substring(0, 10),
+      horario: "09:00",
+      servico: "Consulta Cardiológica",
+      especialista: "Dr. Médico Exemplo",
+      modalidade: "Particular",
+      status_atual: "agendado"
+    },
+    paciente_exemplo: {
+      nome: "Paciente de Teste",
+      telefone: "5583999999999",
+      cpf: "000.000.000-00"
+    },
+    opcoes_resposta: {
+      confirmar: ["1", "sim", "confirmo"],
+      cancelar: ["2", "nao", "cancelar"],
+      remarcar: ["3", "remarcar"]
+    },
+    webhook_retorno_url: `${process.env.NEXT_PUBLIC_APP_URL || "https://rmagenda.com.br"}/api/webhook-resposta`
+  };
+
+  const headers = {
+    "Content-Type": "application/json",
+    "x-rmcare-event": "teste_conexao"
+  };
+
+  if (secret && secret.trim()) {
+    headers["x-webhook-secret"] = secret.trim();
+  }
+
+  const response = await fetch(urlWebhook.trim(), {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload)
+  });
+
+  let respostaTexto = "";
+  try {
+    respostaTexto = await response.text();
+  } catch (e) {}
+
+  if (!response.ok) {
+    throw new Error(`Servidor de Webhook retornou status HTTP ${response.status}: ${respostaTexto.slice(0, 150)}`);
+  }
+
+  return {
+    success: true,
+    status: response.status,
+    resposta: respostaTexto.slice(0, 300)
+  };
+}
+
+/* ==========================================
+   PORTABILIDADE E EXPORTAÇÃO DE DADOS (LGPD / PLANILHAS)
+   ========================================== */
+export async function actionExportarDadosEmpresaCSV(tipo = "tudo") {
+  const admin = await getAdminLogado(true);
+  const empId = admin.empresa_id;
+  const NL = String.fromCharCode(10);
+
+  const escapeCSV = (val) => {
+    if (val === null || val === undefined) return '""';
+    let str = String(val).replace(/"/g, '""');
+    if (Array.isArray(val)) str = val.join("; ").replace(/"/g, '""');
+    return `"${str}"`;
+  };
+
+  const result = {};
+
+  // 1. Pacientes
+  if (tipo === "pacientes" || tipo === "tudo") {
+    const { data: pacientes } = await supabaseAdmin
+      .from("pacientes")
+      .select("*")
+      .eq("empresa_id", empId)
+      .order("nome_completo", { ascending: true });
+
+    const headers = ["ID", "Nome Completo", "CPF", "Telefone WhatsApp", "E-mail", "Data de Nascimento", "Enfermidades", "Criado Em"];
+    const rows = (pacientes || []).map((p) => [
+      escapeCSV(p.id),
+      escapeCSV(p.nome_completo),
+      escapeCSV(p.cpf),
+      escapeCSV(p.telefone_whatsapp),
+      escapeCSV(p.email),
+      escapeCSV(p.data_nascimento),
+      escapeCSV(Array.isArray(p.enfermidades) ? p.enfermidades.join(", ") : p.enfermidades),
+      escapeCSV(p.created_at)
+    ]);
+    result.pacientes = "\uFEFF" + [headers.join(";"), ...rows.map((r) => r.join(";"))].join(NL);
+  }
+
+  // 2. Agendamentos
+  if (tipo === "agendamentos" || tipo === "tudo") {
+    const { data: agendamentos } = await supabaseAdmin
+      .from("agendamentos")
+      .select("*, pacientes(*)")
+      .eq("empresa_id", empId)
+      .order("data_agendamento", { ascending: false })
+      .order("horario_agendamento", { ascending: false });
+
+    const headers = [
+      "ID Agendamento",
+      "Paciente",
+      "CPF Paciente",
+      "Telefone WhatsApp",
+      "Data Atendimento",
+      "Horario",
+      "Especialista / Medico",
+      "Especialidade / Servico",
+      "Modalidade",
+      "Status Atendimento",
+      "Status Pagamento",
+      "Valor",
+      "Remarcado Em",
+      "Motivo Cancelamento",
+      "Observacoes",
+      "Criado Em"
+    ];
+    const rows = (agendamentos || []).map((a) => [
+      escapeCSV(a.id),
+      escapeCSV(a.pacientes?.nome_completo || a.nome_paciente || "Paciente"),
+      escapeCSV(a.pacientes?.cpf || a.cpf_paciente || ""),
+      escapeCSV(a.pacientes?.telefone_whatsapp || a.telefone_paciente || ""),
+      escapeCSV(a.data_agendamento),
+      escapeCSV(a.horario_agendamento),
+      escapeCSV(a.medico_profissional),
+      escapeCSV(a.subtipo_exame || a.tipo_servico || "Consulta"),
+      escapeCSV(a.modalidade || "Particular"),
+      escapeCSV(a.status_atendimento || "agendado"),
+      escapeCSV(a.status_pagamento_antecipado ? "Pago" : "Pendente"),
+      escapeCSV(a.valor_atendimento || 0),
+      escapeCSV(a.remarcado_em || ""),
+      escapeCSV(a.motivo_cancelamento || ""),
+      escapeCSV(a.observacoes || ""),
+      escapeCSV(a.created_at)
+    ]);
+    result.agendamentos = "\uFEFF" + [headers.join(";"), ...rows.map((r) => r.join(";"))].join(NL);
+  }
+
+  // 3. Fila de Mensagens e Logs
+  if (tipo === "fila_mensagens" || tipo === "tudo") {
+    const { data: fila } = await supabaseAdmin
+      .from("fila_mensagens")
+      .select("*")
+      .eq("empresa_id", empId)
+      .order("data_hora_programada", { ascending: false });
+
+    const headers = [
+      "ID Mensagem",
+      "ID Agendamento",
+      "Paciente",
+      "Telefone WhatsApp",
+      "Gatilho",
+      "Tipo Envio",
+      "Data/Hora Programada",
+      "Status Envio",
+      "Texto da Mensagem",
+      "Anexo URL",
+      "Resposta Recebida",
+      "Respondido Em",
+      "Criado Em"
+    ];
+    const rows = (fila || []).map((f) => [
+      escapeCSV(f.id),
+      escapeCSV(f.agendamento_id),
+      escapeCSV(f.nome_paciente),
+      escapeCSV(f.telefone_whatsapp),
+      escapeCSV(f.gatilho),
+      escapeCSV(f.tipo_envio || "whatsapp"),
+      escapeCSV(f.data_hora_programada),
+      escapeCSV(f.status),
+      escapeCSV(f.mensagem),
+      escapeCSV(f.anexo_url || ""),
+      escapeCSV(f.resposta_recebida || ""),
+      escapeCSV(f.respondido_em || ""),
+      escapeCSV(f.created_at)
+    ]);
+    result.fila_mensagens = "\uFEFF" + [headers.join(";"), ...rows.map((r) => r.join(";"))].join(NL);
+  }
+
+  // 4. Serviços e Corpo Clínico
+  if (tipo === "servicos" || tipo === "tudo") {
+    const { data: servicos } = await supabaseAdmin
+      .from("servicos")
+      .select("*")
+      .eq("empresa_id", empId)
+      .order("nome", { ascending: true });
+
+    const headers = [
+      "ID Servico",
+      "Nome",
+      "Tipo",
+      "Especialidade",
+      "Preco",
+      "Status Agendamento",
+      "Ativo",
+      "Dias Bloqueio Padrao",
+      "Tipo Contagem Dias",
+      "Codigo URI",
+      "Numero Especialista"
+    ];
+    const rows = (servicos || []).map((s) => [
+      escapeCSV(s.id),
+      escapeCSV(s.nome),
+      escapeCSV(s.tipo),
+      escapeCSV(s.especialidade || ""),
+      escapeCSV(s.preco || 0),
+      escapeCSV(s.status_agendamento || (s.ativo ? "ativo" : "inativo")),
+      escapeCSV(s.ativo ? "Sim" : "Nao"),
+      escapeCSV(s.dias_bloqueio_padrao || 0),
+      escapeCSV(s.tipo_contagem_dias || "corridos"),
+      escapeCSV(s.codigo_uri || ""),
+      escapeCSV(s.numero_especialista || "")
+    ]);
+    result.servicos = "\uFEFF" + [headers.join(";"), ...rows.map((r) => r.join(";"))].join(NL);
+  }
+
+  return result;
+}
+
+/* ==========================================
+   AUDITORIA DO SISTEMA & LOGS DE OPERAÇÕES
+   ========================================== */
+export async function actionRegistrarAuditoria({ modulo, acao, detalhes, anterior, novo, alterado_por }) {
+  try {
+    let admin = null;
+    try {
+      admin = await getAdminLogado(false);
+    } catch (e) {}
+
+    const usuarioResponsavel = alterado_por || admin?.usuario || "Sistema";
+    const empresaId = admin?.empresa_id || null;
+
+    const logEntry = {
+      id: "log_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7),
+      empresa_id: empresaId,
+      responsavel: usuarioResponsavel,
+      modulo: modulo || "geral",
+      acao: acao || "Alteração",
+      detalhes: detalhes || "",
+      dados_anteriores: anterior || null,
+      dados_novos: novo || null,
+      created_at: new Date().toISOString()
+    };
+
+    // Tenta salvar na tabela logs_auditoria se existir
+    try {
+      if (empresaId) {
+        const { error: insertErr } = await supabaseAdmin
+          .from("logs_auditoria")
+          .insert({
+            empresa_id: empresaId,
+            responsavel: usuarioResponsavel,
+            modulo: modulo || "geral",
+            acao: acao || "Alteração",
+            detalhes: detalhes || "",
+            dados_anteriores: anterior || null,
+            dados_novos: novo || null
+          });
+        if (!insertErr) return { success: true, data: logEntry };
+      }
+    } catch (dbErr) {
+      // Ignora erro de tabela não existente e faz fallback na empresa
+    }
+
+    // Fallback: guarda nos últimos 150 logs dentro do config_campos da empresa
+    if (empresaId) {
+      try {
+        const { data: emp } = await supabaseAdmin
+          .from("empresas")
+          .select("config_campos")
+          .eq("id", empresaId)
+          .maybeSingle();
+
+        if (emp) {
+          const cfg = emp.config_campos || {};
+          const auditLogs = Array.isArray(cfg.auditoria_logs) ? cfg.auditoria_logs : [];
+          const updatedLogs = [logEntry, ...auditLogs].slice(0, 150);
+          await supabaseAdmin
+            .from("empresas")
+            .update({
+              config_campos: {
+                ...cfg,
+                auditoria_logs: updatedLogs
+              }
+            })
+            .eq("id", empresaId);
+        }
+      } catch (fErr) {
+        console.warn("Fallback de auditoria falhou:", fErr);
+      }
+    }
+
+    return { success: true, data: logEntry };
+  } catch (err) {
+    console.error("Erro ao registrar auditoria:", err);
+    return { success: false, error: err.message };
+  }
+}
+
+export async function fetchAdminAuditoriaLogs(filtros = {}) {
+  try {
+    const admin = await getAdminLogado(true);
+    let logs = [];
+
+    // Tenta buscar da tabela logs_auditoria
+    try {
+      const query = supabaseAdmin
+        .from("logs_auditoria")
+        .select("*")
+        .eq("empresa_id", admin.empresa_id)
+        .order("created_at", { ascending: false })
+        .limit(200);
+
+      const { data, error } = await query;
+      if (!error && Array.isArray(data) && data.length > 0) {
+        logs = data;
+      }
+    } catch (e) {}
+
+    // Se a tabela não tiver dados ou não existir, busca do fallback em config_campos
+    if (logs.length === 0) {
+      const { data: emp } = await supabaseAdmin
+        .from("empresas")
+        .select("config_campos")
+        .eq("id", admin.empresa_id)
+        .maybeSingle();
+
+      if (emp?.config_campos?.auditoria_logs) {
+        logs = emp.config_campos.auditoria_logs;
+      }
+    }
+
+    // Aplicação de filtros em memória caso fornecidos
+    if (filtros.responsavel && filtros.responsavel !== "todos") {
+      logs = logs.filter((l) =>
+        String(l.responsavel || "").toLowerCase().includes(filtros.responsavel.toLowerCase())
+      );
+    }
+
+    if (filtros.modulo && filtros.modulo !== "todos") {
+      logs = logs.filter((l) => l.modulo === filtros.modulo);
+    }
+
+    if (filtros.dataInicio) {
+      logs = logs.filter((l) => (l.created_at || "").substring(0, 10) >= filtros.dataInicio);
+    }
+
+    if (filtros.dataFim) {
+      logs = logs.filter((l) => (l.created_at || "").substring(0, 10) <= filtros.dataFim);
+    }
+
+    if (filtros.search?.trim()) {
+      const s = filtros.search.toLowerCase().trim();
+      logs = logs.filter(
+        (l) =>
+          String(l.acao || "").toLowerCase().includes(s) ||
+          String(l.detalhes || "").toLowerCase().includes(s) ||
+          String(l.responsavel || "").toLowerCase().includes(s)
+      );
+    }
+
+    return logs;
+  } catch (err) {
+    console.error("Erro ao buscar logs de auditoria:", err);
+    return [];
+  }
+}
+
+/* ==========================================
+   AGENDAMENTO MANUAL PELO COLABORADOR
+   ========================================== */
+export async function actionCriarAgendamentoManualAdmin(dados) {
+  try {
+    const admin = await getAdminLogado(true);
+    const {
+      nome,
+      cpf,
+      telefone,
+      email,
+      data_nascimento,
+      servico_id,
+      medico_profissional,
+      especialidade,
+      tipo_servico,
+      subtipo_exame,
+      modalidade,
+      data_agendamento,
+      horario_agendamento,
+      observacoes
+    } = dados;
+
+    if (!nome?.trim() || !data_agendamento || !horario_agendamento) {
+      return { success: false, error: "Nome do paciente, data e horário são obrigatórios." };
+    }
+
+    // 1. Localizar ou cadastrar paciente
+    let pacienteId = null;
+    const cleanCpf = cpf ? cpf.replace(/\D/g, "") : null;
+    const cleanFone = telefone ? telefone.replace(/\D/g, "") : null;
+
+    if (cleanCpf && cleanCpf.length === 11) {
+      const { data: pacExistente } = await supabaseAdmin
+        .from("pacientes")
+        .select("id")
+        .eq("empresa_id", admin.empresa_id)
+        .eq("cpf", cleanCpf)
+        .maybeSingle();
+
+      if (pacExistente) {
+        pacienteId = pacExistente.id;
+      }
+    }
+
+    if (!pacienteId) {
+      const { data: novoPac, error: pacErr } = await supabaseAdmin
+        .from("pacientes")
+        .insert({
+          empresa_id: admin.empresa_id,
+          nome_completo: nome.trim(),
+          cpf: cleanCpf,
+          telefone_whatsapp: cleanFone || telefone,
+          email: email?.trim() || null,
+          data_nascimento: data_nascimento || null
+        })
+        .select("id")
+        .single();
+
+      if (pacErr) {
+        console.error("Erro ao criar paciente:", pacErr);
+      } else {
+        pacienteId = novoPac.id;
+      }
+    }
+
+    // 2. Criar agendamento
+    const payload = {
+      empresa_id: admin.empresa_id,
+      paciente_id: pacienteId,
+      servico_id: servico_id || null,
+      tipo_servico: tipo_servico || "Consulta",
+      especialidade: especialidade || subtipo_exame || "Clínica Geral",
+      subtipo_exame: subtipo_exame || null,
+      medico_profissional: medico_profissional || "Corpo Clínico",
+      modalidade: modalidade || "Particular",
+      data_agendamento: data_agendamento,
+      horario_agendamento: horario_agendamento,
+      status_atendimento: "agendado",
+      status_pagamento_antecipado: false,
+      criado_por: admin.usuario
+    };
+
+    const { data: agendamentoCriado, error: agendErr } = await supabaseAdmin
+      .from("agendamentos")
+      .insert(payload)
+      .select("*, pacientes(*)")
+      .single();
+
+    if (agendErr) {
+      throw new Error(`Erro ao criar agendamento: ${agendErr.message}`);
+    }
+
+    // 3. Registrar na auditoria
+    await actionRegistrarAuditoria({
+      modulo: "agenda",
+      acao: "Agendamento Manual",
+      detalhes: `Agendamento criado para ${nome.trim()} em ${data_agendamento} às ${horario_agendamento} (${medico_profissional || especialidade}) por ${admin.usuario}.`,
+      novo: payload,
+      alterado_por: admin.usuario
+    });
+
+    return { success: true, data: agendamentoCriado };
+  } catch (err) {
+    console.error("Erro ao criar agendamento manual:", err);
+    return { success: false, error: err.message };
+  }
 }

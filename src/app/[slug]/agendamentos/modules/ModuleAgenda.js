@@ -54,10 +54,17 @@ export default function ModuleAgenda() {
     return `${h}:${m}`;
   };
 
-  // Identificar regras aplicáveis (prioridade: médico específico > especialidade/grupo compartilhado > geral)
-  const especialidadeStr = (formData.especialidade || "").toLowerCase().trim();
-  const subtipoStr = (formData.subtipo_exame || "").toLowerCase().trim();
-  const tipoServicoStr = (formData.tipo_servico || "").toLowerCase().trim();
+  const normalizeText = (t) =>
+    String(t || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+
+  // Identificar regras aplicáveis (Médico vs Especialidade/Grupo Compartilhado vs Geral)
+  const especialidadeStr = normalizeText(formData.especialidade);
+  const subtipoStr = normalizeText(formData.subtipo_exame);
+  const tipoServicoStr = normalizeText(formData.tipo_servico);
 
   const rMedico = (regrasGlobais || []).filter(
     (r) => r.servico_id && r.servico_id === selectedSrv?.id && r.ativo !== false
@@ -65,16 +72,16 @@ export default function ModuleAgenda() {
 
   const rEspecialidade = (regrasGlobais || []).filter((r) => {
     if (r.servico_id || r.ativo === false) return false;
-    const permitidos = (r.tipos_permitidos || []).map((t) => String(t).toLowerCase().trim());
-    const rEsp = (r.especialidade || "").toLowerCase().trim();
+    const permitidos = (r.tipos_permitidos || []).map(normalizeText);
+    const rEsp = normalizeText(r.especialidade);
     return (
       (especialidadeStr &&
-        (permitidos.includes(especialidadeStr) ||
+        (permitidos.some((p) => p === especialidadeStr || p.includes(especialidadeStr) || especialidadeStr.includes(p)) ||
           rEsp === especialidadeStr ||
           rEsp.includes(especialidadeStr) ||
           especialidadeStr.includes(rEsp))) ||
       (subtipoStr &&
-        (permitidos.includes(subtipoStr) ||
+        (permitidos.some((p) => p === subtipoStr || p.includes(subtipoStr) || subtipoStr.includes(p)) ||
           rEsp === subtipoStr ||
           rEsp.includes(subtipoStr) ||
           subtipoStr.includes(rEsp)))
@@ -89,49 +96,6 @@ export default function ModuleAgenda() {
       r.ativo !== false
   );
 
-  const regrasAplicaveis =
-    rMedico.length > 0 ? rMedico : rEspecialidade.length > 0 ? rEspecialidade : rGeral;
-
-  const isRuleValidForCurrentSelection = (r) => {
-    if (
-      !r.tipos_permitidos ||
-      !Array.isArray(r.tipos_permitidos) ||
-      r.tipos_permitidos.length === 0
-    ) {
-      return true;
-    }
-
-    const modalidadeStr = (formData.modalidade || "").toLowerCase().trim();
-
-    return r.tipos_permitidos.some((tpRaw) => {
-      const tp = String(tpRaw).toLowerCase().trim();
-      if (!tp || tp === "todos" || tp === "todas") return true;
-      if (tp === tipoServicoStr) return true;
-
-      if (especialidadeStr !== "") {
-        if (tp === especialidadeStr || tp.includes(especialidadeStr) || especialidadeStr.includes(tp))
-          return true;
-      }
-
-      if (subtipoStr !== "") {
-        if (tp === subtipoStr || tp.includes(subtipoStr) || subtipoStr.includes(tp))
-          return true;
-      }
-
-      if (modalidadeStr !== "") {
-        if (tp.includes(modalidadeStr)) return true;
-      }
-
-      if (tipoServicoStr === "consulta" && tp.includes("consulta")) return true;
-      if (tipoServicoStr === "exame" && tp.includes("exame")) return true;
-      if (tipoServicoStr === "retorno" && tp.includes("retorno")) return true;
-
-      return false;
-    });
-  };
-
-  const regrasAplicaveisEValidas = regrasAplicaveis.filter(isRuleValidForCurrentSelection);
-
   const aplicarBloqueioTemporario = (limite) => {
     if (!selectedSrv?.agendamento_bloqueado_ate) return limite;
     const bloqueadoAte = new Date(`${selectedSrv.agendamento_bloqueado_ate}T12:00:00`);
@@ -139,32 +103,50 @@ export default function ModuleAgenda() {
     return bloqueadoAte > limite ? bloqueadoAte : limite;
   };
 
-  const regrasDoDia = regrasAplicaveisEValidas.filter((r) => {
-    const diasArray = (r.dias_semana || []).map((d) => parseInt(d, 10));
-    return diasArray.includes(diaSelecionado);
-  });
-
+  // Regra de interseção estrita (Conjunto Menor / Mais Restritivo):
+  // Se médico E especialidade têm regras, o dia e horário devem ser permitidos por AMBOS.
   const isDiaPermitidoPelasRegras = (dataStr) => {
     const diaWeek = getDiaSemana(dataStr);
 
-    if (regrasAplicaveisEValidas.length > 0) {
-      return regrasAplicaveisEValidas.some((r) => {
-        const diasArray = (r.dias_semana || []).map((d) => parseInt(d, 10));
-        return diasArray.includes(diaWeek);
-      });
+    const medicoRulesToday = rMedico.filter((r) =>
+      (r.dias_semana || []).map((d) => parseInt(d, 10)).includes(diaWeek)
+    );
+    const espRulesToday = rEspecialidade.filter((r) =>
+      (r.dias_semana || []).map((d) => parseInt(d, 10)).includes(diaWeek)
+    );
+    const geralRulesToday = rGeral.filter((r) =>
+      (r.dias_semana || []).map((d) => parseInt(d, 10)).includes(diaWeek)
+    );
+
+    // Caso 1: Ambos têm regras cadastradas -> INTERSEÇÃO (Conjunto Menor)
+    if (rMedico.length > 0 && rEspecialidade.length > 0) {
+      if (medicoRulesToday.length === 0 || espRulesToday.length === 0) return false;
+      // Verifica se há pelo menos um par de janelas que se sobrepõe
+      return medicoRulesToday.some((dr) =>
+        espRulesToday.some((sr) => {
+          const s = Math.max(timeToMin(dr.hora_inicio), timeToMin(sr.hora_inicio));
+          const e = Math.min(timeToMin(dr.hora_fim), timeToMin(sr.hora_fim));
+          return s < e;
+        })
+      );
     }
 
-    if (rMedico.length > 0 || rEspecialidade.length > 0) {
-      return false;
+    // Caso 2: Apenas o médico tem regra específica
+    if (rMedico.length > 0) {
+      return medicoRulesToday.length > 0;
     }
 
+    // Caso 3: Apenas a especialidade/grupo compartilhado tem regra
+    if (rEspecialidade.length > 0) {
+      return espRulesToday.length > 0;
+    }
+
+    // Caso 4: Regra geral da clínica
     if (rGeral.length > 0) {
-      return rGeral.some((r) => {
-        const diasArray = (r.dias_semana || []).map((d) => parseInt(d, 10));
-        return diasArray.includes(diaWeek);
-      });
+      return geralRulesToday.length > 0;
     }
 
+    // Fallback padrão: Segunda a Sexta
     return [1, 2, 3, 4, 5].includes(diaWeek);
   };
 
@@ -249,8 +231,8 @@ export default function ModuleAgenda() {
     let lastAllowedMin = endMin - dur;
     if (customLastAllowed) {
       const customMin = timeToMin(customLastAllowed);
-      if (customMin > 0 && customMin < lastAllowedMin) {
-        lastAllowedMin = customMin;
+      if (customMin > 0) {
+        lastAllowedMin = Math.min(lastAllowedMin, customMin);
       }
     }
 
@@ -276,9 +258,10 @@ export default function ModuleAgenda() {
         return Math.max(m, iv.startMin) < Math.min(m + dur, iv.endMin);
       });
 
-      if (!hasCollision) {
-        slots.push(minToTime(m));
-      }
+      slots.push({
+        h: minToTime(m),
+        isOccupied: hasCollision
+      });
     });
 
     return slots;
@@ -290,44 +273,123 @@ export default function ModuleAgenda() {
   if (formData.data_agendamento) {
     let slotsGerados = [];
     const intervals = agenda?.occupiedIntervals || [];
-    const duracaoAtual =
-      agenda?.duracaoAtual || regrasDoDia[0]?.duracao_slot_minutos || 30;
 
-    if (regrasDoDia.length > 0) {
-      regrasDoDia.forEach((r) => {
-        const durRule = agenda?.duracaoAtual || r.duracao_slot_minutos || 30;
-        const gerados = gerarSlotsDinamicos(
-          r.hora_inicio,
-          r.hora_fim,
-          durRule,
-          r.ultimo_horario_agendamento,
-          intervals
-        );
-        slotsGerados.push(...gerados);
-        if (r.ocupacao_sequencial) ocupacaoSeqAtiva = true;
+    const medicoRulesToday = rMedico.filter((r) =>
+      (r.dias_semana || []).map((d) => parseInt(d, 10)).includes(diaSelecionado)
+    );
+    const espRulesToday = rEspecialidade.filter((r) =>
+      (r.dias_semana || []).map((d) => parseInt(d, 10)).includes(diaSelecionado)
+    );
+    const geralRulesToday = rGeral.filter((r) =>
+      (r.dias_semana || []).map((d) => parseInt(d, 10)).includes(diaSelecionado)
+    );
+
+    // Lista de janelas de tempo efetivas calculadas pela interseção
+    const janelasEfetivas = [];
+
+    if (rMedico.length > 0 && rEspecialidade.length > 0) {
+      // Interseção entre as regras do médico e da especialidade (Conjunto Menor)
+      medicoRulesToday.forEach((dr) => {
+        espRulesToday.forEach((sr) => {
+          const sMin = Math.max(timeToMin(dr.hora_inicio), timeToMin(sr.hora_inicio));
+          const eMin = Math.min(timeToMin(dr.hora_fim), timeToMin(sr.hora_fim));
+
+          if (sMin < eMin) {
+            const drLast = dr.ultimo_horario_agendamento ? timeToMin(dr.ultimo_horario_agendamento) : null;
+            const srLast = sr.ultimo_horario_agendamento ? timeToMin(sr.ultimo_horario_agendamento) : null;
+            let effLast = null;
+            if (drLast !== null && srLast !== null) effLast = Math.min(drLast, srLast);
+            else if (srLast !== null) effLast = srLast;
+            else if (drLast !== null) effLast = drLast;
+
+            const durSlot =
+              sr.duracao_slot_minutos > 0
+                ? sr.duracao_slot_minutos
+                : dr.duracao_slot_minutos > 0
+                ? dr.duracao_slot_minutos
+                : agenda?.duracaoAtual || 30;
+
+            const isSeq = Boolean(dr.ocupacao_sequencial || sr.ocupacao_sequencial);
+
+            janelasEfetivas.push({
+              startStr: minToTime(sMin),
+              endStr: minToTime(eMin),
+              duracao: durSlot,
+              ultimoHorario: effLast ? minToTime(effLast) : null,
+              ocupacaoSequencial: isSeq
+            });
+          }
+        });
       });
-    } else if (regrasAplicaveis.length === 0) {
+    } else if (rMedico.length > 0) {
+      medicoRulesToday.forEach((dr) => {
+        janelasEfetivas.push({
+          startStr: dr.hora_inicio,
+          endStr: dr.hora_fim,
+          duracao: dr.duracao_slot_minutos > 0 ? dr.duracao_slot_minutos : agenda?.duracaoAtual || 30,
+          ultimoHorario: dr.ultimo_horario_agendamento || null,
+          ocupacaoSequencial: Boolean(dr.ocupacao_sequencial)
+        });
+      });
+    } else if (rEspecialidade.length > 0) {
+      espRulesToday.forEach((sr) => {
+        janelasEfetivas.push({
+          startStr: sr.hora_inicio,
+          endStr: sr.hora_fim,
+          duracao: sr.duracao_slot_minutos > 0 ? sr.duracao_slot_minutos : agenda?.duracaoAtual || 30,
+          ultimoHorario: sr.ultimo_horario_agendamento || null,
+          ocupacaoSequencial: Boolean(sr.ocupacao_sequencial)
+        });
+      });
+    } else if (geralRulesToday.length > 0) {
+      geralRulesToday.forEach((gr) => {
+        janelasEfetivas.push({
+          startStr: gr.hora_inicio,
+          endStr: gr.hora_fim,
+          duracao: gr.duracao_slot_minutos > 0 ? gr.duracao_slot_minutos : agenda?.duracaoAtual || 30,
+          ultimoHorario: gr.ultimo_horario_agendamento || null,
+          ocupacaoSequencial: Boolean(gr.ocupacao_sequencial)
+        });
+      });
+    } else {
       let duracaoFallback = 40;
       if (formData.tipo_servico === "Retorno" || formData.modalidade === "Convênio")
         duracaoFallback = 20;
-      slotsGerados.push(
-        ...gerarSlotsDinamicos("08:00", "12:00", duracaoFallback, null, intervals)
-      );
-      slotsGerados.push(
-        ...gerarSlotsDinamicos("14:00", "18:00", duracaoFallback, null, intervals)
+      janelasEfetivas.push(
+        { startStr: "08:00", endStr: "12:00", duracao: duracaoFallback, ultimoHorario: null, ocupacaoSequencial: false },
+        { startStr: "14:00", endStr: "18:00", duracao: duracaoFallback, ultimoHorario: null, ocupacaoSequencial: false }
       );
     }
 
-    slotsGerados.sort();
-    slotsGerados = [...new Set(slotsGerados)];
+    janelasEfetivas.forEach((j) => {
+      const gerados = gerarSlotsDinamicos(
+        j.startStr,
+        j.endStr,
+        j.duracao,
+        j.ultimoHorario,
+        intervals
+      );
+      slotsGerados.push(...gerados);
+      if (j.ocupacaoSequencial) ocupacaoSeqAtiva = true;
+    });
+
+    const mapSlots = new Map();
+    slotsGerados.forEach((item) => {
+      if (!mapSlots.has(item.h) || (mapSlots.get(item.h).isOccupied && !item.isOccupied)) {
+        mapSlots.set(item.h, item);
+      }
+    });
+
+    const uniqueSlots = Array.from(mapSlots.values()).sort((a, b) => a.h.localeCompare(b.h));
     let encontrouPrimeiroLivre = false;
 
-    slotsRender = slotsGerados.map((h) => {
+    slotsRender = uniqueSlots.map(({ h, isOccupied }) => {
       const isPastTime =
         formData.data_agendamento === helpers.getToday() &&
         new Date().setHours(...h.split(":"), 0, 0) <=
           (agenda.agora || 0) + 1800000;
-      let off = isPastTime;
+
+      let off = isPastTime || isOccupied;
 
       if (ocupacaoSeqAtiva) {
         if (!off) {
@@ -338,7 +400,7 @@ export default function ModuleAgenda() {
           }
         }
       }
-      return { h, off };
+      return { h, off, isOccupied };
     });
   }
 

@@ -220,6 +220,26 @@ export default function AdminSessionBar() {
             </span>
           </div>
         </div>
+
+        {/* TIMER DE SESSÃO ATIVA DESTACADO NO LADO ESQUERDO (FORA DO CARD) */}
+        <div
+          className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-100/90 dark:bg-zinc-900/90 border border-zinc-200/80 dark:border-zinc-800 text-xs shadow-xs ml-1 sm:ml-2"
+          title="Tempo de inatividade restante da sessão do colaborador"
+        >
+          <Clock size={13} className={isExpiringSoon ? 'text-amber-500 animate-pulse' : 'text-[#86a621] dark:text-[#9FC131]'} />
+          <span className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-wider hidden sm:inline">
+            Sessão Ativa:
+          </span>
+          <span
+            className={`font-mono font-black text-xs px-1.5 py-0.5 rounded ${
+              isExpiringSoon
+                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 animate-pulse'
+                : 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200'
+            }`}
+          >
+            {minutes}:{seconds}
+          </span>
+        </div>
       </div>
 
       {/* CÁPSULA EXPANSÍVEL DO USUÁRIO COM DROPDOWN (ONLY SHOWS USER NAME/AVATAR, EXPANDS OPTIONS ON CLICK) */}

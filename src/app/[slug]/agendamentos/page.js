@@ -339,7 +339,7 @@ function AgendamentoOrquestrador() {
 
               let especialidadeFinal = resolvedEspFromUrl;
               if (!especialidadeFinal || /^\d+$/.test(especialidadeFinal)) {
-                especialidadeFinal = medicoEsps.length > 0 ? medicoEsps[0] : "Consulta";
+                especialidadeFinal = medicoEsps.length > 0 ? medicoEsps[0] : (foundSrv.tipo_servico === "Exame" ? "Exame Clínico" : "Clínica Geral");
               }
 
               const confCategorizadas = conf.especialidades_categorizadas || [];
@@ -697,41 +697,69 @@ function AgendamentoOrquestrador() {
             return `${h}:${m}`;
           };
 
-          const espNorm = (formData.especialidade || "").toLowerCase().trim();
-          const subNorm = (formData.subtipo_exame || "").toLowerCase().trim();
-          const profNorm = (formData.medico_profissional || "").toLowerCase().trim();
+          const normalizeText = (t) =>
+            String(t || "")
+              .normalize("NFD")
+              .replace(/[\u0300-\u036f]/g, "")
+              .toLowerCase()
+              .trim();
 
+          const espNorm = normalizeText(formData.especialidade);
+          const subNorm = normalizeText(formData.subtipo_exame);
+          const profNorm = normalizeText(formData.medico_profissional);
+
+          // 1. Identificar regras da agenda compartilhada que englobam a especialidade atual ou o médico selecionado
           const sharedRules = (regrasGlobais || []).filter((r) => {
             if (r.ativo === false) return false;
             if (r.servico_id && selectedSrv?.id && r.servico_id === selectedSrv.id) return true;
-            const permitidos = (r.tipos_permitidos || []).map((t) => String(t).toLowerCase().trim());
-            const rEsp = (r.especialidade || "").toLowerCase().trim();
-            return (
-              (espNorm && (permitidos.includes(espNorm) || rEsp === espNorm || rEsp.includes(espNorm) || espNorm.includes(rEsp))) ||
-              (subNorm && (permitidos.includes(subNorm) || rEsp === subNorm || rEsp.includes(subNorm) || subNorm.includes(rEsp)))
-            );
+
+            const permitidos = (r.tipos_permitidos || []).map(normalizeText);
+            const rEsp = normalizeText(r.especialidade);
+
+            const matchQuery = (target) => {
+              if (!target) return false;
+              return (
+                permitidos.some((p) => p === target || p.includes(target) || target.includes(p)) ||
+                (rEsp && (rEsp === target || rEsp.includes(target) || target.includes(rEsp)))
+              );
+            };
+
+            return matchQuery(espNorm) || matchQuery(subNorm);
           });
 
+          // 2. Montar pool de todas as especialidades vinculadas à mesma agenda compartilhada
           const poolEspecialidades = new Set([
             espNorm,
             subNorm,
             ...sharedRules.flatMap((r) => [
-              ...(r.tipos_permitidos || []).map((t) => String(t).toLowerCase().trim()),
-              ...(r.especialidade ? r.especialidade.split(",").map((e) => e.toLowerCase().trim()) : [])
+              ...(r.tipos_permitidos || []).map(normalizeText),
+              ...(r.especialidade ? r.especialidade.split(",").map(normalizeText) : [])
             ])
-          ].filter(Boolean));
+          ]);
+          poolEspecialidades.delete("");
+
+          const cleanPool = Array.from(poolEspecialidades);
+
+          const matchesPool = (val) => {
+            if (!val) return false;
+            const n = normalizeText(val);
+            if (!n) return false;
+            return cleanPool.some((p) => p === n || n.includes(p) || p.includes(n));
+          };
 
           const confEsps = empresaDados?.config_campos?.especialidades_categorizadas || [];
 
           const getDurationForAppointment = (itemEsp, itemSub) => {
-            const iEsp = (itemEsp || "").toLowerCase().trim();
-            const iSub = (itemSub || "").toLowerCase().trim();
+            const iEsp = normalizeText(itemEsp);
+            const iSub = normalizeText(itemSub);
             const found = confEsps.find((e) => {
-              const n = (e.nome || "").toLowerCase().trim();
-              return n === iEsp || n === iSub;
+              const n = normalizeText(e.nome);
+              return n === iEsp || n === iSub || (iEsp && n.includes(iEsp)) || (iSub && n.includes(iSub));
             });
-            if (found?.duracao_minutos) return Number(found.duracao_minutos);
-            const ruleMatch = sharedRules[0];
+            if (found?.duracao_minutos && Number(found.duracao_minutos) > 0) {
+              return Number(found.duracao_minutos);
+            }
+            const ruleMatch = sharedRules.find((r) => r.duracao_slot_minutos > 0);
             return Number(ruleMatch?.duracao_slot_minutos) || 30;
           };
 
@@ -741,14 +769,15 @@ function AgendamentoOrquestrador() {
           const slots = [];
 
           (ag || []).forEach((a) => {
-            const aProf = (a.medico_profissional || "").toLowerCase().trim();
-            const aSub = (a.subtipo_exame || "").toLowerCase().trim();
-            const aEsp = (a.especialidade || "").toLowerCase().trim();
+            const aProf = normalizeText(a.medico_profissional);
+            const aSub = normalizeText(a.subtipo_exame);
+            const aEsp = normalizeText(a.especialidade);
 
             const matchProf = profNorm && (aProf.includes(profNorm) || profNorm.includes(aProf));
-            const matchShared = poolEspecialidades.has(aEsp) || poolEspecialidades.has(aSub) || poolEspecialidades.has(aProf);
+            const matchShared = matchesPool(aEsp) || matchesPool(aSub) || matchesPool(a.tipo_servico);
 
-            if (matchProf || matchShared || (!profNorm && poolEspecialidades.size === 0)) {
+            // Se o agendamento coincide com o médico ou com qualquer especialidade da agenda compartilhada
+            if (matchProf || matchShared || (!profNorm && cleanPool.length === 0)) {
               const startMin = timeToMin(a.horario_agendamento);
               const dur = getDurationForAppointment(a.especialidade, a.subtipo_exame);
               const endMin = startMin + dur;
@@ -759,11 +788,15 @@ function AgendamentoOrquestrador() {
           });
 
           (bl || []).forEach((b) => {
-            const bProf = (b.medico_profissional || "").toLowerCase().trim();
-            const bEsp = (b.especialidade || "").toLowerCase().trim();
+            const bProf = normalizeText(b.medico_profissional);
+            const bEsp = normalizeText(b.especialidade);
 
-            const matchProf = !b.medico_profissional || b.medico_profissional === "Todos" || (profNorm && (bProf.includes(profNorm) || profNorm.includes(bProf)));
-            const matchShared = !b.especialidade || poolEspecialidades.has(bEsp);
+            const matchProf =
+              !b.medico_profissional ||
+              b.medico_profissional === "Todos" ||
+              (profNorm && (bProf.includes(profNorm) || profNorm.includes(bProf)));
+
+            const matchShared = !b.especialidade || matchesPool(bEsp);
 
             if (matchProf || matchShared) {
               const startMin = timeToMin(b.horario);
@@ -907,13 +940,64 @@ function AgendamentoOrquestrador() {
             ? confCampos.modalidade_padrao || "Convênio"
             : confCampos.modalidade_padrao || "Particular");
 
+        // 1. Identificar o Especialista real (Médico/Profissional humano)
+        let especialistaHumano = formData.medico_profissional || null;
+        if (
+          !especialistaHumano ||
+          especialistaHumano === "A definir" ||
+          especialistaHumano === "Corpo Clínico" ||
+          especialistaHumano === "Todos"
+        ) {
+          especialistaHumano = null;
+        }
+
+        const isNomeExame =
+          especialistaHumano &&
+          (especialistaHumano.toLowerCase().includes("endoscopia") ||
+            especialistaHumano.toLowerCase().includes("colonoscopia") ||
+            especialistaHumano.toLowerCase().includes("ultrassom") ||
+            especialistaHumano.toLowerCase().includes("tomografia") ||
+            especialistaHumano.toLowerCase().includes("ressonancia") ||
+            especialistaHumano.toLowerCase().includes("raio-x") ||
+            especialistaHumano.toLowerCase().includes("exame") ||
+            especialistaHumano === formData.subtipo_exame);
+
+        if (isNomeExame) {
+          especialistaHumano = null;
+        }
+
+        // 2. Identificar a Especialidade clínica real e Categoria
+        let especialidadeClinica = formData.especialidade;
+        let subtipoExameLimpo = formData.subtipo_exame;
+
+        if (!especialidadeClinica || especialidadeClinica === "Consulta" || especialidadeClinica === "Exame") {
+          if (subtipoExameLimpo && subtipoExameLimpo !== "Consulta" && subtipoExameLimpo !== "Exame") {
+            especialidadeClinica = subtipoExameLimpo;
+          } else if (formData.medico_profissional && isNomeExame) {
+            especialidadeClinica = formData.medico_profissional;
+          } else {
+            const srv = (servicosDB || []).find((s) => s.nome === formData.medico_profissional);
+            if (srv?.especialidade) {
+              especialidadeClinica = srv.especialidade.split(",")[0].trim();
+            }
+          }
+        }
+
+        if (!especialidadeClinica || especialidadeClinica === "Consulta" || especialidadeClinica === "Exame") {
+          especialidadeClinica = formData.tipo_servico === "Exame" ? "Exame Clínico" : "Clínica Geral";
+        }
+
+        if (formData.tipo_servico === "Exame" && !subtipoExameLimpo) {
+          subtipoExameLimpo = especialidadeClinica;
+        }
+
         const appointmentPayload = {
           paciente_id: pacienteId,
           empresa_id: empresaDados?.id,
-          tipo_servico: formData.tipo_servico || "Consulta",
-          especialidade: formData.especialidade || formData.subtipo_exame || null,
-          subtipo_exame: formData.subtipo_exame || formData.especialidade || null,
-          medico_profissional: formData.medico_profissional || "A definir",
+          tipo_servico: formData.tipo_servico || (formData.especialidade?.toLowerCase().includes("exame") ? "Exame" : "Consulta"),
+          especialidade: especialidadeClinica,
+          subtipo_exame: subtipoExameLimpo || null,
+          medico_profissional: especialistaHumano || "Corpo Clínico",
           modalidade: modalidadeEfetiva,
           data_agendamento: formData.data_agendamento,
           horario_agendamento: formData.horario_agendamento,
@@ -934,9 +1018,10 @@ function AgendamentoOrquestrador() {
           const simplePayload = {
             paciente_id: pacienteId,
             empresa_id: empresaDados?.id,
-            tipo_servico: formData.tipo_servico || "Consulta",
-            subtipo_exame: formData.subtipo_exame || null,
-            medico_profissional: formData.medico_profissional || "A definir",
+            tipo_servico: appointmentPayload.tipo_servico,
+            especialidade: appointmentPayload.especialidade,
+            subtipo_exame: appointmentPayload.subtipo_exame,
+            medico_profissional: appointmentPayload.medico_profissional,
             modalidade: modalidadeEfetiva,
             data_agendamento: formData.data_agendamento,
             horario_agendamento: formData.horario_agendamento,

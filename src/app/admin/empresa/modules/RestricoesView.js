@@ -81,7 +81,8 @@ export default function RestricoesView({
     hora_fim: "18:00",
     ultimo_horario_agendamento: "17:30",
     duracao_slot_minutos: 0, // 0 = Desabilitada / Conforme cada especialidade
-    ocupacao_sequencial: true
+    ocupacao_sequencial: true,
+    tipo_bloqueio: "total" // "total" = Bloqueio Total (todos os especialistas do grupo) | "parcial" = Bloqueio Parcial (apenas médico agendado)
   });
 
   const [isProcessing, setIsProcessing] = useState(false);
@@ -113,7 +114,8 @@ export default function RestricoesView({
       hora_fim: "18:00",
       ultimo_horario_agendamento: "17:30",
       duracao_slot_minutos: 0,
-      ocupacao_sequencial: true
+      ocupacao_sequencial: true,
+      tipo_bloqueio: "total"
     });
   };
 
@@ -140,6 +142,7 @@ export default function RestricoesView({
       ultimo_horario_agendamento: regra.ultimo_horario_agendamento?.slice(0, 5) || "17:30",
       duracao_slot_minutos: Number(regra.duracao_slot_minutos) || 0,
       ocupacao_sequencial: Boolean(regra.ocupacao_sequencial),
+      tipo_bloqueio: regra.tipo_bloqueio || "total",
       ativo: regra.ativo !== false
     });
 
@@ -194,6 +197,7 @@ export default function RestricoesView({
         ultimo_horario_agendamento: formData.ultimo_horario_agendamento,
         duracao_slot_minutos: Number(formData.duracao_slot_minutos) || 0,
         ocupacao_sequencial: Boolean(formData.ocupacao_sequencial),
+        tipo_bloqueio: formData.tipo_bloqueio || "total",
         ativo: true
       };
 
@@ -214,10 +218,16 @@ export default function RestricoesView({
         payload.tipos_permitidos = [];
       }
 
+      let res;
       if (editingId) {
-        await actionAtualizarRegraAgenda(editingId, payload);
+        res = await actionAtualizarRegraAgenda(editingId, payload);
       } else {
-        await actionCriarRegraAgenda(payload);
+        res = await actionCriarRegraAgenda(payload);
+      }
+
+      if (res && res.success === false) {
+        showToast(res.error || "Erro ao processar regra de agenda.", "error");
+        return;
       }
 
       showToast(editingId ? "Alterações salvas na agenda." : "Regra adicionada à agenda.");
@@ -503,10 +513,62 @@ export default function RestricoesView({
                         />
                       </div>
 
+                      {/* MODO DE BLOQUEIO: TOTAL (SALA/RECURSO ÚNICO) VS PARCIAL (POR MÉDICO) */}
+                      <div className="pt-3 border-t border-purple-200/60 dark:border-purple-900/40 space-y-2">
+                        <label className="text-[10px] font-bold text-purple-900 dark:text-purple-300 uppercase tracking-widest block">
+                          Modo de Bloqueio da Agenda Compartilhada
+                        </label>
+                        <div className="grid sm:grid-cols-2 gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setFormData({ ...formData, tipo_bloqueio: "total" })}
+                            className={`p-3.5 rounded-2xl border-2 text-left transition-all cursor-pointer ${
+                              formData.tipo_bloqueio === "total"
+                                ? "border-purple-900 bg-purple-100/70 dark:bg-purple-900/40 dark:border-purple-300 shadow-sm"
+                                : "border-purple-200/60 dark:border-purple-900/30 bg-white/70 dark:bg-zinc-900/30 opacity-70 hover:opacity-100"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-extrabold text-xs text-zinc-950 dark:text-white flex items-center gap-1.5">
+                                🔒 Bloqueio Total (Sala Única / Recurso Único)
+                              </span>
+                              {formData.tipo_bloqueio === "total" && (
+                                <CheckCircle2 size={15} className="text-purple-600 dark:text-purple-300" />
+                              )}
+                            </div>
+                            <p className="text-[11px] text-zinc-600 dark:text-zinc-400 leading-tight">
+                              Ao agendar às 08:00 (duração 40 min), o horário fica <strong>bloqueado para TODOS os especialistas</strong> do grupo. A próxima vaga para qualquer médico será <strong>08:40</strong>.
+                            </p>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setFormData({ ...formData, tipo_bloqueio: "parcial" })}
+                            className={`p-3.5 rounded-2xl border-2 text-left transition-all cursor-pointer ${
+                              formData.tipo_bloqueio === "parcial"
+                                ? "border-purple-900 bg-purple-100/70 dark:bg-purple-900/40 dark:border-purple-300 shadow-sm"
+                                : "border-purple-200/60 dark:border-purple-900/30 bg-white/70 dark:bg-zinc-900/30 opacity-70 hover:opacity-100"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-extrabold text-xs text-zinc-950 dark:text-white flex items-center gap-1.5">
+                                👥 Bloqueio Parcial (Por Especialista)
+                              </span>
+                              {formData.tipo_bloqueio === "parcial" && (
+                                <CheckCircle2 size={15} className="text-purple-600 dark:text-purple-300" />
+                              )}
+                            </div>
+                            <p className="text-[11px] text-zinc-600 dark:text-zinc-400 leading-tight">
+                              Bloqueia o horário <strong>apenas para o especialista agendado</strong>. Outros especialistas que atendem no grupo continuam liberados em seus consultórios.
+                            </p>
+                          </button>
+                        </div>
+                      </div>
+
                       <div className="flex items-start gap-2 p-3 bg-white/80 dark:bg-black/30 rounded-xl border border-purple-200/50 text-[11px] text-purple-900 dark:text-purple-300">
                         <Sparkles size={16} className="text-purple-600 shrink-0 mt-0.5" />
                         <span>
-                          <strong>Como funciona a Agenda Compartilhada:</strong> Se um paciente marcar uma especialidade de 20 min às 08:00, o próximo horário liberado para qualquer uma das especialidades vinculadas será às 08:20. O sistema respeita automaticamente a duração configurada em cada especialidade.
+                          <strong>Como funciona a Agenda Compartilhada:</strong> Se um paciente marcar uma especialidade de 40 min às 08:00 com Bloqueio Total, a agenda avança sequencialmente para as 08:40 para todos os profissionais. Com Bloqueio Parcial, apenas o médico marcado ocupa o intervalo.
                         </span>
                       </div>
                     </div>
@@ -750,7 +812,11 @@ export default function RestricoesView({
                               <button
                                 onClick={async () => {
                                   if (!window.confirm("Remover este horário configurado?")) return;
-                                  await actionDeletarRegra(regra.id);
+                                  const res = await actionDeletarRegra(regra.id);
+                                  if (res && res.success === false) {
+                                    showToast(res.error || "Erro ao remover horário.", "error");
+                                    return;
+                                  }
                                   if (fetchRegras) await fetchRegras();
                                   showToast("Horário removido.");
                                 }}
@@ -783,6 +849,15 @@ export default function RestricoesView({
                             <div className="flex items-center gap-1.5 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900/40 px-3 py-1 rounded-lg text-xs font-bold">
                               {duracaoLabel}
                             </div>
+                            {isSharedPool && (
+                              <div className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase border ${
+                                regra.tipo_bloqueio === "parcial"
+                                  ? "bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200/50"
+                                  : "bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200/50"
+                              }`}>
+                                {regra.tipo_bloqueio === "parcial" ? "Bloqueio Parcial (Por Médico)" : "Bloqueio Total (Grupo)"}
+                              </div>
+                            )}
                             {regra.ocupacao_sequencial && (
                               <div className="flex items-center gap-1.5 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200/50 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase">
                                 Sequencial
@@ -891,7 +966,11 @@ export default function RestricoesView({
                               <button
                                 onClick={async () => {
                                   if (!window.confirm("Remover este horário?")) return;
-                                  await actionDeletarRegra(regra.id);
+                                  const res = await actionDeletarRegra(regra.id);
+                                  if (res && res.success === false) {
+                                    showToast(res.error || "Erro ao remover horário.", "error");
+                                    return;
+                                  }
                                   if (fetchRegras) await fetchRegras();
                                   showToast("Removido.");
                                 }}
