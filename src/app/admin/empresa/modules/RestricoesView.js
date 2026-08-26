@@ -21,7 +21,10 @@ import {
   Info,
   ArrowUp,
   ArrowDown,
-  ArrowUpDown
+  ArrowUpDown,
+  Activity,
+  ShieldCheck,
+  RotateCcw
 } from "lucide-react";
 import {
   fadeUp,
@@ -82,7 +85,9 @@ export default function RestricoesView({
     ultimo_horario_agendamento: "17:30",
     duracao_slot_minutos: 0, // 0 = Desabilitada / Conforme cada especialidade
     ocupacao_sequencial: true,
-    tipo_bloqueio: "total" // "total" = Bloqueio Total (todos os especialistas do grupo) | "parcial" = Bloqueio Parcial (apenas médico agendado)
+    tipo_bloqueio: "total", // "total" = Bloqueio Total (todos os especialistas do grupo) | "parcial" = Bloqueio Parcial (apenas médico agendado)
+    tipo_atendimento: "todos", // "todos" | "consulta" | "exame" | "retorno"
+    modalidade_atendimento: "todas" // "todas" | "particular" | "convenio"
   });
 
   const [isProcessing, setIsProcessing] = useState(false);
@@ -115,21 +120,40 @@ export default function RestricoesView({
       ultimo_horario_agendamento: "17:30",
       duracao_slot_minutos: 0,
       ocupacao_sequencial: true,
-      tipo_bloqueio: "total"
+      tipo_bloqueio: "total",
+      tipo_atendimento: "todos",
+      modalidade_atendimento: "todas"
     });
   };
 
   const editarRegra = (regra) => {
     setEditingId(regra.id);
-    const tipo = regra.servico_id ? "especifica" : regra.especialidade || (Array.isArray(regra.tipos_permitidos) && regra.tipos_permitidos.length > 0) ? "especialidade" : "geral";
+    const tipo = regra.servico_id
+      ? "especifica"
+      : regra.especialidade || (Array.isArray(regra.tipos_permitidos) && regra.tipos_permitidos.length > 0)
+      ? "especialidade"
+      : "geral";
     setTipoRegra(tipo);
 
+    const permitidos = (regra.tipos_permitidos || []).map((t) => String(t).toLowerCase().trim());
+
+    // Extrai especialidades ignorando tokens de modalidade/tipo
+    const specialTokens = ["consulta", "exame", "retorno", "particular", "convenio", "convênio", "todos", "todas"];
     let espsSelecionadas = [];
     if (Array.isArray(regra.tipos_permitidos) && regra.tipos_permitidos.length > 0) {
-      espsSelecionadas = regra.tipos_permitidos;
+      espsSelecionadas = regra.tipos_permitidos.filter((t) => !specialTokens.includes(String(t).toLowerCase().trim()));
     } else if (regra.especialidade) {
       espsSelecionadas = regra.especialidade.split(",").map((e) => e.trim()).filter(Boolean);
     }
+
+    let tipoAtendimento = "todos";
+    if (permitidos.includes("consulta")) tipoAtendimento = "consulta";
+    else if (permitidos.includes("exame")) tipoAtendimento = "exame";
+    else if (permitidos.includes("retorno")) tipoAtendimento = "retorno";
+
+    let modalidadeAtendimento = "todas";
+    if (permitidos.includes("particular")) modalidadeAtendimento = "particular";
+    else if (permitidos.includes("convenio") || permitidos.includes("convênio")) modalidadeAtendimento = "convenio";
 
     setFormData({
       servico_id: regra.servico_id || "",
@@ -143,6 +167,8 @@ export default function RestricoesView({
       duracao_slot_minutos: Number(regra.duracao_slot_minutos) || 0,
       ocupacao_sequencial: Boolean(regra.ocupacao_sequencial),
       tipo_bloqueio: regra.tipo_bloqueio || "total",
+      tipo_atendimento: tipoAtendimento,
+      modalidade_atendimento: modalidadeAtendimento,
       ativo: regra.ativo !== false
     });
 
@@ -178,7 +204,11 @@ export default function RestricoesView({
       return;
     }
 
-    if (tipoRegra === "especialidade" && (!formData.especialidades_selecionadas || formData.especialidades_selecionadas.length === 0) && !formData.especialidade) {
+    if (
+      tipoRegra === "especialidade" &&
+      (!formData.especialidades_selecionadas || formData.especialidades_selecionadas.length === 0) &&
+      !formData.especialidade
+    ) {
       showToast("Selecione ao menos uma especialidade para esta agenda.", "error");
       return;
     }
@@ -201,22 +231,34 @@ export default function RestricoesView({
         ativo: true
       };
 
+      let tipos = [];
+
       if (tipoRegra === "geral") {
         payload.servico_id = null;
         payload.especialidade = null;
-        payload.tipos_permitidos = [];
       } else if (tipoRegra === "especialidade") {
         payload.servico_id = null;
         const esps = formData.especialidades_selecionadas.length > 0
           ? formData.especialidades_selecionadas
           : [formData.especialidade];
-        payload.tipos_permitidos = esps;
+        tipos = [...esps];
         payload.especialidade = formData.nome_grupo?.trim() || esps.join(", ");
       } else if (tipoRegra === "especifica") {
         payload.servico_id = formData.servico_id;
         payload.especialidade = null;
-        payload.tipos_permitidos = [];
       }
+
+      // Adiciona restrição de tipo de atendimento (Consulta / Exame / Retorno)
+      if (formData.tipo_atendimento && formData.tipo_atendimento !== "todos") {
+        tipos.push(formData.tipo_atendimento);
+      }
+
+      // Adiciona restrição de modalidade (Particular / Convênio)
+      if (formData.modalidade_atendimento && formData.modalidade_atendimento !== "todas") {
+        tipos.push(formData.modalidade_atendimento);
+      }
+
+      payload.tipos_permitidos = tipos;
 
       let res;
       if (editingId) {
@@ -687,6 +729,99 @@ export default function RestricoesView({
                   </div>
                 </section>
 
+                <hr className="border-zinc-100 dark:border-zinc-800" />
+
+                {/* ETAPA 4: TIPO DE ATENDIMENTO & MODALIDADE PERMITIDA */}
+                <section>
+                  <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-zinc-900 dark:text-white mb-4">
+                    <span className="w-5 h-5 rounded-md bg-zinc-900 dark:bg-white text-white dark:text-black flex items-center justify-center text-[10px]">
+                      4
+                    </span>
+                    Tipo de Atendimento & Modalidade Permitida
+                  </h4>
+
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    {/* TIPO DE SERVIÇO / ATENDIMENTO */}
+                    <div className="p-4 bg-zinc-50/70 dark:bg-zinc-900/40 rounded-2xl border border-zinc-200/60 dark:border-zinc-800 space-y-2.5">
+                      <label className="text-[10px] font-extrabold text-zinc-400 dark:text-zinc-500 uppercase tracking-widest block">
+                        Tipo de Atendimento (Consulta / Exame)
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          { id: "todos", label: "Todos os Tipos", desc: "Consultas e Exames" },
+                          { id: "consulta", label: "Apenas Consulta", desc: "Consultas Médicas" },
+                          { id: "exame", label: "Apenas Exame", desc: "Procedimentos/Exames" },
+                          { id: "retorno", label: "Apenas Retorno", desc: "Consultas de Retorno" }
+                        ].map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => {
+                              playDopamineSound("click");
+                              setFormData({ ...formData, tipo_atendimento: opt.id });
+                            }}
+                            className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                              formData.tipo_atendimento === opt.id
+                                ? "bg-zinc-900 text-white dark:bg-white dark:text-black border-zinc-900 dark:border-white shadow-sm ring-2 ring-[#9FC131]"
+                                : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300"
+                            }`}
+                          >
+                            <span className="block font-bold text-xs">{opt.label}</span>
+                            <span
+                              className={`block text-[10px] ${
+                                formData.tipo_atendimento === opt.id
+                                  ? "text-zinc-300 dark:text-zinc-600"
+                                  : "text-zinc-400"
+                              }`}
+                            >
+                              {opt.desc}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* MODALIDADE DE COBERTURA / PAGAMENTO */}
+                    <div className="p-4 bg-zinc-50/70 dark:bg-zinc-900/40 rounded-2xl border border-zinc-200/60 dark:border-zinc-800 space-y-2.5">
+                      <label className="text-[10px] font-extrabold text-zinc-400 dark:text-zinc-500 uppercase tracking-widest block">
+                        Modalidade / Cobertura Aceita
+                      </label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { id: "todas", label: "Todas", desc: "Particular + Convênio" },
+                          { id: "particular", label: "Particular", desc: "Apenas Particular" },
+                          { id: "convenio", label: "Convênio", desc: "Apenas Convênios" }
+                        ].map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => {
+                              playDopamineSound("click");
+                              setFormData({ ...formData, modalidade_atendimento: opt.id });
+                            }}
+                            className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                              formData.modalidade_atendimento === opt.id
+                                ? "bg-zinc-900 text-white dark:bg-white dark:text-black border-zinc-900 dark:border-white shadow-sm ring-2 ring-[#9FC131]"
+                                : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300"
+                            }`}
+                          >
+                            <span className="block font-bold text-xs">{opt.label}</span>
+                            <span
+                              className={`block text-[10px] ${
+                                formData.modalidade_atendimento === opt.id
+                                  ? "text-zinc-300 dark:text-zinc-600"
+                                  : "text-zinc-400"
+                              }`}
+                            >
+                              {opt.desc}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
                 <div className="pt-2 flex justify-end">
                   <ButtonPrimary
                     onClick={handleSalvarVisual}
@@ -741,6 +876,15 @@ export default function RestricoesView({
                     let isSharedPool = false;
                     let espsArray = [];
 
+                    const specialTokens = ["consulta", "exame", "retorno", "particular", "convenio", "convênio", "todos", "todas"];
+                    const permitidos = (regra.tipos_permitidos || []).map((t) => String(t).toLowerCase().trim());
+
+                    const hasConsultaRestr = permitidos.includes("consulta");
+                    const hasExameRestr = permitidos.includes("exame");
+                    const hasRetornoRestr = permitidos.includes("retorno");
+                    const hasParticularRestr = permitidos.includes("particular");
+                    const hasConvenioRestr = permitidos.includes("convenio") || permitidos.includes("convênio");
+
                     if (regra.servico_id) {
                       const srv = servicosOptions.find((s) => s.value === regra.servico_id);
                       tituloRegra = srv ? srv.label : "Profissional Específico";
@@ -751,7 +895,7 @@ export default function RestricoesView({
                       regra.especialidade
                     ) {
                       espsArray = Array.isArray(regra.tipos_permitidos) && regra.tipos_permitidos.length > 0
-                        ? regra.tipos_permitidos
+                        ? regra.tipos_permitidos.filter((t) => !specialTokens.includes(String(t).toLowerCase().trim()))
                         : regra.especialidade.split(",").map((e) => e.trim());
 
                       isSharedPool = espsArray.length > 1;
@@ -841,6 +985,37 @@ export default function RestricoesView({
                             </div>
                           )}
 
+                          {/* BADGES DE LIMITAÇÃO POR TIPO / MODALIDADE */}
+                          {(hasConsultaRestr || hasExameRestr || hasRetornoRestr || hasParticularRestr || hasConvenioRestr) && (
+                            <div className="flex flex-wrap gap-1.5 pt-1">
+                              {hasConsultaRestr && (
+                                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-lg bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200/50 flex items-center gap-1">
+                                  <Stethoscope size={11} /> Apenas Consulta
+                                </span>
+                              )}
+                              {hasExameRestr && (
+                                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-lg bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200/50 flex items-center gap-1">
+                                  <Activity size={11} /> Apenas Exame
+                                </span>
+                              )}
+                              {hasRetornoRestr && (
+                                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-lg bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200/50 flex items-center gap-1">
+                                  <RotateCcw size={11} /> Apenas Retorno
+                                </span>
+                              )}
+                              {hasParticularRestr && (
+                                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/50 flex items-center gap-1">
+                                  <ShieldCheck size={11} /> Apenas Particular
+                                </span>
+                              )}
+                              {hasConvenioRestr && (
+                                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-lg bg-cyan-100 text-cyan-800 dark:bg-cyan-950/60 dark:text-cyan-300 border border-cyan-200/50 flex items-center gap-1">
+                                  <Building size={11} /> Apenas Convênio
+                                </span>
+                              )}
+                            </div>
+                          )}
+
                           <div className="flex flex-wrap gap-2 pt-1">
                             <div className="flex items-center gap-1.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 px-3 py-1 rounded-lg text-xs font-semibold">
                               <Clock size={13} /> {regra.hora_inicio?.substring(0, 5)} às{" "}
@@ -915,6 +1090,7 @@ export default function RestricoesView({
                             )}
                           </div>
                         </th>
+                        <th className="p-3.5">Limitação Modalidade</th>
                         <th className="p-3.5 text-right">Ações</th>
                       </tr>
                     </thead>
@@ -937,6 +1113,13 @@ export default function RestricoesView({
                             ? "Conforme Especialidade"
                             : `${regra.duracao_slot_minutos} min`;
 
+                        const permitidos = (regra.tipos_permitidos || []).map((t) => String(t).toLowerCase().trim());
+                        const hasConsulta = permitidos.includes("consulta");
+                        const hasExame = permitidos.includes("exame");
+                        const hasRetorno = permitidos.includes("retorno");
+                        const hasParticular = permitidos.includes("particular");
+                        const hasConvenio = permitidos.includes("convenio") || permitidos.includes("convênio");
+
                         return (
                           <tr
                             key={regra.id}
@@ -954,6 +1137,38 @@ export default function RestricoesView({
                             </td>
                             <td className="p-3.5 font-bold text-blue-600 dark:text-blue-400">
                               {duracaoTexto}
+                            </td>
+                            <td className="p-3.5">
+                              <div className="flex flex-wrap gap-1">
+                                {hasConsulta && (
+                                  <span className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 text-[9px] font-bold">
+                                    Consulta
+                                  </span>
+                                )}
+                                {hasExame && (
+                                  <span className="px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300 text-[9px] font-bold">
+                                    Exame
+                                  </span>
+                                )}
+                                {hasRetorno && (
+                                  <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 text-[9px] font-bold">
+                                    Retorno
+                                  </span>
+                                )}
+                                {hasParticular && (
+                                  <span className="px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-[9px] font-bold">
+                                    Particular
+                                  </span>
+                                )}
+                                {hasConvenio && (
+                                  <span className="px-1.5 py-0.5 rounded bg-cyan-100 dark:bg-cyan-950/60 text-cyan-800 dark:text-cyan-300 text-[9px] font-bold">
+                                    Convênio
+                                  </span>
+                                )}
+                                {!hasConsulta && !hasExame && !hasRetorno && !hasParticular && !hasConvenio && (
+                                  <span className="text-zinc-400 text-[10px]">Livre (Todas)</span>
+                                )}
+                              </div>
                             </td>
                             <td className="p-3.5 text-right space-x-1.5">
                               <button

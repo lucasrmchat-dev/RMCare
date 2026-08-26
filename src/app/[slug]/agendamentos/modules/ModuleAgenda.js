@@ -61,17 +61,55 @@ export default function ModuleAgenda() {
       .toLowerCase()
       .trim();
 
-  // Identificar regras aplicáveis (Médico vs Especialidade/Grupo Compartilhado vs Geral)
+  // Identificar termos da seleção atual do paciente
   const especialidadeStr = normalizeText(formData.especialidade);
   const subtipoStr = normalizeText(formData.subtipo_exame);
   const tipoServicoStr = normalizeText(formData.tipo_servico);
+  const modalidadeStr = normalizeText(formData.modalidade);
+
+  // Validação estrita se a regra atende aos filtros de modalidade e tipo de atendimento da jornada
+  const isRuleValidForCurrentSelection = (r) => {
+    if (!r.tipos_permitidos || !Array.isArray(r.tipos_permitidos) || r.tipos_permitidos.length === 0) {
+      return true;
+    }
+
+    const permitidos = r.tipos_permitidos.map(normalizeText).filter(Boolean);
+    const isTodos = permitidos.includes("todos") || permitidos.includes("todas");
+
+    // 1. Checagem de Tipo de Atendimento (Consulta vs Exame vs Retorno)
+    const tipoRestrictions = permitidos.filter((p) => ["consulta", "exame", "retorno"].includes(p));
+    if (tipoRestrictions.length > 0 && !isTodos) {
+      const matchTipo = tipoRestrictions.some((t) => {
+        if (t === "consulta" && tipoServicoStr === "consulta") return true;
+        if (t === "exame" && tipoServicoStr === "exame") return true;
+        if (t === "retorno" && tipoServicoStr === "retorno") return true;
+        return false;
+      });
+      if (!matchTipo) return false;
+    }
+
+    // 2. Checagem de Modalidade de Cobertura / Pagamento (Particular vs Convênio)
+    const modalidadeRestrictions = permitidos.filter((p) => ["particular", "convenio"].includes(p));
+    if (modalidadeRestrictions.length > 0 && !isTodos) {
+      const matchMod = modalidadeRestrictions.some((m) => {
+        if (m === "particular" && modalidadeStr === "particular") return true;
+        if (m === "convenio" && (modalidadeStr === "convenio" || modalidadeStr.includes("conv"))) return true;
+        return false;
+      });
+      if (!matchMod) return false;
+    }
+
+    return true;
+  };
 
   const rMedico = (regrasGlobais || []).filter(
-    (r) => r.servico_id && r.servico_id === selectedSrv?.id && r.ativo !== false
+    (r) => r.servico_id && r.servico_id === selectedSrv?.id && r.ativo !== false && isRuleValidForCurrentSelection(r)
   );
 
   const rEspecialidade = (regrasGlobais || []).filter((r) => {
     if (r.servico_id || r.ativo === false) return false;
+    if (!isRuleValidForCurrentSelection(r)) return false;
+
     const permitidos = (r.tipos_permitidos || []).map(normalizeText);
     const rEsp = normalizeText(r.especialidade);
     return (
@@ -88,13 +126,14 @@ export default function ModuleAgenda() {
     );
   });
 
-  const rGeral = (regrasGlobais || []).filter(
-    (r) =>
-      !r.servico_id &&
-      (!r.especialidade || r.especialidade === "Todas") &&
-      (!r.tipos_permitidos || r.tipos_permitidos.length === 0) &&
-      r.ativo !== false
-  );
+  const rGeral = (regrasGlobais || []).filter((r) => {
+    if (r.servico_id || r.ativo === false) return false;
+    if (r.especialidade && r.especialidade !== "Todas") return false;
+    const permitidos = (r.tipos_permitidos || []).map(normalizeText);
+    const hasEspTokens = permitidos.some((p) => !["consulta", "exame", "retorno", "particular", "convenio", "todos", "todas"].includes(p));
+    if (hasEspTokens) return false;
+    return isRuleValidForCurrentSelection(r);
+  });
 
   const aplicarBloqueioTemporario = (limite) => {
     if (!selectedSrv?.agendamento_bloqueado_ate) return limite;
@@ -210,7 +249,8 @@ export default function ModuleAgenda() {
     formData.especialidade,
     regrasGlobais,
     bloqueioExtraCalculado,
-    formData.tipo_servico
+    formData.tipo_servico,
+    formData.modalidade
   ]);
 
   // GERAÇÃO DINÂMICA DE HORÁRIOS COM SUPORTE A DURAÇÕES VARIÁVEIS E AGENDA COMPARTILHADA
