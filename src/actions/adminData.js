@@ -3,6 +3,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { verifyAdminSession } from "@/lib/session";
+import { formatarTelefoneEnvio } from "@/lib/phoneUtils";
 
 // Trava de segurança: avisa imediatamente se as variáveis estiverem faltando
 if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -1133,15 +1134,18 @@ export async function actionSalvarChavesEmpresaMaster(empresaId, config_chaves) 
   return true;
 }
 
-export async function actionTestarPushRmChat(urlWebhook, telefone = "5583999999999", nome = "Teste RM Agenda") {
+export async function actionTestarPushRmChat(urlWebhook, telefone = "558494229126", nome = "Teste RM Agenda") {
   const admin = await getAdminLogado(false);
   if (!urlWebhook || !urlWebhook.startsWith("http")) {
     throw new Error("URL de Webhook inválida.");
   }
 
+  const numFormatado = formatarTelefoneEnvio(telefone);
+
   const payload = {
     name: nome,
-    number: telefone.replace(/\D/g, ""),
+    number: numFormatado,
+    phone: numFormatado,
     texto: `🔔 [Teste RM Agenda] Conexão com o RM Agenda estabelecida com sucesso para o servidor!`
   };
 
@@ -1317,6 +1321,11 @@ export async function actionDispararMensagemManualAdmin(id) {
     throw new Error(isWebhook ? "URL do Webhook Inteligente não configurada." : "URL do Webhook do WhatsApp não configurada.");
   }
 
+  const ag = msg.agendamentos;
+  const pac = ag?.pacientes;
+  const nomeCompleto = (pac?.nome_completo || msg.nome_paciente || "Paciente").trim();
+  const numLimpo = formatarTelefoneEnvio(msg.telefone_whatsapp || pac?.telefone_whatsapp);
+
   let payload;
   const headers = { "Content-Type": "application/json" };
 
@@ -1325,9 +1334,6 @@ export async function actionDispararMensagemManualAdmin(id) {
     if (configWebhooks.webhook_secret) {
       headers["x-webhook-secret"] = configWebhooks.webhook_secret;
     }
-
-    const ag = msg.agendamentos;
-    const pac = ag?.pacientes;
 
     payload = {
       evento: "disparo_fluxo_inteligente",
@@ -1351,8 +1357,10 @@ export async function actionDispararMensagemManualAdmin(id) {
         status_atual: ag.status_atendimento || "agendado"
       } : { id: msg.agendamento_id },
       paciente: {
-        nome: msg.nome_paciente,
-        telefone: (msg.telefone_whatsapp || "").replace(/\D/g, ""),
+        nome: nomeCompleto,
+        nome_completo: nomeCompleto,
+        primeiro_nome: nomeCompleto,
+        telefone: numLimpo,
         cpf: pac?.cpf || null,
         enfermidades: pac?.enfermidades || []
       },
@@ -1375,9 +1383,9 @@ export async function actionDispararMensagemManualAdmin(id) {
     }
 
     payload = {
-      name: msg.nome_paciente || "Paciente",
-      number: (msg.telefone_whatsapp || "").replace(/\D/g, ""),
-      phone: (msg.telefone_whatsapp || "").replace(/\D/g, ""),
+      name: nomeCompleto,
+      number: numLimpo,
+      phone: numLimpo,
       texto: textoFinal,
       mensagem: textoFinal,
       media_url: msg.anexo_url || null
@@ -1774,6 +1782,8 @@ export async function actionTestarWebhookFluxoInteligente(urlWebhook, secret = "
     .eq("id", admin.empresa_id)
     .single();
 
+  const numLimpo = formatarTelefoneEnvio("558494229126");
+
   const payload = {
     evento: "teste_conexao_webhook",
     tipo_disparo: "webhook",
@@ -1794,7 +1804,9 @@ export async function actionTestarWebhookFluxoInteligente(urlWebhook, secret = "
     },
     paciente_exemplo: {
       nome: "Paciente de Teste",
-      telefone: "5583999999999",
+      nome_completo: "Paciente de Teste",
+      primeiro_nome: "Paciente de Teste",
+      telefone: numLimpo,
       cpf: "000.000.000-00"
     },
     opcoes_resposta: {
@@ -2183,7 +2195,7 @@ export async function actionCriarAgendamentoManualAdmin(dados) {
     // 1. Localizar ou cadastrar paciente
     let pacienteId = null;
     const cleanCpf = cpf ? cpf.replace(/\D/g, "") : null;
-    const cleanFone = telefone ? telefone.replace(/\D/g, "") : null;
+    const cleanFone = telefone ? formatarTelefoneEnvio(telefone) : null;
 
     if (cleanCpf && cleanCpf.length === 11) {
       const { data: pacExistente } = await supabaseAdmin
@@ -2205,7 +2217,7 @@ export async function actionCriarAgendamentoManualAdmin(dados) {
           empresa_id: admin.empresa_id,
           nome_completo: nome.trim(),
           cpf: cleanCpf,
-          telefone_whatsapp: cleanFone || telefone,
+          telefone_whatsapp: cleanFone || formatarTelefoneEnvio(telefone),
           email: email?.trim() || null,
           data_nascimento: data_nascimento || null
         })
@@ -2255,9 +2267,184 @@ export async function actionCriarAgendamentoManualAdmin(dados) {
       alterado_por: admin.usuario
     });
 
+    // 4. Disparar automações de mensagens WhatsApp / Webhook
+    try {
+      const { dispararGatilhoServidor } = await import("@/lib/serverDisparo");
+      await dispararGatilhoServidor({
+        agendamentoId: agendamentoCriado.id,
+        empresaId: admin.empresa_id,
+        gatilho: "imediato"
+      });
+    } catch (errDisparo) {
+      console.warn("Aviso ao disparar mensagens automáticas para agendamento manual:", errDisparo);
+    }
+
     return { success: true, data: agendamentoCriado };
   } catch (err) {
     console.error("Erro ao criar agendamento manual:", err);
     return { success: false, error: err.message };
   }
 }
+
+/* ==========================================
+   TESTE DE MENSAGEM TEMPLATE / WHATSAPP / WEBHOOK
+   ========================================== */
+export async function actionTestarMensagemWhatsAppTemplate({
+  regra,
+  telefone = "558494229126",
+  nomePaciente = "Paciente de Teste",
+  mensagemCustomizada = null
+}) {
+  const admin = await getAdminLogado(true);
+  const { data: emp, error: errEmp } = await supabaseAdmin
+    .from("empresas")
+    .select("*")
+    .eq("id", admin.empresa_id)
+    .single();
+
+  if (errEmp || !emp) throw new Error("Clínica não encontrada no banco de dados.");
+
+  const configWebhooks = emp.config_campos?.config_webhooks || emp.config_chaves?.config_webhooks || {};
+
+  const urlWebhookPadrao =
+    emp.rmchat_webhook_url ||
+    emp.config_chaves?.rmchat_webhook_url ||
+    emp.config_chaves?.url_rmchat ||
+    emp.config_chaves?.webhook_url ||
+    emp.config_campos?.rmchat_webhook_url;
+
+  const urlWebhookFluxoInteligente =
+    configWebhooks.webhook_url ||
+    emp.config_chaves?.webhook_url_inteligente ||
+    urlWebhookPadrao;
+
+  const isWebhook = regra?.tipo_envio === "webhook";
+  const urlDestino = (regra?.url_webhook_customizada || (isWebhook ? urlWebhookFluxoInteligente : urlWebhookPadrao))?.trim();
+
+  if (!urlDestino || !urlDestino.startsWith("http")) {
+    throw new Error(
+      isWebhook
+        ? "Informe uma URL de Webhook válida (iniciando com http:// ou https://)."
+        : "Servidor de WhatsApp / RM Chat não configurado nesta clínica. Configure a URL do webhook no painel."
+    );
+  }
+
+  const numLimpo = formatarTelefoneEnvio(telefone);
+  const nomeCompleto = (nomePaciente || "Paciente de Teste").trim();
+
+  // Monta variáveis dinâmicas de teste (nome completo para {nome} e {nome_completo})
+  const varsExemplo = {
+    nome: nomeCompleto,
+    nome_completo: nomeCompleto,
+    primeiro_nome: nomeCompleto,
+    sobrenome: nomeCompleto.split(" ").slice(1).join(" ") || "Exemplo",
+    servico: "Consulta Cardiológica",
+    especialista: "Dr. Roberto Silva",
+    medico: "Dr. Roberto Silva",
+    profissional: "Dr. Roberto Silva",
+    especialidade: "Cardiologia",
+    procedimento: "Consulta Cardiológica",
+    subtipo_exame: "Consulta Cardiológica",
+    categoria: "Consultas",
+    tipo_servico: "Consulta",
+    modalidade: "Particular",
+    data: new Date().toLocaleDateString("pt-BR"),
+    hora: "09:30",
+    nova_data: new Date().toLocaleDateString("pt-BR"),
+    novo_horario: "09:30",
+    data_anterior: new Date(Date.now() - 86400000).toLocaleDateString("pt-BR"),
+    hora_anterior: "14:00",
+    motivo: "Readequação operacional da grade de atendimentos da clínica",
+    motivo_cancelamento: "Readequação operacional da grade de atendimentos da clínica",
+    cpf: "123.456.789-00",
+    telefone: numLimpo,
+    whatsapp: numLimpo,
+    clinica: emp.nome || "Clínica",
+    nome_clinica: emp.nome || "Clínica",
+    valor: "R$ 150,00",
+    chave_pix: "clinica@pix.com.br",
+    link_pagamento: "https://rmagenda.com.br/pagamento/exemplo"
+  };
+
+  const parseTpl = (tpl, data) => {
+    if (!tpl) return "";
+    return tpl.replace(/{(\w+)}/g, (_, k) => (data[k] !== undefined ? data[k] : `{${k}}`));
+  };
+
+  const textoFinal = parseTpl(mensagemCustomizada || regra?.mensagem || "", varsExemplo);
+
+  let payload;
+  const headers = { "Content-Type": "application/json" };
+
+  if (isWebhook) {
+    headers["x-rmcare-event"] = "teste_webhook_template";
+    if (configWebhooks.webhook_secret) {
+      headers["x-webhook-secret"] = configWebhooks.webhook_secret;
+    }
+
+    payload = {
+      evento: "teste_webhook_template",
+      tipo_disparo: "webhook",
+      gatilho: regra?.gatilho || "teste",
+      regra_id: regra?.id,
+      empresa: {
+        id: emp.id,
+        nome: emp.nome,
+        slug: emp.slug
+      },
+      agendamento_exemplo: {
+        data: varsExemplo.data,
+        horario: varsExemplo.hora,
+        servico: varsExemplo.servico,
+        especialista: varsExemplo.especialista,
+        especialidade: varsExemplo.especialidade,
+        modalidade: varsExemplo.modalidade
+      },
+      paciente_exemplo: {
+        nome: varsExemplo.nome_completo,
+        nome_completo: varsExemplo.nome_completo,
+        primeiro_nome: varsExemplo.nome_completo,
+        telefone: numLimpo,
+        cpf: varsExemplo.cpf
+      },
+      mensagem_formatada: textoFinal,
+      mensagem_original: regra?.mensagem,
+      webhook_retorno_url: `${process.env.NEXT_PUBLIC_APP_URL || "https://rmagenda.com.br"}/api/webhook-resposta`
+    };
+  } else {
+    headers["x-rmcare-event"] = "teste_whatsapp_template";
+    payload = {
+      name: varsExemplo.nome,
+      number: numLimpo,
+      phone: numLimpo,
+      texto: textoFinal,
+      mensagem: textoFinal,
+      media_url: regra?.anexo_url || null
+    };
+  }
+
+  const response = await fetch(urlDestino, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload)
+  });
+
+  let respostaTexto = "";
+  try {
+    respostaTexto = await response.text();
+  } catch (e) {}
+
+  if (!response.ok) {
+    throw new Error(`Servidor de ${isWebhook ? "Webhook" : "WhatsApp"} retornou status ${response.status}: ${respostaTexto.slice(0, 200)}`);
+  }
+
+  return {
+    success: true,
+    status: response.status,
+    resposta: respostaTexto.slice(0, 300),
+    urlDestino,
+    tipoEnvio: regra?.tipo_envio || "whatsapp",
+    textoEnviado: textoFinal
+  };
+}
+

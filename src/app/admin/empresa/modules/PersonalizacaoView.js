@@ -43,7 +43,12 @@ import {
   ChevronUp,
   Info,
   Clock3,
-  Zap
+  Zap,
+  Activity,
+  X,
+  Play,
+  CheckCircle,
+  AlertCircle
 } from "lucide-react";
 import {
   fadeUp,
@@ -58,9 +63,12 @@ import {
   actionSalvarCustomization,
   actionSalvarLogoEmpresa,
   actionListarHistoricoMensagensAdmin,
-  actionDispararMensagemManualAdmin
+  actionDispararMensagemManualAdmin,
+  actionTestarMensagemWhatsAppTemplate,
+  actionTestarWebhookFluxoInteligente
 } from "@/actions/adminData";
 import { playDopamineSound, triggerHaptic } from "@/lib/dopamine";
+import { formatarTelefoneEnvio, formatarTelefoneExibicao } from "@/lib/phoneUtils";
 
 const PALETAS_PRESETS = [
   { nome: "Verde Lima (Padrão)", prim: "#9FC131", sec: "#10B981" },
@@ -208,6 +216,75 @@ const normalizarAlvoValue = (alvo, options) => {
   return alvo;
 };
 
+// Helper universal para formatar os Dias / Tempo de Envio / Antecedência
+export const formatarTempoRegra = (regra) => {
+  if (!regra) return { texto: "Imediato", resumo: "0 dias", badgeClass: "bg-zinc-100 text-zinc-700" };
+  const gat = regra.gatilho;
+
+  if (gat === "imediato") {
+    return {
+      texto: "No momento do agendamento (0 dias / Imediato)",
+      resumo: "0 dias (Imediato)",
+      badgeClass: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200/50"
+    };
+  }
+  if (gat === "agendado") {
+    const qtd = regra.dias_antes ?? 1;
+    const unid = regra.unidade_antes === "horas" ? "h" : qtd === 1 ? "dia" : "dias";
+    const hora = regra.hora_envio ? ` às ${regra.hora_envio}` : "";
+    return {
+      texto: `${qtd} ${unid} antes do atendimento${hora}`,
+      resumo: `${qtd} ${unid} antes`,
+      badgeClass: "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border-blue-200/50"
+    };
+  }
+  if (gat === "pos_atendimento") {
+    const tempo = regra.pos_tempo ?? (regra.dias_depois || 30);
+    const unid = regra.pos_unidade || "minutos";
+    const base = regra.pos_base === "inicio" ? "início" : "término";
+    const hora = unid === "dias" && regra.hora_envio ? ` às ${regra.hora_envio}` : "";
+    return {
+      texto: `${tempo} ${unid} após ${base}${hora}`,
+      resumo: `${tempo} ${unid} pós-${base}`,
+      badgeClass: "bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 border-purple-200/50"
+    };
+  }
+  if (gat === "remarcado") {
+    return {
+      texto: "Imediatamente ao remarcar (0 dias)",
+      resumo: "Ao remarcar (Imediato)",
+      badgeClass: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border-amber-200/50"
+    };
+  }
+  if (gat === "cancelado") {
+    return {
+      texto: "Imediatamente ao cancelar (0 dias)",
+      resumo: "Ao cancelar (Imediato)",
+      badgeClass: "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border-rose-200/50"
+    };
+  }
+  if (gat === "antes_pagamento") {
+    return {
+      texto: "Imediatamente ao gerar cobrança (0 dias)",
+      resumo: "Cobrança (Imediato)",
+      badgeClass: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border-amber-200/50"
+    };
+  }
+  if (gat === "pagamento_aprovado") {
+    return {
+      texto: "Imediatamente ao aprovar pagamento (0 dias)",
+      resumo: "Aprovação (Imediato)",
+      badgeClass: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200/50"
+    };
+  }
+
+  return {
+    texto: "Imediato",
+    resumo: "Imediato",
+    badgeClass: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 border-zinc-200/60"
+  };
+};
+
 export default function PersonalizacaoView({ subTab = "jornada", showToast, servicos = [] }) {
   const [loading, setLoading] = useState(false);
   const [empresaId, setEmpresaId] = useState(null);
@@ -269,6 +346,12 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
   const [loadingHistorico, setLoadingHistorico] = useState(false);
   const [disparandoId, setDisparandoId] = useState(null);
   const [mensagemVisualizar, setMensagemVisualizar] = useState(null);
+
+  // Modal Interativo de Teste de Mensagem / Webhook
+  const [testModalRegra, setTestModalRegra] = useState(null);
+  const [testPhoneNumber, setTestPhoneNumber] = useState("558494229126");
+  const [isTestingRule, setIsTestingRule] = useState(false);
+  const [testRuleResult, setTestRuleResult] = useState(null);
 
   // Categorias disponíveis extraídas dinamicamente
   const categoriasDisponiveis = useMemo(() => {
@@ -372,10 +455,10 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
     setDisparandoId(id);
     try {
       await actionDispararMensagemManualAdmin(id);
-      showToast("Mensagem disparada com sucesso para o WhatsApp!");
+      if (showToast) showToast("Mensagem disparada com sucesso para o WhatsApp!");
       carregarHistorico();
     } catch (e) {
-      showToast(`Erro ao disparar: ${e.message}`, "error");
+      if (showToast) showToast(`Erro ao disparar: ${e.message}`, "error");
     } finally {
       setDisparandoId(null);
     }
@@ -462,7 +545,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
 
   const handleSave = async () => {
     if (!empresaId) {
-      showToast("Erro: ID da clínica não encontrado.", "error");
+      if (showToast) showToast("Erro: ID da clínica não encontrado.", "error");
       return;
     }
     setLoading(true);
@@ -472,10 +555,10 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
         await actionSalvarLogoEmpresa(campos.logo_url);
       }
       aplicarTemaEmTempoReal(campos.tema);
-      showToast("Personalização e configurações salvas com sucesso!");
+      if (showToast) showToast("Personalização e configurações salvas com sucesso!");
     } catch (e) {
       console.error(e);
-      showToast(`Erro ao salvar: ${e.message}`, "error");
+      if (showToast) showToast(`Erro ao salvar: ${e.message}`, "error");
     } finally {
       setLoading(false);
     }
@@ -485,13 +568,13 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 25 * 1024 * 1024) {
-      showToast("A imagem deve ter no máximo 25MB.", "error");
+      if (showToast) showToast("A imagem deve ter no máximo 25MB.", "error");
       return;
     }
     const reader = new FileReader();
     reader.onloadend = () => {
       setCampos((prev) => ({ ...prev, logo_url: reader.result }));
-      showToast("Logotipo carregado! Clique em Salvar para persistir.");
+      if (showToast) showToast("Logotipo carregado! Clique em Salvar para persistir.");
     };
     reader.readAsDataURL(file);
   };
@@ -530,7 +613,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
       ...prev,
       ordem_etapas: [...DEFAULT_ORDEM_ETAPAS]
     }));
-    showToast("Ordem padrão das etapas restaurada!");
+    if (showToast) showToast("Ordem padrão das etapas restaurada!");
   };
 
   // Funções de Mensagens
@@ -557,7 +640,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
     };
     setRegrasMensagens([novaRegra, ...regrasMensagens]);
     setEditingRegraId(novaRegra.id);
-    showToast("Nova automação de mensagem criada!");
+    if (showToast) showToast("Nova automação de mensagem criada!");
   };
 
   const duplicarRegra = (regraOriginal) => {
@@ -567,7 +650,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
       mensagem: `${regraOriginal.mensagem}`
     };
     setRegrasMensagens([clone, ...regrasMensagens]);
-    showToast("Mensagem duplicada com sucesso!");
+    if (showToast) showToast("Mensagem duplicada com sucesso!");
   };
 
   const atualizarRegra = (id, campo, valor) =>
@@ -578,7 +661,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
   const removerRegra = (id) => {
     setRegrasMensagens((prev) => prev.filter((r) => r.id !== id));
     if (editingRegraId === id) setEditingRegraId(null);
-    showToast("Regra removida.");
+    if (showToast) showToast("Regra removida.");
   };
 
   const inserirVariavelNaRegra = (id, tag) => {
@@ -607,19 +690,68 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
     }));
   };
 
+  // Execução do Teste de Mensagem / Webhook
+  const handleAbrirModalTeste = (regra) => {
+    playDopamineSound("click");
+    triggerHaptic("light");
+    setTestModalRegra(regra);
+    setTestRuleResult(null);
+    if (campos.whatsapp_atendimento) {
+      setTestPhoneNumber(campos.whatsapp_atendimento);
+    }
+  };
+
+  const handleExecutarTesteRegra = async () => {
+    if (!testModalRegra) return;
+    setIsTestingRule(true);
+    setTestRuleResult(null);
+    playDopamineSound("click");
+    try {
+      const res = await actionTestarMensagemWhatsAppTemplate({
+        regra: testModalRegra,
+        telefone: testPhoneNumber || "5583999999999",
+        nomePaciente: "Paciente Exemplo"
+      });
+
+      if (res?.success) {
+        setTestRuleResult({
+          success: true,
+          message: `Disparo realizado com sucesso! (Status HTTP ${res.status})`,
+          details: res
+        });
+        playDopamineSound("success");
+        triggerHaptic("success");
+      } else {
+        setTestRuleResult({
+          success: false,
+          message: res?.error || "Falha no disparo do teste."
+        });
+        playDopamineSound("error");
+      }
+    } catch (err) {
+      setTestRuleResult({
+        success: false,
+        message: `Falha no teste: ${err.message}`
+      });
+      playDopamineSound("error");
+    } finally {
+      setIsTestingRule(false);
+    }
+  };
+
   const tipoEnvioOptions = [
     { value: "whatsapp", label: "💬 Mensagem WhatsApp Normal (Texto / Anexo)" },
     { value: "webhook", label: "⚡ Disparo de Webhook (Fluxo Inteligente / Chatbot)" }
   ];
 
   const gatilhoOptions = [
-    { value: "imediato", label: "Na hora do Agendamento (Instantâneo)" },
+    { value: "imediato", label: "Na hora do Agendamento (Instantâneo / 0 dias)" },
     { value: "agendado", label: "Antes do Atendimento (Lembrete Programado)" },
     { value: "pos_atendimento", label: "Após Consulta / Exame (Pós-Atendimento)" },
-    { value: "remarcado", label: "Quando Remarcado / Reagendado" },
-    { value: "cancelado", label: "Quando Cancelado" },
+    { value: "remarcado", label: "Quando Remarcado / Reagendado (Imediato)" },
+    { value: "cancelado", label: "Quando Cancelado (Imediato)" },
     { value: "antes_pagamento", label: "Cobrança / Antes do Pagamento (Pendente)" },
-    { value: "pagamento_aprovado", label: "Confirmação de Pagamento Aprovado" }
+    { value: "pagamento_aprovado", label: "Confirmação de Pagamento Aprovado (Imediato)" }
   ];
 
   const variaveisDisponiveis = [
@@ -651,6 +783,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
     }
     setSortMensagens({ key, direction });
     playDopamineSound("click");
+    triggerHaptic("light");
   };
 
   const regrasFiltradas = useMemo(() => {
@@ -701,6 +834,9 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
         } else if (sortMensagens.key === "alvo") {
           valA = limparNomeAlvo(a.alvo || a.especialidade);
           valB = limparNomeAlvo(b.alvo || b.especialidade);
+        } else if (sortMensagens.key === "dias") {
+          valA = formatarTempoRegra(a).texto;
+          valB = formatarTempoRegra(b).texto;
         } else if (sortMensagens.key === "mensagem") {
           valA = a.mensagem || "";
           valB = b.mensagem || "";
@@ -723,6 +859,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
     }
     setSortHistorico({ key, direction });
     playDopamineSound("click");
+    triggerHaptic("light");
   };
 
   const historicoFiltrado = useMemo(() => {
@@ -742,9 +879,9 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
         if (!matchNome && !matchTel && !matchMsg) return false;
       }
 
-      // 2. Filtro por Data (data programada, created_at ou data_agendamento)
+      // 2. Filtro por Data
       if (filtroHistoricoData) {
-        const targetDate = filtroHistoricoData; // YYYY-MM-DD
+        const targetDate = filtroHistoricoData;
         const itemDateProg = item.data_hora_programada ? item.data_hora_programada.substring(0, 10) : "";
         const itemDateCreated = item.created_at ? item.created_at.substring(0, 10) : "";
         const itemDateAgendamento = item.data_agendamento ? item.data_agendamento.substring(0, 10) : "";
@@ -1199,7 +1336,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                   </div>
                 </div>
 
-                {/* MENSAGEM DE ENCAMINHAMENTO MANUAL / ATIVO PARCIAL RESTAURADA */}
+                {/* MENSAGEM DE ENCAMINHAMENTO MANUAL */}
                 <div className="pt-3 border-t border-zinc-100 dark:border-white/5 space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
@@ -1238,7 +1375,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                 </div>
               </section>
 
-              {/* FORMA DE PAGAMENTO NO CHECKOUT (ONLINE VS WHATSAPP MANUAL) */}
+              {/* FORMA DE PAGAMENTO NO CHECKOUT */}
               <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm space-y-5">
                 <div className="flex items-center gap-3 border-b border-zinc-100 dark:border-white/5 pb-4">
                   <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
@@ -1352,13 +1489,6 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                         className="w-full bg-transparent text-xs font-medium text-zinc-900 dark:text-zinc-100 outline-none min-h-[110px] resize-none custom-scrollbar leading-relaxed"
                       />
                     </div>
-
-                    <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-start gap-2.5 text-xs text-emerald-900 dark:text-emerald-300">
-                      <Sparkles size={15} className="text-emerald-500 shrink-0 mt-0.5" />
-                      <p>
-                        <strong>Fluxo da Atendente:</strong> O agendamento fica com status <em>"Pagamento Pendente"</em> na Agenda Admin até que a atendente receba o comprovante e clique em <strong>"Aprovar Pagamento"</strong> no card do paciente.
-                      </p>
-                    </div>
                   </div>
                 )}
               </section>
@@ -1375,7 +1505,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
               transition={spring}
               className="space-y-6"
             >
-              {/* CONFIGURAÇÃO DE VISUALIZAÇÃO PADRÃO DO SISTEMA (LISTA VS CARDS) */}
+              {/* CONFIGURAÇÃO DE VISUALIZAÇÃO PADRÃO DO SISTEMA */}
               <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-7 rounded-[2rem] shadow-sm space-y-4">
                 <div className="flex items-center gap-3 border-b border-zinc-100 dark:border-white/5 pb-3">
                   <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center text-blue-600 dark:text-blue-400">
@@ -1407,7 +1537,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                           setCampos((prev) => ({ ...prev, tema: newTheme }));
                           aplicarTemaEmTempoReal(newTheme);
                           setVisualizacaoMensagens(m.id);
-                          showToast(`Visualização padrão definida como "${m.label.split(" ")[2] || m.label}".`);
+                          if (showToast) showToast(`Visualização padrão definida como "${m.label.split(" ")[2] || m.label}".`);
                         }}
                         className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex items-start gap-3.5 ${
                           isSel
@@ -1431,7 +1561,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                 </div>
               </section>
 
-              {/* SELETOR DE ESCOPO: GERAL VS INDIVIDUAL */}
+              {/* SELETOR DE ESCOPO */}
               <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 rounded-[2rem] shadow-sm space-y-3">
                 <span className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-widest block">
                   Escopo de Aplicação Visual
@@ -1653,7 +1783,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
             </motion.div>
           )}
 
-          {/* TAB 3: MENSAGENS WHATSAPP COM LISTA, EDIÇÃO E DUPLICAÇÃO */}
+          {/* TAB 3: MENSAGENS WHATSAPP COM COLUNA DE DIAS E BOTÕES DE TESTE */}
           {subTab === "mensagens" && (
             <motion.div
               key="mensagens"
@@ -1677,7 +1807,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                           setFilterTextoMensagem("");
                           setFilterGatilho("Todos");
                           setFilterEspecialidade("Todas");
-                          showToast("Filtros limpos!");
+                          if (showToast) showToast("Filtros limpos!");
                         }}
                         className="text-[11px] text-zinc-500 hover:text-zinc-900 dark:hover:text-white font-bold underline cursor-pointer"
                       >
@@ -1733,7 +1863,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                       Automações de WhatsApp ({regrasFiltradas.length})
                     </h3>
                     <p className="text-xs text-zinc-500">
-                      Mensagens enviadas automaticamente para o WhatsApp dos pacientes com prévia e personalização flexível.
+                      Mensagens enviadas automaticamente para o WhatsApp dos pacientes com controle de dias, horários e webhooks.
                     </p>
                   </div>
 
@@ -1777,22 +1907,22 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                   </div>
                 </div>
 
-                {/* RENDERIZAÇÃO EM LISTA OU CARDS */}
+                {/* RENDERIZAÇÃO EM TABELA OU CARDS */}
                 {regrasFiltradas.length === 0 ? (
                   <div className="text-center py-12 border border-dashed border-zinc-200 dark:border-zinc-800 rounded-2xl text-zinc-400 text-xs">
                     Nenhuma mensagem encontrada com os filtros selecionados.
                   </div>
                 ) : visualizacaoMensagens === "lista" ? (
-                  /* VISUALIZAÇÃO EM TABELA COMPACTA E PERFEITAMENTE ALINHADA SEM SCROLL EXCESSIVO */
+                  /* TABELA COMPLETA COM NOVA COLUNA DE DIAS / ANTECEDÊNCIA */
                   <div className="bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
                     <div className="overflow-x-auto">
                       <table className="w-full text-left text-xs border-collapse">
                         <thead>
                           <tr className="border-b border-zinc-200/80 dark:border-zinc-800 bg-zinc-100/70 dark:bg-zinc-800/70 text-zinc-400 font-bold uppercase tracking-wider text-[10px] select-none">
-                            <th className="p-3.5 w-12 text-center">#</th>
+                            <th className="p-3.5 w-10 text-center">#</th>
                             <th
                               onClick={() => handleSortMensagens("gatilho")}
-                              className="p-3.5 w-44 lg:w-48 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                              className="p-3.5 w-36 lg:w-44 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
                             >
                               <div className="flex items-center gap-1">
                                 <span>Gatilho</span>
@@ -1805,11 +1935,25 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                             </th>
                             <th
                               onClick={() => handleSortMensagens("alvo")}
-                              className="p-3.5 w-36 lg:w-44 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                              className="p-3.5 w-32 lg:w-36 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
                             >
                               <div className="flex items-center gap-1">
                                 <span>Alvo</span>
                                 {sortMensagens.key === "alvo" ? (
+                                  sortMensagens.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                                ) : (
+                                  <ArrowUpDown size={11} className="opacity-40" />
+                                )}
+                              </div>
+                            </th>
+                            {/* NOVA COLUNA SOLICITADA: DIAS / TEMPO DE ENVIO / ANTECEDÊNCIA */}
+                            <th
+                              onClick={() => handleSortMensagens("dias")}
+                              className="p-3.5 w-40 lg:w-48 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                            >
+                              <div className="flex items-center gap-1">
+                                <span>Dias / Tempo Envio</span>
+                                {sortMensagens.key === "dias" ? (
                                   sortMensagens.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
                                 ) : (
                                   <ArrowUpDown size={11} className="opacity-40" />
@@ -1829,16 +1973,17 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                                 )}
                               </div>
                             </th>
-                            <th className="p-3.5 w-36 hidden lg:table-cell text-zinc-400">
-                              <span>Última Alteração</span>
+                            <th className="p-3.5 w-32 hidden lg:table-cell text-zinc-400">
+                              <span>Modificado</span>
                             </th>
-                            <th className="p-3.5 w-40 text-right whitespace-nowrap pr-4">Ações</th>
+                            <th className="p-3.5 w-52 text-right whitespace-nowrap pr-4">Ações</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800 font-medium">
                           {regrasFiltradas.map((regra, idx) => {
                             const isExpanded = editingRegraId === regra.id;
                             const badgeAlvo = obterBadgeAlvo(regra.alvo || regra.especialidade);
+                            const infoTempo = formatarTempoRegra(regra);
 
                             return (
                               <React.Fragment key={regra.id}>
@@ -1849,8 +1994,8 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
 
                                   <td className="p-3.5">
                                     <div className="space-y-1">
-                                      <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-bold text-[10.5px] border border-blue-200/50 block truncate">
-                                        {gatilhoOptions.find((g) => g.value === regra.gatilho)?.label || regra.gatilho}
+                                      <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-bold text-[10px] border border-blue-200/50 block truncate max-w-[140px]">
+                                        {gatilhoOptions.find((g) => g.value === regra.gatilho)?.label?.split("(")[0]?.trim() || regra.gatilho}
                                       </span>
                                       
                                       <div className="flex items-center gap-1 flex-wrap">
@@ -1863,35 +2008,34 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                                             <MessageSquare size={8} /> WhatsApp
                                           </span>
                                         )}
-
-                                        {regra.gatilho === "pos_atendimento" && (
-                                          <span className="text-[9px] text-zinc-500 dark:text-zinc-400 font-medium">
-                                            {regra.pos_tempo || 30} {regra.pos_unidade || "min"} pós-{regra.pos_base === "inicio" ? "início" : "fim"}
-                                          </span>
-                                        )}
-
-                                        {regra.gatilho === "agendado" && (
-                                          <span className="text-[9px] text-zinc-500 dark:text-zinc-400 font-medium">
-                                            {regra.dias_antes || 1} {regra.unidade_antes || "dias"} antes ({regra.hora_envio || "08:00"})
-                                          </span>
-                                        )}
                                       </div>
                                     </div>
                                   </td>
 
                                   <td className="p-3.5 font-bold text-zinc-900 dark:text-white">
                                     <span
-                                      className={`px-2 py-1 rounded-lg text-[10.5px] font-extrabold border inline-block truncate max-w-[150px] ${badgeAlvo.badgeClass}`}
+                                      className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold border inline-block truncate max-w-[130px] ${badgeAlvo.badgeClass}`}
                                       title={badgeAlvo.texto}
                                     >
                                       {badgeAlvo.texto}
                                     </span>
                                   </td>
 
+                                  {/* CÉLULA DA NOVA COLUNA DIAS / TEMPO */}
+                                  <td className="p-3.5">
+                                    <span
+                                      className={`px-2.5 py-1 rounded-lg text-[10.5px] font-bold border inline-flex items-center gap-1 truncate max-w-[170px] ${infoTempo.badgeClass}`}
+                                      title={infoTempo.texto}
+                                    >
+                                      <Clock3 size={11} />
+                                      <span>{infoTempo.resumo}</span>
+                                    </span>
+                                  </td>
+
                                   <td className="p-3.5 text-zinc-600 dark:text-zinc-400 text-xs">
                                     <span
                                       title={regra.mensagem}
-                                      className="truncate block max-w-[200px] sm:max-w-xs md:max-w-sm lg:max-w-md xl:max-w-lg font-sans text-[11.5px] leading-relaxed cursor-help"
+                                      className="truncate block max-w-[180px] sm:max-w-xs md:max-w-sm lg:max-w-md xl:max-w-lg font-sans text-[11.5px] leading-relaxed cursor-help"
                                     >
                                       {regra.mensagem}
                                     </span>
@@ -1901,10 +2045,10 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                                     {regra.alterado_em ? (
                                       <div>
                                         <span className="font-semibold text-zinc-700 dark:text-zinc-300 block">
-                                          {new Date(regra.alterado_em).toLocaleDateString("pt-BR")} às {new Date(regra.alterado_em).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                                          {new Date(regra.alterado_em).toLocaleDateString("pt-BR")}
                                         </span>
-                                        <span className="opacity-70 block truncate max-w-[110px]">
-                                          por @{regra.alterado_por || "admin"}
+                                        <span className="opacity-70 block truncate max-w-[100px]">
+                                          @{regra.alterado_por || "admin"}
                                         </span>
                                       </div>
                                     ) : (
@@ -1912,9 +2056,20 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                                     )}
                                   </td>
 
-                                  {/* BOTÕES DE AÇÃO RIGOROSAMENTE VISÍVEIS */}
+                                  {/* BOTÕES DE AÇÃO: TESTAR, EDITAR, DUPLICAR, EXCLUIR */}
                                   <td className="p-3.5 text-right whitespace-nowrap pr-4">
-                                    <div className="flex items-center justify-end gap-1.5">
+                                    <div className="flex items-center justify-end gap-1">
+                                      {/* BOTÃO TESTAR */}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleAbrirModalTeste(regra)}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-black transition-all cursor-pointer shadow-xs"
+                                        title={regra.tipo_envio === "webhook" ? "Testar Webhook" : "Testar Template WhatsApp"}
+                                      >
+                                        <Play size={10} fill="currentColor" />
+                                        <span>Testar</span>
+                                      </button>
+
                                       <button
                                         type="button"
                                         onClick={() => setEditingRegraId(isExpanded ? null : regra.id)}
@@ -1931,10 +2086,10 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                                       <button
                                         type="button"
                                         onClick={() => duplicarRegra(regra)}
-                                        className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 border border-zinc-200/80 dark:border-zinc-700 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
+                                        className="p-1.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 border border-zinc-200/80 dark:border-zinc-700 rounded-lg transition-colors cursor-pointer"
                                         title="Duplicar esta mensagem"
                                       >
-                                        <Copy size={11} /> Duplicar
+                                        <Copy size={12} />
                                       </button>
 
                                       <button
@@ -1952,7 +2107,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                                 {/* PAINEL EXPANSÍVEL DE EDIÇÃO INLINE */}
                                 {isExpanded && (
                                   <tr>
-                                    <td colSpan={6} className="p-0 border-t border-zinc-200/80 dark:border-zinc-800">
+                                    <td colSpan={7} className="p-0 border-t border-zinc-200/80 dark:border-zinc-800">
                                       <div className="p-5 bg-white dark:bg-[#0e0e12] space-y-4 shadow-inner">
                                         <div className="grid lg:grid-cols-2 gap-5">
                                           <div className="space-y-3">
@@ -2043,15 +2198,6 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                                                     />
                                                   </div>
                                                 )}
-
-                                                <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                                                  💡 A mensagem será programada para{" "}
-                                                  <strong>
-                                                    {regra.pos_tempo ?? 30} {regra.pos_unidade || "minutos"}{" "}
-                                                    {regra.pos_base === "inicio" ? "após o início" : "após o término"}
-                                                  </strong>{" "}
-                                                  da consulta/exame.
-                                                </p>
                                               </div>
                                             )}
 
@@ -2094,7 +2240,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                                               </div>
                                             )}
 
-                                            {/* FILTROS DE REFINAMENTO OPCIONAL (MODALIDADE / ENFERMIDADE) */}
+                                            {/* FILTROS DE REFINAMENTO OPCIONAL */}
                                             <div className="p-3.5 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl space-y-3">
                                               <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
                                                 <Filter size={12} /> Refinamento Adicional de Filtros (Opcional)
@@ -2165,6 +2311,17 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                                                 className="w-full bg-transparent text-xs font-medium text-zinc-900 dark:text-zinc-100 outline-none min-h-[85px] resize-none custom-scrollbar"
                                               />
                                             </div>
+
+                                            <div className="flex justify-end gap-2 pt-1">
+                                              <button
+                                                type="button"
+                                                onClick={() => handleAbrirModalTeste(regra)}
+                                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm cursor-pointer"
+                                              >
+                                                <Play size={12} fill="currentColor" />
+                                                <span>Testar Esta Mensagem</span>
+                                              </button>
+                                            </div>
                                           </div>
                                         </div>
                                       </div>
@@ -2179,238 +2336,255 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                     </div>
                   </div>
                 ) : (
-                  /* VISUALIZAÇÃO EM CARDS COMPLETOS */
+                  /* VISUALIZAÇÃO EM CARDS COMPLETOS COM COLUNA DE DIAS E BOTÃO DE TESTE */
                   <div className="space-y-5">
-                    {regrasFiltradas.map((regra, index) => (
-                      <motion.div
-                        key={regra.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.98 }}
-                        className="bg-zinc-50/60 dark:bg-zinc-900/50 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl p-5 relative flex flex-col lg:flex-row gap-6 shadow-sm"
-                      >
-                        <div className="absolute top-4 right-4 flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => duplicarRegra(regra)}
-                            className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
-                            title="Duplicar esta mensagem"
-                          >
-                            <Copy size={15} />
-                          </button>
-                          <button
-                            onClick={() => removerRegra(regra.id)}
-                            className="p-1.5 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
-                            title="Excluir mensagem"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
-
-                        <div className="flex-1 space-y-4">
-                          <div className="flex items-center gap-2">
-                            <span className="w-5 h-5 rounded-full bg-zinc-950 dark:bg-white text-white dark:text-black flex items-center justify-center text-[10px] font-bold">
-                              {index + 1}
-                            </span>
-                            <h4 className="font-bold text-xs text-zinc-950 dark:text-white">
-                              Critérios de Disparo & Alvo
-                            </h4>
+                    {regrasFiltradas.map((regra, index) => {
+                      const infoTempo = formatarTempoRegra(regra);
+                      return (
+                        <motion.div
+                          key={regra.id}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.98 }}
+                          className="bg-zinc-50/60 dark:bg-zinc-900/50 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl p-5 relative flex flex-col lg:flex-row gap-6 shadow-sm"
+                        >
+                          <div className="absolute top-4 right-4 flex items-center gap-1.5">
+                            {/* BOTÃO TESTAR NO CARD */}
+                            <button
+                              type="button"
+                              onClick={() => handleAbrirModalTeste(regra)}
+                              className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[10.5px] font-black flex items-center gap-1 shadow-xs cursor-pointer"
+                              title="Testar envio"
+                            >
+                              <Play size={10} fill="currentColor" />
+                              <span>Testar</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => duplicarRegra(regra)}
+                              className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                              title="Duplicar esta mensagem"
+                            >
+                              <Copy size={15} />
+                            </button>
+                            <button
+                              onClick={() => removerRegra(regra.id)}
+                              className="p-1.5 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
+                              title="Excluir mensagem"
+                            >
+                              <Trash2 size={15} />
+                            </button>
                           </div>
 
-                          <CustomSelect
-                            label="Alvo da Mensagem (Especialidade, Categoria ou Modalidade)"
-                            value={normalizarAlvoValue(regra.alvo || regra.especialidade, listaOpcoesAlvo)}
-                            onChange={(v) => atualizarRegra(regra.id, "alvo", v)}
-                            options={listaOpcoesAlvo}
-                          />
-
-                          <div className="grid sm:grid-cols-2 gap-3">
-                            <CustomSelect
-                              label="Gatilho"
-                              value={regra.gatilho}
-                              onChange={(v) => atualizarRegra(regra.id, "gatilho", v)}
-                              options={gatilhoOptions}
-                            />
-
-                            <CustomSelect
-                              label="Tipo de Disparo"
-                              value={regra.tipo_envio || "whatsapp"}
-                              onChange={(v) => atualizarRegra(regra.id, "tipo_envio", v)}
-                              options={tipoEnvioOptions}
-                            />
-                          </div>
-
-                          {regra.tipo_envio === "webhook" && (
-                            <TextInput
-                              label="URL de Webhook Específica (Opcional)"
-                              placeholder="https://n8n.exemplo.com/webhook/..."
-                              value={regra.url_webhook_customizada || ""}
-                              onChange={(e) => atualizarRegra(regra.id, "url_webhook_customizada", e.target.value)}
-                            />
-                          )}
-
-                          {/* PÓS-ATENDIMENTO NO CARD */}
-                          {regra.gatilho === "pos_atendimento" && (
-                            <div className="p-3.5 bg-emerald-500/5 dark:bg-emerald-950/20 border border-emerald-500/30 rounded-2xl space-y-3">
-                              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
-                                <Clock3 size={13} /> Configuração de Disparo Pós-Atendimento
+                          <div className="flex-1 space-y-4">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="w-5 h-5 rounded-full bg-zinc-950 dark:bg-white text-white dark:text-black flex items-center justify-center text-[10px] font-bold">
+                                {index + 1}
                               </span>
+                              <h4 className="font-bold text-xs text-zinc-950 dark:text-white">
+                                Critérios de Disparo & Alvo
+                              </h4>
+                              {/* BADGE DE DIAS / ANTECEDÊNCIA */}
+                              <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-bold border inline-flex items-center gap-1 ${infoTempo.badgeClass}`}>
+                                <Clock3 size={11} /> {infoTempo.texto}
+                              </span>
+                            </div>
 
-                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                                <CustomSelect
-                                  label="Referência"
-                                  value={regra.pos_base || "termino"}
-                                  onChange={(v) => atualizarRegra(regra.id, "pos_base", v)}
-                                  options={[
-                                    { value: "termino", label: "Após Término da Consulta/Exame" },
-                                    { value: "inicio", label: "Após Horário de Início" }
-                                  ]}
-                                />
+                            <CustomSelect
+                              label="Alvo da Mensagem (Especialidade, Categoria ou Modalidade)"
+                              value={normalizarAlvoValue(regra.alvo || regra.especialidade, listaOpcoesAlvo)}
+                              onChange={(v) => atualizarRegra(regra.id, "alvo", v)}
+                              options={listaOpcoesAlvo}
+                            />
 
-                                <CustomSelect
-                                  label="Unidade"
-                                  value={regra.pos_unidade || "minutos"}
-                                  onChange={(v) => atualizarRegra(regra.id, "pos_unidade", v)}
-                                  options={[
-                                    { value: "minutos", label: "Minutos" },
-                                    { value: "horas", label: "Horas" },
-                                    { value: "dias", label: "Dias" }
-                                  ]}
-                                />
+                            <div className="grid sm:grid-cols-2 gap-3">
+                              <CustomSelect
+                                label="Gatilho"
+                                value={regra.gatilho}
+                                onChange={(v) => atualizarRegra(regra.id, "gatilho", v)}
+                                options={gatilhoOptions}
+                              />
 
-                                <TextInput
-                                  type="number"
-                                  label="Tempo"
-                                  value={regra.pos_tempo ?? (regra.dias_depois || 30)}
-                                  onChange={(e) =>
-                                    atualizarRegra(regra.id, "pos_tempo", parseInt(e.target.value, 10) || 0)
-                                  }
+                              <CustomSelect
+                                label="Tipo de Disparo"
+                                value={regra.tipo_envio || "whatsapp"}
+                                onChange={(v) => atualizarRegra(regra.id, "tipo_envio", v)}
+                                options={tipoEnvioOptions}
+                              />
+                            </div>
+
+                            {regra.tipo_envio === "webhook" && (
+                              <TextInput
+                                label="URL de Webhook Específica (Opcional)"
+                                placeholder="https://n8n.exemplo.com/webhook/..."
+                                value={regra.url_webhook_customizada || ""}
+                                onChange={(e) => atualizarRegra(regra.id, "url_webhook_customizada", e.target.value)}
+                              />
+                            )}
+
+                            {/* PÓS-ATENDIMENTO NO CARD */}
+                            {regra.gatilho === "pos_atendimento" && (
+                              <div className="p-3.5 bg-emerald-500/5 dark:bg-emerald-950/20 border border-emerald-500/30 rounded-2xl space-y-3">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
+                                  <Clock3 size={13} /> Configuração de Disparo Pós-Atendimento
+                                </span>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                  <CustomSelect
+                                    label="Referência"
+                                    value={regra.pos_base || "termino"}
+                                    onChange={(v) => atualizarRegra(regra.id, "pos_base", v)}
+                                    options={[
+                                      { value: "termino", label: "Após Término da Consulta/Exame" },
+                                      { value: "inicio", label: "Após Horário de Início" }
+                                    ]}
+                                  />
+
+                                  <CustomSelect
+                                    label="Unidade"
+                                    value={regra.pos_unidade || "minutos"}
+                                    onChange={(v) => atualizarRegra(regra.id, "pos_unidade", v)}
+                                    options={[
+                                      { value: "minutos", label: "Minutos" },
+                                      { value: "horas", label: "Horas" },
+                                      { value: "dias", label: "Dias" }
+                                    ]}
+                                  />
+
+                                  <TextInput
+                                    type="number"
+                                    label="Tempo"
+                                    value={regra.pos_tempo ?? (regra.dias_depois || 30)}
+                                    onChange={(e) =>
+                                      atualizarRegra(regra.id, "pos_tempo", parseInt(e.target.value, 10) || 0)
+                                    }
+                                  />
+                                </div>
+
+                                {regra.pos_unidade === "dias" && (
+                                  <TextInput
+                                    type="time"
+                                    label="Horário Fixo de Envio"
+                                    value={regra.hora_envio || "08:00"}
+                                    onChange={(e) => atualizarRegra(regra.id, "hora_envio", e.target.value)}
+                                  />
+                                )}
+                              </div>
+                            )}
+
+                            {/* LEMBRETE NO CARD */}
+                            {regra.gatilho === "agendado" && (
+                              <div className="p-3.5 bg-blue-500/5 dark:bg-blue-950/20 border border-blue-500/30 rounded-2xl space-y-3">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 dark:text-blue-300 flex items-center gap-1.5">
+                                  <Clock3 size={13} /> Tempo do Lembrete
+                                </span>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                  <CustomSelect
+                                    label="Unidade"
+                                    value={regra.unidade_antes || "dias"}
+                                    onChange={(v) => atualizarRegra(regra.id, "unidade_antes", v)}
+                                    options={[
+                                      { value: "dias", label: "Dias Antes" },
+                                      { value: "horas", label: "Horas Antes" }
+                                    ]}
+                                  />
+
+                                  <TextInput
+                                    type="number"
+                                    label="Quantidade"
+                                    value={regra.dias_antes ?? 1}
+                                    onChange={(e) =>
+                                      atualizarRegra(regra.id, "dias_antes", parseInt(e.target.value, 10) || 1)
+                                    }
+                                  />
+
+                                  <TextInput
+                                    type="time"
+                                    label="Hora Envio"
+                                    value={regra.hora_envio || "08:00"}
+                                    onChange={(e) =>
+                                      atualizarRegra(regra.id, "hora_envio", e.target.value)
+                                    }
+                                  />
+                                </div>
+                              </div>
+                            )}
+
+                            {/* REFINAMENTOS NO CARD */}
+                            <div className="p-3.5 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl space-y-3">
+                              <CustomSelect
+                                label="Filtrar por Modalidade (Opcional)"
+                                value={regra.filtro_modalidade || "todas"}
+                                onChange={(v) => atualizarRegra(regra.id, "filtro_modalidade", v)}
+                                options={[
+                                  { value: "todas", label: "Todas as Modalidades" },
+                                  { value: "Particular", label: "Apenas Particular" },
+                                  { value: "Convênio", label: "Apenas Convênio" },
+                                  { value: "Retorno", label: "Apenas Retorno" }
+                                ]}
+                              />
+
+                              <div className="flex items-center justify-between pt-1">
+                                <ToggleSwitch
+                                  checked={Boolean(regra.filtrar_enfermidade)}
+                                  onChange={(v) => atualizarRegra(regra.id, "filtrar_enfermidade", v)}
+                                  label="Filtrar por Enfermidade"
                                 />
                               </div>
 
-                              {regra.pos_unidade === "dias" && (
+                              {regra.filtrar_enfermidade && (
                                 <TextInput
-                                  type="time"
-                                  label="Horário Fixo de Envio"
-                                  value={regra.hora_envio || "08:00"}
-                                  onChange={(e) => atualizarRegra(regra.id, "hora_envio", e.target.value)}
+                                  label="Nome da Enfermidade"
+                                  placeholder="Ex: Refluxo..."
+                                  value={regra.enfermidade_alvo || ""}
+                                  onChange={(e) => atualizarRegra(regra.id, "enfermidade_alvo", e.target.value)}
                                 />
                               )}
                             </div>
-                          )}
+                          </div>
 
-                          {/* LEMBRETE NO CARD */}
-                          {regra.gatilho === "agendado" && (
-                            <div className="p-3.5 bg-blue-500/5 dark:bg-blue-950/20 border border-blue-500/30 rounded-2xl space-y-3">
-                              <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 dark:text-blue-300 flex items-center gap-1.5">
-                                <Clock3 size={13} /> Tempo do Lembrete
+                          <div className="flex-1 flex flex-col justify-between space-y-3">
+                            <div>
+                              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-1.5">
+                                Variáveis Disponíveis:
                               </span>
-
-                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                                <CustomSelect
-                                  label="Unidade"
-                                  value={regra.unidade_antes || "dias"}
-                                  onChange={(v) => atualizarRegra(regra.id, "unidade_antes", v)}
-                                  options={[
-                                    { value: "dias", label: "Dias Antes" },
-                                    { value: "horas", label: "Horas Antes" }
-                                  ]}
-                                />
-
-                                <TextInput
-                                  type="number"
-                                  label="Quantidade"
-                                  value={regra.dias_antes ?? 1}
-                                  onChange={(e) =>
-                                    atualizarRegra(regra.id, "dias_antes", parseInt(e.target.value, 10) || 1)
-                                  }
-                                />
-
-                                <TextInput
-                                  type="time"
-                                  label="Hora Envio"
-                                  value={regra.hora_envio || "08:00"}
-                                  onChange={(e) =>
-                                    atualizarRegra(regra.id, "hora_envio", e.target.value)
-                                  }
-                                />
+                              <div className="flex flex-wrap gap-1">
+                                {variaveisDisponiveis.map((v) => (
+                                  <button
+                                    key={v.tag}
+                                    type="button"
+                                    onClick={() => inserirVariavelNaRegra(regra.id, v.tag)}
+                                    className="px-2 py-0.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded text-[10px] font-mono font-bold cursor-pointer"
+                                    title={v.desc}
+                                  >
+                                    + {v.tag}
+                                  </button>
+                                ))}
                               </div>
                             </div>
-                          )}
 
-                          {/* REFINAMENTOS NO CARD */}
-                          <div className="p-3.5 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl space-y-3">
-                            <CustomSelect
-                              label="Filtrar por Modalidade (Opcional)"
-                              value={regra.filtro_modalidade || "todas"}
-                              onChange={(v) => atualizarRegra(regra.id, "filtro_modalidade", v)}
-                              options={[
-                                { value: "todas", label: "Todas as Modalidades" },
-                                { value: "Particular", label: "Apenas Particular" },
-                                { value: "Convênio", label: "Apenas Convênio" },
-                                { value: "Retorno", label: "Apenas Retorno" }
-                              ]}
-                            />
-
-                            <div className="flex items-center justify-between pt-1">
-                              <ToggleSwitch
-                                checked={Boolean(regra.filtrar_enfermidade)}
-                                onChange={(v) => atualizarRegra(regra.id, "filtrar_enfermidade", v)}
-                                label="Filtrar por Enfermidade"
+                            <div className="bg-emerald-50/70 dark:bg-emerald-950/20 p-3.5 rounded-xl border border-emerald-200/60 dark:border-emerald-900/40">
+                              <textarea
+                                value={regra.mensagem}
+                                onChange={(e) =>
+                                  atualizarRegra(regra.id, "mensagem", e.target.value)
+                                }
+                                placeholder="Texto da mensagem..."
+                                className="w-full bg-transparent text-xs font-medium text-zinc-900 dark:text-zinc-100 outline-none min-h-[100px] resize-none custom-scrollbar"
                               />
                             </div>
-
-                            {regra.filtrar_enfermidade && (
-                              <TextInput
-                                label="Nome da Enfermidade"
-                                placeholder="Ex: Refluxo..."
-                                value={regra.enfermidade_alvo || ""}
-                                onChange={(e) => atualizarRegra(regra.id, "enfermidade_alvo", e.target.value)}
-                              />
-                            )}
                           </div>
-                        </div>
-
-                        <div className="flex-1 flex flex-col justify-between space-y-3">
-                          <div>
-                            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-1.5">
-                              Variáveis Disponíveis:
-                            </span>
-                            <div className="flex flex-wrap gap-1">
-                              {variaveisDisponiveis.map((v) => (
-                                <button
-                                  key={v.tag}
-                                  type="button"
-                                  onClick={() => inserirVariavelNaRegra(regra.id, v.tag)}
-                                  className="px-2 py-0.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded text-[10px] font-mono font-bold cursor-pointer"
-                                  title={v.desc}
-                                >
-                                  + {v.tag}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div className="bg-emerald-50/70 dark:bg-emerald-950/20 p-3.5 rounded-xl border border-emerald-200/60 dark:border-emerald-900/40">
-                            <textarea
-                              value={regra.mensagem}
-                              onChange={(e) =>
-                                atualizarRegra(regra.id, "mensagem", e.target.value)
-                              }
-                              placeholder="Texto da mensagem..."
-                              className="w-full bg-transparent text-xs font-medium text-zinc-900 dark:text-zinc-100 outline-none min-h-[100px] resize-none custom-scrollbar"
-                            />
-                          </div>
-                        </div>
-                      </motion.div>
-                    ))}
+                        </motion.div>
+                      );
+                    })}
                   </div>
                 )}
               </section>
             </motion.div>
           )}
 
-          {/* TAB 4: HISTÓRICO & AUDITORIA COM FILTROS AVANÇADOS E BOTÕES LADO A LADO */}
+          {/* TAB 4: HISTÓRICO & AUDITORIA */}
           {subTab === "historico_mensagens" && (
             <motion.div
               key="historico_mensagens"
@@ -2465,7 +2639,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                       </div>
                     </div>
 
-                    {/* FILTRO POR DATA DO ATENDIMENTO / DISPARO */}
+                    {/* FILTRO POR DATA */}
                     <div className="space-y-1">
                       <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider block ml-1">
                         Data do Atendimento / Disparo
@@ -2518,7 +2692,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                           setFiltroHistoricoData("");
                           setFiltroHistoricoStatus("todos");
                           setFiltroHistoricoGatilho("todos");
-                          showToast("Filtros limpos!");
+                          if (showToast) showToast("Filtros limpos!");
                         }}
                         className="text-[11px] text-zinc-500 hover:text-zinc-900 dark:hover:text-white font-bold underline cursor-pointer"
                       >
@@ -2701,7 +2875,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                                 </span>
                               </td>
 
-                              {/* BOTÕES VER E DISPARAR LADO A LADO */}
+                              {/* BOTÕES VER E DISPARAR */}
                               <td className="p-3.5 text-right whitespace-nowrap">
                                 <div className="flex items-center justify-end gap-1.5">
                                   <button
@@ -2784,6 +2958,126 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
           )}
         </AnimatePresence>
       </div>
+
+      {/* MODAL INTERATIVO DE TESTE DE AUTOMAÇÃO WHATSAPP & WEBHOOK */}
+      <AnimatePresence>
+        {testModalRegra && (
+          <div
+            className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-md p-4 flex items-center justify-center"
+            onClick={() => setTestModalRegra(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-[#121216] backdrop-blur-3xl rounded-[2.5rem] p-6 md:p-8 max-w-xl w-full shadow-2xl border border-zinc-200/80 dark:border-white/10 space-y-5 max-h-[90vh] overflow-y-auto custom-scrollbar"
+            >
+              <div className="flex justify-between items-start border-b border-zinc-100 dark:border-white/5 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-sm">
+                    {testModalRegra.tipo_envio === "webhook" ? <Zap size={22} /> : <MessageSquare size={22} />}
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-zinc-950 dark:text-white tracking-tight flex items-center gap-2">
+                      <span>Testar {testModalRegra.tipo_envio === "webhook" ? "Webhook" : "Mensagem WhatsApp"}</span>
+                    </h3>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                      Gatilho: <strong>{testModalRegra.gatilho}</strong> • Alvo: <strong>{limparNomeAlvo(testModalRegra.alvo || testModalRegra.especialidade)}</strong>
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setTestModalRegra(null)}
+                  className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-full cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* DADOS E PREVIA DO DISPARO */}
+              <div className="space-y-3 text-xs">
+                <div className="p-3.5 bg-zinc-50 dark:bg-zinc-900/60 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 space-y-2">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-bold text-zinc-600 dark:text-zinc-400">Tempo / Dias:</span>
+                    <span className="font-black text-zinc-900 dark:text-zinc-100">{formatarTempoRegra(testModalRegra).texto}</span>
+                  </div>
+                  {testModalRegra.tipo_envio === "webhook" && testModalRegra.url_webhook_customizada && (
+                    <div className="text-[11px] pt-1 border-t border-zinc-200/50 dark:border-zinc-800/60">
+                      <span className="font-bold text-zinc-600 dark:text-zinc-400 block">URL do Webhook:</span>
+                      <span className="font-mono text-[10px] text-zinc-500 break-all">{testModalRegra.url_webhook_customizada}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-400 block ml-1">
+                    Número do WhatsApp de Teste (com DDD)
+                  </label>
+                  <input
+                    type="text"
+                    value={testPhoneNumber}
+                    onChange={(e) => setTestPhoneNumber(e.target.value)}
+                    placeholder="Ex: 5583999999999"
+                    className="w-full px-4 py-3 bg-zinc-50 dark:bg-black/60 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs font-mono outline-none focus:border-[#9FC131] text-zinc-900 dark:text-white"
+                  />
+                  <p className="text-[10.5px] text-zinc-400 ml-1">
+                    Informe seu próprio WhatsApp ou o número corporativo para receber o teste.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-400 block ml-1">
+                    Prévia do Conteúdo Processado
+                  </span>
+                  <div className="p-4 bg-emerald-500/5 dark:bg-emerald-950/20 border border-emerald-500/30 rounded-2xl text-xs leading-relaxed whitespace-pre-wrap text-zinc-800 dark:text-zinc-200 font-sans">
+                    {testModalRegra.mensagem}
+                  </div>
+                </div>
+
+                {testRuleResult && (
+                  <div className={`p-4 rounded-2xl text-xs font-semibold flex flex-col gap-1 border ${
+                    testRuleResult.success
+                      ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-800 dark:text-emerald-300"
+                      : "bg-red-500/15 border-red-500/30 text-red-800 dark:text-red-300"
+                  }`}>
+                    <div className="flex items-center gap-2 font-bold">
+                      {testRuleResult.success ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
+                      <span>{testRuleResult.message}</span>
+                    </div>
+                    {testRuleResult.details?.resposta && (
+                      <p className="font-mono text-[10.5px] mt-1 opacity-80 break-all">
+                        Resposta do Servidor: {testRuleResult.details.resposta}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* BOTÕES DO MODAL */}
+              <div className="flex justify-end gap-2.5 pt-3 border-t border-zinc-100 dark:border-white/5">
+                <button
+                  type="button"
+                  onClick={() => setTestModalRegra(null)}
+                  disabled={isTestingRule}
+                  className="min-h-[42px] px-5 rounded-xl border border-zinc-200/80 dark:border-zinc-800 font-bold text-xs uppercase text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 cursor-pointer"
+                >
+                  Fechar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExecutarTesteRegra}
+                  disabled={isTestingRule || !testPhoneNumber.trim()}
+                  className="min-h-[42px] px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase rounded-xl shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isTestingRule ? <Activity size={14} className="animate-spin" /> : <Play size={12} fill="currentColor" />}
+                  <span>{isTestingRule ? "Enviando Teste..." : "Disparar Teste Agora"}</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

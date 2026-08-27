@@ -45,7 +45,7 @@ export default function AdminSessionBar() {
       try {
         const [adm, emp] = await Promise.all([
           getSessionAdminInfo(),
-          fetchAdminCustomization()
+          fetchAdminCustomization().catch(() => null)
         ]);
         if (adm) setAdminInfo(adm);
         if (emp) {
@@ -170,13 +170,14 @@ export default function AdminSessionBar() {
   const seconds = String(remaining % 60).padStart(2, '0');
   const isExpiringSoon = remaining < 300;
 
-  const nomeExibicaoUsuario = adminInfo?.nome || adminInfo?.usuario || 'Administrador';
+  const isMasterSystem = adminInfo?.role === 'sistema';
+  const nomeExibicaoUsuario = adminInfo?.nome || adminInfo?.usuario || (isMasterSystem ? 'Super Master' : 'Administrador');
   const logoClinicaUrl = empresaInfo?.logo_url || empresaInfo?.config_campos?.logo_url;
-  const nomeClinica = empresaInfo?.nome || 'Clínica';
+  const nomeClinica = isMasterSystem ? 'Sistema Master Root' : (empresaInfo?.nome || 'Clínica');
 
   return (
-    <header className="h-14 shrink-0 px-4 sm:px-6 flex items-center justify-between bg-white/85 dark:bg-[#08080a]/90 backdrop-blur-2xl saturate-150 border-b border-zinc-200/80 dark:border-white/[0.08] text-zinc-900 dark:text-white transition-colors duration-300 z-50 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
-      {/* BRANDING PARCEIRAS: RM AGENDA + LOGO CLÍNICA */}
+    <header className="relative z-[9999] h-14 shrink-0 px-4 sm:px-6 flex items-center justify-between bg-white/95 dark:bg-[#08080a]/95 backdrop-blur-2xl saturate-150 border-b border-zinc-200/80 dark:border-white/[0.08] text-zinc-900 dark:text-white transition-colors duration-300 shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
+      {/* BRANDING PARCEIRAS: RM AGENDA + LOGO CLÍNICA + SESSÃO ATIVA */}
       <div className="flex items-center gap-3">
         {/* LOGO RM AGENDA */}
         <div className="flex items-center gap-2">
@@ -196,9 +197,9 @@ export default function AdminSessionBar() {
         {/* DIVISOR SUTIL */}
         <div className="h-5 w-px bg-zinc-200 dark:bg-zinc-800 mx-0.5" />
 
-        {/* LOGO DA CLÍNICA + NOME */}
+        {/* LOGO DA CLÍNICA / SISTEMA + NOME */}
         <div className="flex items-center gap-2 min-w-0">
-          {logoClinicaUrl ? (
+          {logoClinicaUrl && !isMasterSystem ? (
             <div className="w-8 h-8 rounded-xl overflow-hidden bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 flex items-center justify-center shrink-0 shadow-sm">
               <img
                 src={logoClinicaUrl}
@@ -207,21 +208,27 @@ export default function AdminSessionBar() {
               />
             </div>
           ) : (
-            <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-900/60 flex items-center justify-center shrink-0 font-bold text-xs">
-              <Building2 size={15} strokeWidth={2} />
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 font-bold text-xs shadow-xs border ${
+              isMasterSystem
+                ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border-amber-200/60 dark:border-amber-900/60'
+                : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200/60 dark:border-emerald-900/60'
+            }`}>
+              {isMasterSystem ? <ShieldCheck size={16} strokeWidth={2.2} /> : <Building2 size={15} strokeWidth={2} />}
             </div>
           )}
           <div className="min-w-0">
-            <span className="text-xs font-extrabold text-zinc-900 dark:text-zinc-100 truncate block leading-tight max-w-[140px] sm:max-w-[200px]">
+            <span className="text-xs font-extrabold text-zinc-900 dark:text-zinc-100 truncate block leading-tight max-w-[130px] sm:max-w-[200px]">
               {nomeClinica}
             </span>
-            <span className="text-[9px] font-bold text-emerald-600 dark:text-[#9FC131] uppercase tracking-widest leading-none block">
-              Painel de Gestão
+            <span className={`text-[9px] font-bold uppercase tracking-widest leading-none block ${
+              isMasterSystem ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-[#9FC131]'
+            }`}>
+              {isMasterSystem ? 'Master Root' : 'Painel de Gestão'}
             </span>
           </div>
         </div>
 
-        {/* TIMER DE SESSÃO ATIVA DESTACADO NO LADO ESQUERDO (FORA DO CARD) */}
+        {/* TIMER DE SESSÃO ATIVA DESTACADO NA BARRA PRINCIPAL (FORA DO CARD DE PERFIL) */}
         <div
           className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-100/90 dark:bg-zinc-900/90 border border-zinc-200/80 dark:border-zinc-800 text-xs shadow-xs ml-1 sm:ml-2"
           title="Tempo de inatividade restante da sessão do colaborador"
@@ -242,8 +249,8 @@ export default function AdminSessionBar() {
         </div>
       </div>
 
-      {/* CÁPSULA EXPANSÍVEL DO USUÁRIO COM DROPDOWN (ONLY SHOWS USER NAME/AVATAR, EXPANDS OPTIONS ON CLICK) */}
-      <div className="relative" ref={menuRef}>
+      {/* CÁPSULA EXPANSÍVEL DO USUÁRIO COM DROPDOWN ISOLADO E Z-INDEX MÁXIMO */}
+      <div className="relative z-[10000]" ref={menuRef}>
         <button
           type="button"
           onClick={() => {
@@ -261,7 +268,7 @@ export default function AdminSessionBar() {
             {nomeExibicaoUsuario.charAt(0)}
           </div>
           <div className="flex flex-col text-left">
-            <span className="text-xs font-extrabold text-zinc-950 dark:text-white leading-tight max-w-[130px] truncate">
+            <span className="text-xs font-extrabold text-zinc-950 dark:text-white leading-tight max-w-[120px] sm:max-w-[150px] truncate">
               {nomeExibicaoUsuario}
             </span>
           </div>
@@ -271,7 +278,7 @@ export default function AdminSessionBar() {
           />
         </button>
 
-        {/* DROPDOWN EXPANSÍVEL COM FRAMER MOTION */}
+        {/* DROPDOWN EXPANSÍVEL COM FRAMER MOTION E Z-INDEX ELEVADO */}
         <AnimatePresence>
           {isMenuOpen && (
             <motion.div
@@ -279,7 +286,7 @@ export default function AdminSessionBar() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 8, scale: 0.96 }}
               transition={{ duration: 0.18, ease: 'easeOut' }}
-              className="absolute right-0 mt-2 w-72 bg-white/95 dark:bg-[#0c0c0e]/95 backdrop-blur-2xl border border-zinc-200/90 dark:border-white/10 rounded-2xl shadow-2xl p-3 z-50 space-y-3"
+              className="absolute right-0 mt-2 w-72 bg-white/98 dark:bg-[#0c0c0e]/98 backdrop-blur-3xl border border-zinc-200/90 dark:border-white/10 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] p-3 z-[10001] space-y-3"
             >
               {/* CABEÇALHO DO PERFIL */}
               <div className="flex items-center gap-3 p-2 bg-zinc-50/80 dark:bg-zinc-900/60 rounded-xl border border-zinc-100 dark:border-white/5">
@@ -296,6 +303,11 @@ export default function AdminSessionBar() {
                         Owner
                       </span>
                     )}
+                    {isMasterSystem && (
+                      <span className="px-1.5 py-0.2 text-[8px] font-black uppercase tracking-wider bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 rounded border border-amber-200/50">
+                        Master
+                      </span>
+                    )}
                   </div>
                   <span className="text-[10px] font-mono text-zinc-400 block truncate">
                     @{adminInfo?.usuario || 'admin'}
@@ -303,7 +315,7 @@ export default function AdminSessionBar() {
                 </div>
               </div>
 
-              {/* OPÇÕES RÁPIDAS: SOM, TEMA, TIMER */}
+              {/* OPÇÕES RÁPIDAS: MODO DE EXIBIÇÃO & EFEITOS SONOROS (SEM SESSÃO ATIVA CONFORME SOLICITADO) */}
               <div className="space-y-1 pt-1 border-t border-zinc-100 dark:border-white/5">
                 {/* TOGGLE MODO NOTURNO */}
                 <button
@@ -338,23 +350,6 @@ export default function AdminSessionBar() {
                     {isSoundMuted ? 'Mudo' : 'Ativo'}
                   </span>
                 </button>
-
-                {/* TIMER DE SESSÃO */}
-                <div className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-50/50 dark:bg-zinc-900/40 text-xs">
-                  <div className="flex items-center gap-2.5 text-zinc-500 dark:text-zinc-400 font-medium">
-                    <Clock size={14} />
-                    <span>Sessão Ativa</span>
-                  </div>
-                  <span
-                    className={`font-mono font-black text-xs px-2 py-0.5 rounded-md ${
-                      isExpiringSoon
-                        ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 animate-pulse'
-                        : 'bg-zinc-200/60 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300'
-                    }`}
-                  >
-                    {minutes}:{seconds}
-                  </span>
-                </div>
               </div>
 
               {/* BOTÃO DE SAIR */}

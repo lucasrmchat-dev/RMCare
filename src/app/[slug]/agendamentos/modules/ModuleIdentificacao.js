@@ -55,7 +55,7 @@ export default function ModuleIdentificacao() {
         {config.mostrar_cpf !== false &&
           renderLockedOrInput("cpf", "CPF do Paciente", null, false, masks.cpf, "000.000.000-00", 14)}
 
-        {renderLockedOrInput("nome", "Primeiro Nome", null, false, null, "Seu primeiro nome", 50)}
+        {renderLockedOrInput("nome", "Nome Completo", null, false, null, "Seu nome completo (Nome e Sobrenome)", 100)}
 
         {config.mostrar_sobrenome !== false &&
           renderLockedOrInput("sobrenome", "Sobrenome", null, false, null, "Seu sobrenome completo", 50)}

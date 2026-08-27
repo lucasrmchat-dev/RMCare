@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import axios from 'axios';
+import { formatarTelefoneEnvio } from '@/lib/phoneUtils';
 
 // Força a Vercel a não fazer cache desta rota (Obrigatório para Cron Jobs no App Router)
 export const dynamic = 'force-dynamic';
@@ -82,17 +83,13 @@ export async function GET(request) {
 
         // ⚠️ REGRA DE SEGURANÇA: Se a clínica não possui URL de webhook configurada, ignora
         if (!urlDestino || !urlDestino.startsWith('http')) {
-          console.warn(`[Processar Fila] Mensagem ${msg.id} para ${msg.nome_paciente} ignorada: a clínica \"${dadosEmpresa?.nome || 'Não identificada'}\" não possui URL configurada.`);
+          console.warn(`[Processar Fila] Mensagem ${msg.id} para ${msg.nome_paciente} ignorada: a clínica "${dadosEmpresa?.nome || 'Não identificada'}" não possui URL configurada.`);
           puladasSemUrlCount++;
           continue;
         }
 
-        // Formata o número de telefone
-        let num = (msg.telefone_whatsapp || '').replace(/\D/g, '');
-        if (num.length === 11 && num.charAt(2) === '9') {
-          num = num.substring(0, 2) + num.substring(3);
-        }
-        const numeroLimpo = num.startsWith('55') ? num : '55' + num;
+        // Formata o número de telefone sem o 9º dígito fixo (55 + DDD + 8 dígitos)
+        const numeroLimpo = formatarTelefoneEnvio(msg.telefone_whatsapp);
 
         try {
           let payload;
@@ -115,6 +112,8 @@ export async function GET(request) {
               agInfo = agData;
             }
 
+            const nomePacienteFinal = (agInfo?.pacientes?.nome_completo || msg.nome_paciente || 'Paciente').trim();
+
             payload = {
               evento: 'disparo_fluxo_inteligente',
               tipo_disparo: 'webhook',
@@ -136,7 +135,9 @@ export async function GET(request) {
                 status_atual: agInfo.status_atendimento || 'agendado'
               } : { id: msg.agendamento_id },
               paciente: {
-                nome: msg.nome_paciente,
+                nome: nomePacienteFinal,
+                nome_completo: nomePacienteFinal,
+                primeiro_nome: nomePacienteFinal,
                 telefone: numeroLimpo,
                 cpf: agInfo?.pacientes?.cpf || null,
                 enfermidades: agInfo?.pacientes?.enfermidades || []
@@ -160,7 +161,7 @@ export async function GET(request) {
             }
 
             payload = {
-              name: msg.nome_paciente,
+              name: msg.nome_paciente || 'Paciente',
               number: numeroLimpo,
               phone: numeroLimpo,
               texto: textoEnvio,
@@ -211,7 +212,7 @@ export async function GET(request) {
                 .update({
                   status_atendimento: acaoPadrao,
                   compareceu_em: acaoPadrao === 'compareceu' ? new Date().toISOString() : null,
-                  observacoes: `[Baixa automática como \"${acaoPadrao}\" aplicada pelo sistema em ${new Date().toLocaleString('pt-BR')}]`
+                  observacoes: `[Baixa automática como "${acaoPadrao}" aplicada pelo sistema em ${new Date().toLocaleString('pt-BR')}]`
                 })
                 .eq('id', ag.id);
               baixasProcessadas++;

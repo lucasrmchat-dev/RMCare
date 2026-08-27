@@ -600,16 +600,54 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
     mensagensProcessadasHistorico.set(dedupKey, Date.now());
 
     if (["imediato", "remarcado", "cancelado", "pagamento_aprovado", "antes_pagamento"].includes(regra.gatilho)) {
-      if (telefone_whatsapp) {
-        await dispararPushRmChat(telefone_whatsapp, vars.nome, textoFormatado, rmchatWebhookUrl, {
-          empresaId: empresaDados?.id,
-          slug: empresaDados?.slug
-        });
+      if (telefone_whatsapp || regra.tipo_envio === "webhook") {
+        const isWebhook = regra.tipo_envio === "webhook";
+        const targetUrl = (regra.url_webhook_customizada || rmchatWebhookUrl)?.trim();
+
+        try {
+          await fetch("/api/disparar-webhook", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              empresaId: empresaDados?.id,
+              slug: empresaDados?.slug,
+              telefone: telefone_whatsapp,
+              nome: vars.nome,
+              mensagem: textoFormatado,
+              urlWebhook: targetUrl,
+              tipo_disparo: isWebhook ? "webhook" : "whatsapp",
+              gatilho: regra.gatilho,
+              agendamento: {
+                id: agendamentoId,
+                data: vars.data,
+                horario: vars.hora,
+                servico: vars.servico,
+                especialista: vars.especialista,
+                especialidade: vars.especialidade,
+                modalidade: vars.modalidade
+              },
+              paciente: {
+                nome: vars.nome_completo,
+                cpf: vars.cpf,
+                telefone: telefone_whatsapp,
+                email: formData?.email
+              }
+            })
+          });
+        } catch (eDisparo) {
+          console.error("Erro ao disparar mensagem/webhook:", eDisparo);
+        }
       }
     } else if (["agendado", "pos_atendimento"].includes(regra.gatilho)) {
       const dataEnvioProgramado = regra.gatilho === "pos_atendimento"
-        ? gerarDataPosAtendimento(data_agendamento, parseInt(regra.dias_depois || regra.dias_antes || 1, 10), regra.hora_envio)
-        : gerarData(data_agendamento, parseInt(regra.dias_antes || 1, 10), regra.hora_envio);
+        ? (regra.pos_unidade === "minutos"
+            ? new Date(new Date(`${data_agendamento}T${horario_agendamento || "08:00"}:00-03:00`).getTime() + (parseInt(regra.pos_tempo || 30, 10) * 60000)).toISOString()
+            : regra.pos_unidade === "horas"
+            ? new Date(new Date(`${data_agendamento}T${horario_agendamento || "08:00"}:00-03:00`).getTime() + (parseInt(regra.pos_tempo || 1, 10) * 3600000)).toISOString()
+            : gerarDataPosAtendimento(data_agendamento, parseInt(regra.pos_tempo || regra.dias_depois || 1, 10), regra.hora_envio))
+        : (regra.unidade_antes === "horas"
+            ? new Date(new Date(`${data_agendamento}T${horario_agendamento || "08:00"}:00-03:00`).getTime() - (parseInt(regra.dias_antes || 1, 10) * 3600000)).toISOString()
+            : gerarData(data_agendamento, parseInt(regra.dias_antes || 1, 10), regra.hora_envio));
 
       mensagensParaFila.push({
         empresa_id: empresaDados.id,
@@ -619,7 +657,9 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
         mensagem: textoFormatado,
         data_hora_programada: dataEnvioProgramado,
         status: "pendente",
-        gatilho: regra.gatilho
+        gatilho: regra.gatilho,
+        tipo_envio: regra.tipo_envio || "whatsapp",
+        url_webhook_customizada: regra.url_webhook_customizada || null
       });
     }
   }
@@ -627,7 +667,17 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
   // 9. INSERÇÃO NA FILA DE MENSAGENS PROGRAMADAS COM DEDUPLICAÇÃO
   if (mensagensParaFila.length > 0) {
     try {
-      const { error } = await supabase.from("fila_mensagens").insert(mensagensParaFila);
+      let { error } = await supabase.from("fila_mensagens").insert(mensagensParaFila);
+      if (error && (error.code === "42703" || error.message?.includes("tipo_envio"))) {
+        const fallbackList = mensagensParaFila.map(m => {
+          const c = { ...m };
+          delete c.tipo_envio;
+          delete c.url_webhook_customizada;
+          return c;
+        });
+        const retry = await supabase.from("fila_mensagens").insert(fallbackList);
+        error = retry.error;
+      }
       if (error) console.error("Erro ao inserir na fila_mensagens:", error);
       else console.log(`✅ ${mensagensParaFila.length} mensagem(ns) enfileirada(s) com sucesso.`);
     } catch (e) {

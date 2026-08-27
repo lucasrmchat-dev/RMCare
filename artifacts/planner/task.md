@@ -1,50 +1,32 @@
-# Plano de Implementação: Melhorias Executivas, Agenda Compartilhada, Métricas, Permissões & UX
+# Checklist de Execução - RMCare
 
-- [ ] 1. Header, Top Bar & Branding da Aplicação
-  - [ ] Exibir Logo da "RM Agenda" (marca pai) lado a lado com a Logo da Clínica (parceiras)
-  - [ ] Padronizar denominação unificada e elegante ("Painel de Gestão Clínica")
-  - [ ] Criar cápsula de perfil no topo direito com: Nome do operador, Toggle de Som (Dopamine), Alternador de Tema (Claro/Escuro), Timer de Sessão e Botão Sair
-- [ ] 2. Nomenclaturas da Sidebar & Desambiguação de Menus
-  - [ ] Renomear "Calendário Diário" -> "Pacientes do Dia"
-  - [ ] Renomear "Lista Unificada" -> "Todos os Pacientes"
-  - [ ] Renomear "Métricas & BI" -> "Métricas"
-  - [ ] Na tela de Métricas, navegar exclusivamente pelas sub-opções da sidebar, removendo a barra interna duplicada
-- [ ] 3. Gestão de Modalidades transferida para Corpo Clínico
-  - [ ] Mover todo o gerenciamento de Modalidades de `PersonalizacaoView` para `EquipeView` (aba `modalidades` em Corpo Clínico)
-  - [ ] Manter todas as funções de criação, edição, código URI, exigência de senha e modalidade padrão
-- [ ] 4. Visualização em Lista e Cards em Todo o Sistema & Preferências Visuais
-  - [ ] Adicionar alternância Lista/Cards em Lista de Especialistas (`EquipeView`)
-  - [ ] Adicionar alternância Lista/Cards em Especialidades Médicas (`EquipeView`) com design refinado
-  - [ ] Adicionar alternância Lista/Cards em Automações de Mensagens (`PersonalizacaoView`)
-  - [ ] Remover todos os emojis de WhatsApp (🟢, 🟣, 🔴) do cadastro de especialistas e substituir por SVGs Lucide profissionais
-  - [ ] Criar sistema de "Preferências Visuais" (persiste no localStorage com padrão "Lista" em todo o sistema)
-- [ ] 5. Agenda Compartilhada Multi-Especialidade & Duração por Especialidade
-  - [ ] Interface dedicada e autoexplicativa para Agenda Compartilhada em `RestricoesView`
-  - [ ] Suporte a vincular múltiplas especialidades (ex: Colonoscopia + Endoscopia + Ultrassom) que compartilham a mesma sala
-  - [ ] Lógica de bloqueio cruzado: agendamento em uma especialidade bloqueia o horário para as demais da sala
-  - [ ] Respeitar horários e dias individuais dos especialistas cadastrados
-  - [ ] Duração específica por especialidade respeitada dinamicamente
-- [ ] 6. Status de Agendamento Passado ("Histórico Concluído / Prazo Encerrado")
-  - [ ] Detectar agendamentos com data/horário no passado e rotular com badge elegante e profissional
-- [ ] 7. Ordem das Etapas com Habilitação/Desabilitação Integrada
-  - [ ] Integrar botões de Ativar/Ocultar etapa diretamente em cada card da lista de reordenação
-  - [ ] Permitir configurar os campos de identificação (CPF, Sobrenome, etc.) diretamente dentro do card de "Identificação do Paciente"
-  - [ ] Bloquear desabilitação das etapas essenciais (Boas-vindas, Identificação e Agenda) e liberar as customizáveis (Especialidade, Modalidade, Triagem, Pagamento)
-- [ ] 8. Design, Cores & Escala (Escopo Geral / Painel vs Cliente)
-  - [ ] Corrigir aplicação e persistência das cores primária e secundária
-  - [ ] Permitir selecionar o escopo da personalização: Portal do Paciente, Painel Administrativo ou Ambos
-- [ ] 9. Mensagens WhatsApp - Correção da Lista e Botão Duplicar
-  - [ ] Corrigir renderização em formato de Lista em `PersonalizacaoView`
-  - [ ] Implementar botão de Duplicar Regra de Mensagem com feedback
-- [ ] 10. Correção do Bug de Histórico de Envios (`fila_mensagens.created_at`)
-  - [ ] Corrigir query em `actionListarHistoricoMensagensAdmin` com fallback de ordenação seguro
-- [ ] 11. Integrações ERP (`SyncView`): Bloqueio Permanente e Correção com Todas as Colunas
-  - [ ] Interface clara, moderna e profissional para Integrações ERP
-  - [ ] Criar funcionalidade de Bloquear Permanentemente Especialistas do ERP com lista/modal de desbloqueio
-  - [ ] Tabela completa com todas as colunas dos bloqueios importados (Médico, Especialidade, Convênio, Observações, Data, Horário) com ações de correção direta
-- [ ] 12. Gestão Estrita de Permissões de Usuários & Sigilo Clínico
-  - [ ] Bloquear visualização de menus e módulos de acordo com as permissões atribuídas no cadastro do usuário
-  - [ ] Restringir acesso a "Usuários & Permissões" e dados clínicos para usuários não autorizados
-- [ ] 13. Verificação de Código, Validação e Testes Finais
-  - [ ] Verificar ausência de erros de sintaxe ou console
-  - [ ] Validar todos os fluxos e aprovar cada item do checklist
+- [x] **Diagnóstico e Análise de Código**
+  - [x] Analisar `AgendaView.js`, `PersonalizacaoView.js`, `AdminSessionBar.js`, `login/page.js`, `admin/sistema/page.js`, `actions/auth.js`, `actions/adminData.js` e endpoints de webhook.
+- [x] **1. Correção de Ordenação e Filtros em "Pacientes do Dia" (AgendaView.js)**
+  - [x] Corrigir `eventosAgendaMistaDiaria` para respeitar a ordenação dinâmica (`sortConfig.key` por Horário, Paciente A-Z/Z-A, Especialista, Status, Pagamento).
+  - [x] Adicionar barra de ordenação rápida acessível em ambos os modos (Cards e Tabela).
+- [x] **2. Correção de "Cards" vs "Lista" (Tabela) em "Todos os Pacientes" (AgendaView.js)**
+  - [x] Implementar alternância entre modo Cards e Tabela no `subTab === "lista"`.
+  - [x] Adicionar cabeçalhos de tabela ordenáveis (Data, Horário, Paciente, Especialista, Status, Pagamento).
+  - [x] Incluir ações alinhadas (Aprovar Pagamento, Ficha, Remarcar, Cancelar).
+- [x] **3. Botão de Atualizar e Sincronizador Automático de 1 Minuto (AgendaView.js & EmpresaAdmin)**
+  - [x] Adicionar botão "Atualizar" no cabeçalho da agenda com animação de spinner e feedback toast.
+  - [x] Configurar auto-sync com intervalo de 60 segundos (1 minuto) para manter os dados atualizados com o banco em tempo real.
+  - [x] Passar `fetchBloqueios` em conjunto com `fetchAgendamentos` em `app/admin/empresa/page.js`.
+- [x] **4. Nova Coluna "Dias / Tempo de Envio / Antecedência" nas Mensagens WhatsApp (PersonalizacaoView.js)**
+  - [x] Criar helper `formatarTempoRegra` para detalhar antecedência (ex: "1 dia antes às 08:00", "0 dias / Imediato", "30 min após término").
+  - [x] Adicionar coluna "Dias / Tempo Envio" na tabela de automações com ordenação.
+  - [x] Adicionar badges correspondentes na visualização em Cards.
+- [x] **5. Botões e Modal de Teste para Webhook e Template de WhatsApp (PersonalizacaoView.js)**
+  - [x] Adicionar botão "Testar" na tabela e cards de mensagens.
+  - [x] Criar modal interativo de teste com inserção de telefone, prévia com variáveis dinâmicas e retorno ao vivo do status HTTP.
+  - [x] Integrar `actionTestarMensagemWhatsAppTemplate` e `actionTestarWebhookFluxoInteligente`.
+- [x] **6. Ajustes no Cabeçalho e Menu de Perfil (AdminSessionBar.js)**
+  - [x] Remover "Sessão Ativa" de dentro do dropdown do usuário.
+  - [x] Manter timer de sessão ativa na barra principal externa.
+  - [x] Elevar `z-index` do dropdown (`z-[10001]`) e do header (`z-[9999]`) para eliminar qualquer bug de sobreposição.
+- [x] **7. Unificação do Login e Redesign do Painel Master (login/page.js, admin/sistema/page.js)**
+  - [x] Eliminar repetição de login redirecionando diretamente via `window.location.replace`.
+  - [x] Adicionar verificação de sessão ativa no carregamento do `/login`.
+  - [x] Redesenhar painel do Super Master com métricas executivas, abas categorizadas de APIs (RM Chat, Mercado Pago, Medicalsys) e teste de webhook.
+- [x] **Revisão e Entrega**

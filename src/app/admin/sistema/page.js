@@ -1,792 +1,1012 @@
-"use client"; 
+"use client";
 
-import { useState, useEffect, useMemo } from "react"; 
+import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Plus,
-  LayoutDashboard,
-  Building2,
   ShieldCheck,
-  Database,
+  Building2,
+  Key,
   Server,
-  Activity,
-  KeyRound,
-  Lock,
-  Settings2,
-  X,
+  Plus,
+  Search,
+  ExternalLink,
   Save,
-  CreditCard,
-  ShieldAlert,
-  Clock,
-  MessageSquare,
-  Send,
+  Trash2,
+  Activity,
   CheckCircle2,
   AlertCircle,
-  Search,
   Zap,
-  Sliders,
-  Check
-} from "lucide-react"; 
+  Globe,
+  Settings2,
+  Copy,
+  Lock,
+  MessageSquare,
+  CreditCard,
+  Layers,
+  ChevronRight,
+  Sparkles,
+  Database,
+  Link as LinkIcon,
+  X,
+  Play
+} from "lucide-react";
 import AdminSessionBar from "@/components/AdminSessionBar";
+import { getSessionAdminInfo } from "@/actions/auth";
 import {
-  actionListarEmpresas,
-  actionProvisionarEmpresa,
-  actionSalvarChavesEmpresaMaster,
+  actionListarEmpresasMaster,
+  actionCriarEmpresaMaster,
+  actionAtualizarChavesEmpresaMaster,
+  actionExcluirEmpresaMaster,
   actionTestarPushRmChat
 } from "@/actions/adminData";
-import { authenticateUser } from "@/actions/auth";
-import { supabase } from "@/lib/supabase";
-import { playDopamineSound, triggerConfetti, triggerHaptic } from "@/lib/dopamine";
+import { playDopamineSound, triggerHaptic, triggerConfetti } from "@/lib/dopamine";
 
-export default function SuperAdminSistema() {   
-  const [isAuthenticatedMaster, setIsAuthenticatedMaster] = useState(false);
-  const [masterUser, setMasterUser] = useState("master");
-  const [masterPass, setMasterPass] = useState("");
-  const [loginError, setLoginError] = useState("");
-  const [loginLoading, setLoginLoading] = useState(false);
+const spring = { type: "spring", stiffness: 400, damping: 28 };
 
-  const [activeMasterTab, setActiveMasterTab] = useState("integracoes");
+export default function SuperAdminSistemaPage() {
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [loggedUser, setLoggedUser] = useState(null);
+  const [empresas, setEmpresas] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeTab, setActiveTab] = useState("clinicas"); // "clinicas" | "nova_instancia"
 
-  const [empresas, setEmpresas] = useState([]);   
-  const [searchEmpresa, setSearchEmpresa] = useState("");
-  const [nome, setNome] = useState("");   
-  const [slug, setSlug] = useState("");   
-  const [usuario, setUsuario] = useState("");
-  const [senha, setSenha] = useState("");
-  const [feedback, setFeedback] = useState("");
-  const [loading, setLoading] = useState(false);   
-
-  const [selectedEmpresa, setSelectedEmpresa] = useState(null);
-  const [empresaChaves, setEmpresaChaves] = useState({
+  // Modal de Configuração de APIs & Chaves de Integração
+  const [editingEmpresa, setEditingEmpresa] = useState(null);
+  const [modalSubTab, setModalSubTab] = useState("rmchat"); // "rmchat" | "mercadopago" | "medicalsys" | "geral"
+  const [formKeys, setFormKeys] = useState({
     rmchat_webhook_url: "",
-    mp_public_key: "",
     mp_access_token: "",
-    medicalsys_enabled: false,
-    medicalsys_id_clinica: "9",
-    medicalsys_id_medico: "1",
-    medicalsys_apikey: "8FxD2eUsODMO8IZWMHZaNpt78av9Vy6k",
-    medicalsys_customer_apikey: "SqdACjyxnXuYqL8ilnwTvXHroEOvFHFR",
-    auto_sync_cadence: "manual"
+    mp_public_key: "",
+    medicalsys_url: "",
+    medicalsys_usuario: "",
+    medicalsys_senha: "",
+    medicalsys_cod_empresa: "",
+    medicalsys_sync_interval: 15
   });
-  const [savingKeys, setSavingKeys] = useState(false);
 
-  const [testNumber, setTestNumber] = useState("5583999999999");
-  const [testingPush, setTestingPush] = useState(false);
+  // Formulário de Nova Clínica / Tenant
+  const [novaEmpresa, setNovaEmpresa] = useState({
+    nome: "",
+    slug: "",
+    subdominio: "",
+    email: "",
+    telefone: "",
+    admin_usuario: "",
+    admin_senha: ""
+  });
+
+  const [savingKeys, setSavingKeys] = useState(false);
+  const [creatingTenant, setCreatingTenant] = useState(false);
+  const [toastMsg, setToastMsg] = useState(null);
+  const [testPushLoading, setTestPushLoading] = useState(false);
   const [testPushResult, setTestPushResult] = useState(null);
 
-  useEffect(() => {     
-    if (isAuthenticatedMaster) fetchEmpresas();   
-  }, [isAuthenticatedMaster]);   
-
-  async function fetchEmpresas() {     
-    try { 
-      const lista = await actionListarEmpresas();
-      const { data: empresasComChaves } = await supabase
-        .from("empresas")
-        .select("id, nome, slug, created_at, config_chaves")
-        .order("created_at", { ascending: false });
-
-      setEmpresas(empresasComChaves || lista || []); 
-    } catch (error) { 
-      setFeedback(error.message); 
+  const showToast = (message, type = "success") => {
+    setToastMsg({ message, type });
+    if (type === "success") {
+      playDopamineSound("success");
+      triggerHaptic("success");
+    } else {
+      playDopamineSound("error");
+      triggerHaptic("error");
     }
-  }   
+    setTimeout(() => setToastMsg(null), 4000);
+  };
 
-  const handleMasterLogin = async (e) => {
-    e.preventDefault();
-    setLoginLoading(true);
-    setLoginError("");
+  const fetchEmpresas = async () => {
+    setLoading(true);
+    try {
+      const data = await actionListarEmpresasMaster();
+      setEmpresas(data || []);
+    } catch (e) {
+      showToast(`Erro ao carregar instâncias: ${e.message}`, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        const info = await getSessionAdminInfo();
+        if (!info) {
+          window.location.replace("/login");
+          return;
+        }
+        if (info.role === "sistema") {
+          setLoggedUser(info);
+          fetchEmpresas();
+        } else {
+          // Se for operador de clínica, redireciona para a visão da empresa
+          window.location.replace("/admin/empresa");
+        }
+      } catch (e) {
+        console.error("Erro ao validar sessão master:", e);
+        window.location.replace("/login");
+      } finally {
+        setCheckingAuth(false);
+      }
+    };
+    checkSession();
+  }, []);
+
+  const handleAbrirModalChaves = (emp) => {
     playDopamineSound("click");
     triggerHaptic("light");
-
-    try {
-      const res = await authenticateUser({
-        type: "admin",
-        identificador: masterUser,
-        password: masterPass
-      });
-
-      if (res.success) {
-        setIsAuthenticatedMaster(true);
-        playDopamineSound("unlock");
-        triggerHaptic("success");
-      } else {
-        setLoginError(res.error || "Acesso negado ao Administrador Master.");
-        playDopamineSound("error");
-        triggerHaptic("error");
-      }
-    } catch (err) {
-      setLoginError("Erro de autenticação master.");
-      playDopamineSound("error");
-    } finally {
-      setLoginLoading(false);
-    }
-  };
-
-  const handleProvisionar = async (e) => {     
-    e.preventDefault();     
-    if (!nome || !slug) return;     
-    
-    setLoading(true);
-    playDopamineSound("click");
-    try {
-      await actionProvisionarEmpresa({ nome, slug, usuario, senha });
-      setNome("");       
-      setSlug("");       
-      setUsuario("");
-      setSenha("");
-      setFeedback("Ambiente e administrador criados com sucesso!");
-      playDopamineSound("success");
-      triggerConfetti({ count: 80 });
-      await fetchEmpresas();
-    } catch (error) {
-      setFeedback(error.message);
-      playDopamineSound("error");
-    }
-    setLoading(false);   
-  };
-
-  const handleInspectCompany = async (emp) => {
-    playDopamineSound("click");
-    setSelectedEmpresa(emp);
+    setEditingEmpresa(emp);
     setTestPushResult(null);
-    try {
-      const { data } = await supabase.from("empresas").select("config_chaves").eq("id", emp.id).single();
-      const loadedKeys = {
-        rmchat_webhook_url: "",
-        mp_public_key: "",
-        mp_access_token: "",
-        medicalsys_enabled: false,
-        medicalsys_id_clinica: "9",
-        medicalsys_id_medico: "1",
-        medicalsys_apikey: "8FxD2eUsODMO8IZWMHZaNpt78av9Vy6k",
-        medicalsys_customer_apikey: "SqdACjyxnXuYqL8ilnwTvXHroEOvFHFR",
-        auto_sync_cadence: "manual"
-      };
-
-      if (data && data.config_chaves) {
-        setEmpresaChaves({ ...loadedKeys, ...data.config_chaves });
-      } else {
-        setEmpresaChaves(loadedKeys);
-      }
-    } catch (e) {
-      console.error(e);
-    }
+    setModalSubTab("rmchat");
+    setFormKeys({
+      rmchat_webhook_url: emp.config_chaves?.rmchat_webhook_url || emp.rmchat_webhook_url || "",
+      mp_access_token: emp.config_chaves?.mp_access_token || emp.mp_access_token || "",
+      mp_public_key: emp.config_chaves?.mp_public_key || emp.mp_public_key || "",
+      medicalsys_url: emp.config_chaves?.medicalsys_url || emp.medicalsys_url || "",
+      medicalsys_usuario: emp.config_chaves?.medicalsys_usuario || emp.medicalsys_usuario || "",
+      medicalsys_senha: emp.config_chaves?.medicalsys_senha || emp.medicalsys_senha || "",
+      medicalsys_cod_empresa: emp.config_chaves?.medicalsys_cod_empresa || emp.medicalsys_cod_empresa || "",
+      medicalsys_sync_interval: emp.config_chaves?.medicalsys_sync_interval || 15
+    });
   };
 
-  const handleSaveCompanyKeys = async () => {
-    if (!selectedEmpresa) return;
+  const handleSalvarChaves = async () => {
+    if (!editingEmpresa) return;
     setSavingKeys(true);
-    setTestPushResult(null);
     playDopamineSound("click");
     try {
-      await actionSalvarChavesEmpresaMaster(selectedEmpresa.id, empresaChaves);
-      setFeedback(`Configurações de integração salvas para "${selectedEmpresa.nome}"!`);
-      playDopamineSound("step");
-      await fetchEmpresas();
-      setSelectedEmpresa(null);
-    } catch (err) {
-      setFeedback(`Erro ao salvar chaves: ${err.message}`);
-      playDopamineSound("error");
+      await actionAtualizarChavesEmpresaMaster(editingEmpresa.id, formKeys);
+      showToast("Chaves e integrações de API atualizadas com sucesso!");
+      fetchEmpresas();
+      setEditingEmpresa(null);
+    } catch (e) {
+      showToast(`Erro ao salvar chaves: ${e.message}`, "error");
     } finally {
       setSavingKeys(false);
     }
   };
 
-  const handleTestPush = async () => {
-    if (!empresaChaves.rmchat_webhook_url) {
-      setTestPushResult({ success: false, message: "Informe a URL do RM Chat para testar." });
-      playDopamineSound("error");
+  const handleCriarInstancia = async (e) => {
+    e.preventDefault();
+    if (!novaEmpresa.nome || !novaEmpresa.slug || !novaEmpresa.admin_usuario || !novaEmpresa.admin_senha) {
+      showToast("Preencha todos os campos obrigatórios (*).", "error");
       return;
     }
-    setTestingPush(true);
+
+    setCreatingTenant(true);
+    playDopamineSound("click");
+    triggerHaptic("medium");
+
+    try {
+      const res = await actionCriarEmpresaMaster(novaEmpresa);
+      if (res?.success) {
+        showToast(`Clínica "${novaEmpresa.nome}" provisionada com sucesso!`);
+        triggerConfetti({ count: 100 });
+        setNovaEmpresa({
+          nome: "",
+          slug: "",
+          subdominio: "",
+          email: "",
+          telefone: "",
+          admin_usuario: "",
+          admin_senha: ""
+        });
+        setActiveTab("clinicas");
+        fetchEmpresas();
+      } else {
+        showToast(res?.error || "Erro ao criar clínica.", "error");
+      }
+    } catch (err) {
+      showToast(`Erro: ${err.message}`, "error");
+    } finally {
+      setCreatingTenant(false);
+    }
+  };
+
+  const handleTestarPushRmChat = async () => {
+    if (!formKeys.rmchat_webhook_url?.trim()) {
+      showToast("Informe uma URL de Webhook válida do RM Chat primeiro.", "error");
+      return;
+    }
+    setTestPushLoading(true);
     setTestPushResult(null);
     playDopamineSound("click");
     try {
-      await actionTestarPushRmChat(empresaChaves.rmchat_webhook_url, testNumber, selectedEmpresa?.nome || "Teste RMCare");
-      setTestPushResult({ success: true, message: "Notificação enviada com sucesso ao RM Chat!" });
-      playDopamineSound("step");
-    } catch (err) {
-      setTestPushResult({ success: false, message: `Falha no teste: ${err.message}` });
-      playDopamineSound("error");
+      const res = await actionTestarPushRmChat(formKeys.rmchat_webhook_url.trim());
+      if (res?.success) {
+        setTestPushResult({
+          success: true,
+          message: `Webhook disparado com sucesso! Resposta: ${res.status}`,
+          details: res.details
+        });
+        showToast("Webhook testado e validado com sucesso!");
+      } else {
+        setTestPushResult({
+          success: false,
+          message: res?.error || "Falha ao enviar webhook de teste."
+        });
+        showToast("Erro ao testar webhook.", "error");
+      }
+    } catch (e) {
+      setTestPushResult({
+        success: false,
+        message: `Falha: ${e.message}`
+      });
+      showToast(`Erro no teste: ${e.message}`, "error");
     } finally {
-      setTestingPush(false);
+      setTestPushLoading(false);
+    }
+  };
+
+  const copyToClipboard = (text, label) => {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+      playDopamineSound("select");
+      triggerHaptic("light");
+      showToast(`${label} copiado para a área de transferência!`);
     }
   };
 
   const empresasFiltradas = useMemo(() => {
-    if (!searchEmpresa.trim()) return empresas;
-    const term = searchEmpresa.toLowerCase().trim();
+    if (!searchQuery.trim()) return empresas;
+    const q = searchQuery.toLowerCase().trim();
     return empresas.filter(
-      (e) => e.nome?.toLowerCase().includes(term) || e.slug?.toLowerCase().includes(term)
+      (e) =>
+        (e.nome || "").toLowerCase().includes(q) ||
+        (e.slug || "").toLowerCase().includes(q) ||
+        (e.email || "").toLowerCase().includes(q) ||
+        (e.telefone || "").includes(q)
     );
-  }, [empresas, searchEmpresa]);
+  }, [empresas, searchQuery]);
 
-  if (!isAuthenticatedMaster) {
+  const stats = useMemo(() => {
+    const total = empresas.length;
+    const comRmChat = empresas.filter(
+      (e) => e.config_chaves?.rmchat_webhook_url || e.rmchat_webhook_url
+    ).length;
+    const comMedicalsys = empresas.filter(
+      (e) => e.config_chaves?.medicalsys_url || e.medicalsys_url
+    ).length;
+    const comMercadoPago = empresas.filter(
+      (e) => e.config_chaves?.mp_access_token || e.mp_access_token
+    ).length;
+    return { total, comRmChat, comMedicalsys, comMercadoPago };
+  }, [empresas]);
+
+  if (checkingAuth) {
     return (
-      <main className="min-h-screen bg-[#F8FAFC] dark:bg-[#060A12] text-zinc-950 dark:text-white flex flex-col items-center justify-center p-6 relative font-sans antialiased transition-colors duration-300">
-        <div className="fixed inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(159,193,49,.15),transparent_45%)] pointer-events-none" />
-        
-        <div className="max-w-md w-full bg-white/80 dark:bg-[#0c0f17]/70 backdrop-blur-3xl saturate-150 border border-zinc-200/80 dark:border-white/10 p-8 md:p-10 rounded-[2.5rem] shadow-2xl relative z-10 space-y-6">
-          <div className="text-center space-y-3">
-            <div className="w-14 h-14 bg-[#9FC131]/15 border border-[#9FC131]/30 text-[#86a621] dark:text-[#9FC131] rounded-2xl flex items-center justify-center mx-auto shadow-sm">
-              <ShieldCheck size={28} strokeWidth={2} />
-            </div>
-            <h1 className="text-2xl font-black tracking-tight text-zinc-950 dark:text-white">Administrador Master</h1>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 font-medium leading-relaxed">
-              Área global de orquestração do sistema. Autentique-se com credenciais de Administrador Root.
-            </p>
-          </div>
-
-          <form onSubmit={handleMasterLogin} className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-extrabold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest ml-1">Login Master</label>
-              <input
-                required
-                type="text"
-                value={masterUser}
-                onChange={(e) => setMasterUser(e.target.value)}
-                placeholder="master"
-                className="w-full min-h-[48px] px-4 py-3 bg-zinc-50 dark:bg-black/50 border border-zinc-200 dark:border-white/10 rounded-2xl text-sm font-medium outline-none text-zinc-950 dark:text-white focus:border-[#9FC131] focus:ring-2 focus:ring-[#9FC131]/20 transition-all"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-extrabold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest ml-1">Senha Master</label>
-              <input
-                required
-                type="password"
-                value={masterPass}
-                onChange={(e) => setMasterPass(e.target.value)}
-                placeholder="••••••••"
-                className="w-full min-h-[48px] px-4 py-3 bg-zinc-50 dark:bg-black/50 border border-zinc-200 dark:border-white/10 rounded-2xl text-sm font-medium outline-none text-zinc-950 dark:text-white focus:border-[#9FC131] focus:ring-2 focus:ring-[#9FC131]/20 transition-all"
-              />
-            </div>
-
-            {loginError && (
-              <div className="p-4 bg-red-500/15 border border-red-500/25 text-red-700 dark:text-red-300 text-xs font-bold rounded-2xl">
-                {loginError}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loginLoading}
-              className="w-full min-h-[48px] mt-2 bg-[#9FC131] hover:bg-[#86a621] text-black font-extrabold text-xs uppercase tracking-widest rounded-2xl transition-all shadow-xl shadow-[#9FC131]/20 flex items-center justify-center gap-2 active:scale-[0.98]"
-            >
-              {loginLoading ? <Activity size={16} className="animate-spin" /> : <Lock size={16} />}
-              {loginLoading ? "Verificando..." : "Acessar Painel Master"}
-            </button>
-          </form>
-        </div>
-      </main>
+      <div className="min-h-screen bg-[#06080d] text-white flex flex-col items-center justify-center gap-3">
+        <Activity size={28} className="animate-spin text-[#9FC131]" />
+        <span className="text-xs font-bold uppercase tracking-widest text-zinc-400">
+          Autenticando sessão master...
+        </span>
+      </div>
     );
   }
 
-  return (     
-    <main className="min-h-screen bg-[#F8FAFC] dark:bg-[#060A12] text-zinc-950 dark:text-white antialiased font-sans selection:bg-[#9FC131] selection:text-black transition-colors duration-300">       
+  return (
+    <div className="min-h-screen bg-[#07090e] text-white flex flex-col font-sans selection:bg-[#9FC131] selection:text-black">
+      {/* BARRA SUPERIOR EXECUTIVA */}
       <AdminSessionBar />
-      
-      <div className="w-full px-6 lg:px-10 py-8 space-y-8 relative z-10 max-w-7xl mx-auto">
-        
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-zinc-200/80 dark:border-white/10 pb-8">         
-          <div>           
-            <h1 className="text-2xl sm:text-3xl font-black tracking-tight flex items-center gap-3">
-              <div className="w-12 h-12 bg-[#9FC131]/15 border border-[#9FC131]/30 rounded-2xl flex items-center justify-center shadow-sm text-[#86a621] dark:text-[#9FC131]">
-                <LayoutDashboard size={24} strokeWidth={2} />
-              </div>
-              Painel de Sistema · Integrações & SaaS
-            </h1>           
-            <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 font-medium mt-2">
-              Gerenciamento multi-tenant de instâncias e configuração de credenciais, ERP e Webhooks.
-            </p>         
-          </div>         
-          <div className="bg-[#9FC131]/15 border border-[#9FC131]/30 text-[#86a621] dark:text-[#9FC131] px-4 py-2 rounded-2xl text-[11px] font-black uppercase tracking-widest flex items-center gap-2 shadow-sm self-start md:self-auto">           
-            <ShieldCheck size={16} /> Master Root Ativo         
-          </div>       
-        </div>       
 
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-zinc-200/80 dark:border-white/10 pb-4">
-          <div className="flex p-1 bg-zinc-200/70 dark:bg-white/5 border border-zinc-300/80 dark:border-white/10 rounded-2xl gap-1">
-            <button
-              onClick={() => {
-                playDopamineSound("click");
-                setActiveMasterTab("integracoes");
-              }}
-              className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all min-h-[40px] ${
-                activeMasterTab === "integracoes"
-                  ? "bg-zinc-950 text-white dark:bg-[#9FC131] dark:text-black shadow-md"
-                  : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white"
-              }`}
-            >
-              <MessageSquare size={16} /> Integrações & APIs
-            </button>
-            <button
-              onClick={() => {
-                playDopamineSound("click");
-                setActiveMasterTab("instancias");
-              }}
-              className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all min-h-[40px] ${
-                activeMasterTab === "instancias"
-                  ? "bg-zinc-950 text-white dark:bg-[#9FC131] dark:text-black shadow-md"
-                  : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white"
-              }`}
-            >
-              <Database size={16} /> Nova Instância
-            </button>
+      {/* NOTIFICAÇÃO FLUTUANTE */}
+      <AnimatePresence>
+        {toastMsg && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            className={`fixed top-18 right-6 z-[999999] px-4 py-3 rounded-2xl text-xs font-bold shadow-2xl flex items-center gap-2.5 border backdrop-blur-xl ${
+              toastMsg.type === "success"
+                ? "bg-emerald-950/90 text-emerald-300 border-emerald-500/40"
+                : "bg-red-950/90 text-red-300 border-red-500/40"
+            }`}
+          >
+            {toastMsg.type === "success" ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+            <span>{toastMsg.message}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <main className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-6 lg:p-8 space-y-6">
+        {/* CABEÇALHO DO PAINEL MASTER */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/[0.08] pb-6">
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-amber-400 flex items-center justify-center shadow-lg shadow-amber-500/5">
+              <ShieldCheck size={26} strokeWidth={2} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">
+                  Painel Master Root
+                </h1>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  Super Admin
+                </span>
+              </div>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Gestão central de instâncias, parceiros, webhooks RM Chat e credenciais de integração ERP.
+              </p>
+            </div>
           </div>
 
-          <div className="relative w-full sm:w-72">
-            <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" />
-            <input
-              type="text"
-              value={searchEmpresa}
-              onChange={(e) => setSearchEmpresa(e.target.value)}
-              placeholder="Buscar clínica / slug..."
-              className="w-full min-h-[42px] pl-10 pr-4 py-2 bg-white dark:bg-black/40 border border-zinc-200 dark:border-white/10 rounded-xl text-xs text-zinc-900 dark:text-white outline-none focus:border-[#9FC131] transition-all"
-            />
+          {/* ABAS DO PAINEL */}
+          <div className="flex p-1 bg-white/[0.04] border border-white/10 rounded-2xl gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                playDopamineSound("click");
+                setActiveTab("clinicas");
+              }}
+              className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
+                activeTab === "clinicas"
+                  ? "bg-white text-black shadow-md"
+                  : "text-zinc-400 hover:text-white"
+              }`}
+            >
+              <Building2 size={14} />
+              <span>Instâncias & Clínicas ({empresas.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                playDopamineSound("click");
+                setActiveTab("nova_instancia");
+              }}
+              className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
+                activeTab === "nova_instancia"
+                  ? "bg-[#9FC131] text-black shadow-md font-black"
+                  : "text-zinc-400 hover:text-white"
+              }`}
+            >
+              <Plus size={14} strokeWidth={2.5} />
+              <span>Nova Instância</span>
+            </button>
           </div>
         </div>
 
-        {feedback && (
-          <div className="p-4 bg-[#9FC131]/15 border border-[#9FC131]/30 text-[#86a621] dark:text-[#9FC131] text-xs font-bold rounded-2xl flex items-center justify-between shadow-sm">
-            <span>{feedback}</span>
-            <button onClick={() => setFeedback("")} className="text-zinc-400 hover:text-zinc-900 dark:hover:text-white"><X size={16} /></button>
+        {/* STATS EXECUTIVOS EM CARDS */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="p-4 md:p-5 rounded-2xl bg-white/[0.03] border border-white/[0.07] backdrop-blur-xl flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
+              <Building2 size={18} />
+            </div>
+            <div>
+              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
+                Total de Clínicas
+              </span>
+              <span className="text-xl font-black text-white font-mono">{stats.total}</span>
+            </div>
           </div>
-        )}
 
-        {activeMasterTab === "integracoes" && (
-          <div className="space-y-6">
-            <div className="bg-white/80 dark:bg-white/[0.04] backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2.5rem] shadow-sm">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-                <div>
-                  <h3 className="text-lg font-black text-zinc-950 dark:text-white flex items-center gap-2">
-                    <MessageSquare className="text-emerald-500" size={20} /> Servidores de Push RM Chat & APIs por Clínica
-                  </h3>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-                    Cada clínica possui credenciais personalizadas de Mercado Pago, Medicalsys ERP e Webhook RM Chat WhatsApp.
-                  </p>
-                </div>
-                <div className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest bg-zinc-100 dark:bg-black/40 px-4 py-2 rounded-xl border border-zinc-200 dark:border-white/10">
-                  {empresasFiltradas.length} de {empresas.length} Clínicas
-                </div>
+          <div className="p-4 md:p-5 rounded-2xl bg-white/[0.03] border border-white/[0.07] backdrop-blur-xl flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+              <Zap size={18} />
+            </div>
+            <div>
+              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
+                RM Chat Ativos
+              </span>
+              <span className="text-xl font-black text-white font-mono">{stats.comRmChat}</span>
+            </div>
+          </div>
+
+          <div className="p-4 md:p-5 rounded-2xl bg-white/[0.03] border border-white/[0.07] backdrop-blur-xl flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center shrink-0">
+              <Server size={18} />
+            </div>
+            <div>
+              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
+                ERP MedicalSYS
+              </span>
+              <span className="text-xl font-black text-white font-mono">{stats.comMedicalsys}</span>
+            </div>
+          </div>
+
+          <div className="p-4 md:p-5 rounded-2xl bg-white/[0.03] border border-white/[0.07] backdrop-blur-xl flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0">
+              <CreditCard size={18} />
+            </div>
+            <div>
+              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
+                Mercado Pago
+              </span>
+              <span className="text-xl font-black text-white font-mono">{stats.comMercadoPago}</span>
+            </div>
+          </div>
+        </div>
+
+        <AnimatePresence mode="wait">
+          {/* TAB 1: LISTAGEM DE CLÍNICAS & INTEGRAÇÕES */}
+          {activeTab === "clinicas" && (
+            <motion.div
+              key="tab-clinicas"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={spring}
+              className="space-y-4"
+            >
+              {/* BARRA DE PESQUISA */}
+              <div className="p-4 bg-white/[0.03] border border-white/[0.07] rounded-2xl flex items-center gap-3">
+                <Search size={16} className="text-zinc-400 shrink-0" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Pesquisar por nome da clínica, slug, e-mail ou telefone..."
+                  className="w-full bg-transparent text-xs font-medium text-white outline-none placeholder:text-zinc-500"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    className="text-zinc-400 hover:text-white text-xs font-bold cursor-pointer"
+                  >
+                    Limpar
+                  </button>
+                )}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {empresasFiltradas.length === 0 ? (
-                  <div className="col-span-2 py-12 text-center text-zinc-500 border border-dashed border-zinc-200 dark:border-white/10 rounded-3xl">
-                    Nenhuma clínica encontrada com este filtro.
-                  </div>
-                ) : (
-                  empresasFiltradas.map((emp) => {
-                    const chaves = emp.config_chaves || {};
-                    const hasCustomRmChat = Boolean(chaves.rmchat_webhook_url && chaves.rmchat_webhook_url.trim());
-                    const hasMedicalsys = Boolean(chaves.medicalsys_apikey);
-                    const hasMercadoPago = Boolean(chaves.mp_public_key);
+              {loading ? (
+                <div className="py-20 text-center flex flex-col items-center justify-center gap-3">
+                  <Activity size={24} className="animate-spin text-[#9FC131]" />
+                  <span className="text-xs text-zinc-400 font-bold">Carregando instâncias...</span>
+                </div>
+              ) : empresasFiltradas.length === 0 ? (
+                <div className="py-20 text-center rounded-3xl border border-dashed border-white/10 text-zinc-500 bg-white/[0.01]">
+                  Nenhuma clínica encontrada com este termo.
+                </div>
+              ) : (
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {empresasFiltradas.map((emp) => {
+                    const hasRmChat = Boolean(emp.config_chaves?.rmchat_webhook_url || emp.rmchat_webhook_url);
+                    const hasMedicalsys = Boolean(emp.config_chaves?.medicalsys_url || emp.medicalsys_url);
+                    const hasMp = Boolean(emp.config_chaves?.mp_access_token || emp.mp_access_token);
 
                     return (
-                      <div
+                      <motion.div
                         key={emp.id}
-                        className="p-6 bg-zinc-50/70 dark:bg-black/40 border border-zinc-200/80 dark:border-white/10 hover:border-[#9FC131]/60 transition-all rounded-3xl space-y-5 group relative flex flex-col justify-between shadow-sm"
+                        layout
+                        className="bg-white/[0.04] border border-white/[0.08] hover:border-white/20 rounded-3xl p-5 backdrop-blur-xl transition-all flex flex-col justify-between gap-4 shadow-sm"
                       >
-                        <div className="space-y-4">
+                        <div className="space-y-3">
                           <div className="flex items-start justify-between gap-3">
-                            <div className="flex items-center gap-3.5">
-                              <div className="w-12 h-12 bg-white dark:bg-white/5 border border-zinc-200 dark:border-white/10 rounded-2xl flex items-center justify-center text-[#86a621] dark:text-[#9FC131] shadow-inner group-hover:scale-105 transition-transform">
-                                <Building2 size={22} />
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-10 h-10 rounded-2xl bg-zinc-900 border border-white/10 flex items-center justify-center font-bold text-xs shrink-0 overflow-hidden">
+                                {emp.logo_url ? (
+                                  <img src={emp.logo_url} alt={emp.nome} className="w-full h-full object-cover" />
+                                ) : (
+                                  <Building2 size={18} className="text-zinc-400" />
+                                )}
                               </div>
-                              <div>
-                                <h4 className="font-black text-base text-zinc-950 dark:text-white">{emp.nome}</h4>
-                                <p className="text-[11px] text-zinc-500 font-mono tracking-wider">/{emp.slug}</p>
+                              <div className="min-w-0">
+                                <h3 className="font-extrabold text-sm text-white truncate">{emp.nome}</h3>
+                                <span className="text-[10px] font-mono text-zinc-400 block truncate">
+                                  slug: {emp.slug}
+                                </span>
                               </div>
                             </div>
 
                             <button
-                              onClick={() => handleInspectCompany(emp)}
-                              className="min-h-[40px] px-4 py-2 bg-zinc-950 hover:bg-black dark:bg-[#9FC131] dark:hover:bg-[#86a621] text-white dark:text-black rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md flex-shrink-0"
+                              type="button"
+                              onClick={() => copyToClipboard(`https://rmcare.com.br/${emp.slug}`, "Link do portal")}
+                              className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                              title="Copiar Link do Portal"
                             >
-                              <Settings2 size={14} /> Configurar APIs
+                              <Copy size={13} />
                             </button>
                           </div>
 
-                          <div className="space-y-2.5 pt-2 border-t border-zinc-200/60 dark:border-white/5">
-                            <div className="p-3 bg-white dark:bg-white/5 border border-zinc-200/60 dark:border-white/5 rounded-2xl space-y-1.5">
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="font-bold text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
-                                  <MessageSquare size={14} className="text-emerald-500" /> Servidor RM Chat (WhatsApp):
-                                </span>
-                                {hasCustomRmChat ? (
-                                  <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
-                                    <CheckCircle2 size={10} /> Endpoint Próprio
-                                  </span>
-                                ) : (
-                                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-300">
-                                    Padrão Global
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 truncate">
-                                {chaves.rmchat_webhook_url || "Nenhum endpoint configurado"}
-                              </p>
-                            </div>
+                          {/* STATUS DAS INTEGRAÇÕES */}
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            <span
+                              className={`px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider border flex items-center gap-1 ${
+                                hasRmChat
+                                  ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                                  : "bg-zinc-800/60 text-zinc-500 border-white/5"
+                              }`}
+                            >
+                              <Zap size={9} /> RM Chat: {hasRmChat ? "ON" : "OFF"}
+                            </span>
 
-                            <div className="grid grid-cols-2 gap-2 text-[11px]">
-                              <div className="p-2.5 bg-white dark:bg-white/5 rounded-xl border border-zinc-200/60 dark:border-white/5 flex items-center justify-between">
-                                <span className="text-zinc-600 dark:text-zinc-400">Medicalsys ERP:</span>
-                                <span className={`font-bold uppercase text-[9px] px-1.5 py-0.5 rounded ${hasMedicalsys ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10' : 'text-zinc-400 bg-zinc-100 dark:bg-white/5'}`}>
-                                  {hasMedicalsys ? 'Configurado' : 'Pendente'}
-                                </span>
-                              </div>
+                            <span
+                              className={`px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider border flex items-center gap-1 ${
+                                hasMedicalsys
+                                  ? "bg-purple-500/15 text-purple-300 border-purple-500/30"
+                                  : "bg-zinc-800/60 text-zinc-500 border-white/5"
+                              }`}
+                            >
+                              <Server size={9} /> ERP: {hasMedicalsys ? "ON" : "OFF"}
+                            </span>
 
-                              <div className="p-2.5 bg-white dark:bg-white/5 rounded-xl border border-zinc-200/60 dark:border-white/5 flex items-center justify-between">
-                                <span className="text-zinc-600 dark:text-zinc-400">Mercado Pago:</span>
-                                <span className={`font-bold uppercase text-[9px] px-1.5 py-0.5 rounded ${hasMercadoPago ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10' : 'text-zinc-400 bg-zinc-100 dark:bg-white/5'}`}>
-                                  {hasMercadoPago ? 'Ativo' : 'Pendente'}
-                                </span>
-                              </div>
-                            </div>
+                            <span
+                              className={`px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider border flex items-center gap-1 ${
+                                hasMp
+                                  ? "bg-indigo-500/15 text-indigo-300 border-indigo-500/30"
+                                  : "bg-zinc-800/60 text-zinc-500 border-white/5"
+                              }`}
+                            >
+                              <CreditCard size={9} /> Pix: {hasMp ? "ON" : "OFF"}
+                            </span>
+                          </div>
+
+                          {/* DADOS DE CONTATO */}
+                          <div className="text-[11px] text-zinc-400 space-y-0.5 font-medium pt-1 border-t border-white/5">
+                            {emp.email && <div className="truncate">📧 {emp.email}</div>}
+                            {emp.telefone && <div className="truncate">📱 {emp.telefone}</div>}
                           </div>
                         </div>
 
-                        <div className="pt-3 flex items-center justify-between text-[10px] text-zinc-500 border-t border-zinc-200/60 dark:border-white/5">
-                          <span>Criado em {new Date(emp.created_at).toLocaleDateString('pt-BR')}</span>
-                          <span className="capitalize">Cadência: {chaves.auto_sync_cadence || 'manual'}</span>
+                        {/* AÇÕES NO CARD */}
+                        <div className="flex items-center gap-2 pt-2 border-t border-white/5">
+                          <button
+                            type="button"
+                            onClick={() => handleAbrirModalChaves(emp)}
+                            className="flex-1 py-2 px-3 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                          >
+                            <Settings2 size={13} />
+                            <span>Configurar APIs</span>
+                          </button>
+
+                          <a
+                            href={`/${emp.slug}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white transition-colors cursor-pointer"
+                            title="Abrir Portal do Paciente"
+                          >
+                            <ExternalLink size={14} />
+                          </a>
                         </div>
-                      </div>
+                      </motion.div>
                     );
-                  })
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeMasterTab === "instancias" && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">         
-            <div className="bg-white/80 dark:bg-white/[0.04] backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-8 rounded-[2.5rem] shadow-sm h-fit space-y-6">           
-              <div className="flex items-center gap-3 border-b border-zinc-200/80 dark:border-white/10 pb-4">
-                  <Database className="text-[#86a621] dark:text-[#9FC131]" size={22} />
-                  <h3 className="font-black text-zinc-950 dark:text-white text-base tracking-tight">Nova Instância</h3>           
-              </div>
-              
-              <form onSubmit={handleProvisionar} className="space-y-4">             
-                <div className="space-y-1.5">               
-                  <label className="text-[10px] font-extrabold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest ml-1">Nome da Organização</label>               
-                  <input 
-                    required 
-                    type="text" 
-                    value={nome} 
-                    onChange={(e) => setNome(e.target.value)} 
-                    placeholder="Ex: Clínica Gastro Prime" 
-                    className="w-full min-h-[48px] px-4 py-3 bg-zinc-50 dark:bg-black/40 border border-zinc-200 dark:border-white/10 rounded-2xl text-sm font-medium outline-none text-zinc-950 dark:text-white focus:border-[#9FC131] transition-all" 
-                  />             
-                </div>             
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-extrabold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest ml-1">Login do Administrador</label>
-                  <input required value={usuario} onChange={(e) => setUsuario(e.target.value)} className="w-full min-h-[48px] px-4 py-3 bg-zinc-50 dark:bg-black/40 border border-zinc-200 dark:border-white/10 rounded-2xl text-sm text-zinc-950 dark:text-white outline-none focus:border-[#9FC131]" placeholder="admin-clinica" />
+                  })}
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-extrabold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest ml-1">Senha Inicial</label>
-                  <input required minLength={8} type="password" value={senha} onChange={(e) => setSenha(e.target.value)} className="w-full min-h-[48px] px-4 py-3 bg-zinc-50 dark:bg-black/40 border border-zinc-200 dark:border-white/10 rounded-2xl text-sm text-zinc-950 dark:text-white outline-none focus:border-[#9FC131]" placeholder="Mínimo 8 caracteres" />
-                </div>
-                <div className="space-y-1.5">               
-                  <label className="text-[10px] font-extrabold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest ml-1">Slug da URL (Identificador)</label>               
-                  <input 
-                    required 
-                    type="text" 
-                    value={slug} 
-                    onChange={(e) => setSlug(e.target.value)} 
-                    placeholder="ex: gastro-prime" 
-                    className="w-full min-h-[48px] px-4 py-3 bg-zinc-50 dark:bg-black/40 border border-zinc-200 dark:border-white/10 rounded-2xl text-sm font-medium outline-none text-zinc-950 dark:text-white focus:border-[#9FC131] transition-all lowercase" 
-                  />             
-                </div>             
+              )}
+            </motion.div>
+          )}
 
-                <button 
-                  type="submit" 
-                  disabled={loading} 
-                  className="w-full min-h-[48px] mt-4 bg-zinc-950 hover:bg-black dark:bg-[#9FC131] dark:hover:bg-[#86a621] text-white dark:text-black font-extrabold text-xs uppercase tracking-widest rounded-2xl transition-all flex items-center justify-center gap-2 shadow-md disabled:opacity-50"
-                >               
-                  {loading ? <Activity size={16} className="animate-spin" /> : <Plus size={16} />} 
-                  {loading ? "Criando Ambiente..." : "Provisionar Empresa"}             
-                </button>           
-              </form>         
-            </div>         
-
-            <div className="lg:col-span-2 bg-white/80 dark:bg-white/[0.04] backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-8 rounded-[2.5rem] shadow-sm flex flex-col">           
-              <div className="flex items-center justify-between mb-6 border-b border-zinc-200/80 dark:border-white/10 pb-4">
-                  <div className="flex items-center gap-3">
-                      <Server className="text-blue-500" size={22} />
-                      <h3 className="font-black text-zinc-950 dark:text-white text-base tracking-tight">Ambientes Criados</h3>           
+          {/* TAB 2: NOVA INSTÂNCIA / TENANT */}
+          {activeTab === "nova_instancia" && (
+            <motion.div
+              key="tab-nova"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={spring}
+              className="max-w-2xl mx-auto"
+            >
+              <form
+                onSubmit={handleCriarInstancia}
+                className="bg-white/[0.04] border border-white/[0.08] backdrop-blur-2xl rounded-3xl p-6 md:p-8 space-y-5 shadow-2xl"
+              >
+                <div className="flex items-center gap-3 border-b border-white/[0.08] pb-4">
+                  <div className="w-10 h-10 rounded-2xl bg-[#9FC131]/10 border border-[#9FC131]/30 text-[#9FC131] flex items-center justify-center font-bold">
+                    <Plus size={20} strokeWidth={2.5} />
                   </div>
-                  <div className="text-[10px] font-extrabold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest bg-zinc-100 dark:bg-white/5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-white/5">
-                      {empresas.length} Instâncias
+                  <div>
+                    <h3 className="text-lg font-black text-white">Provisionar Nova Clínica</h3>
+                    <p className="text-xs text-zinc-400">
+                      Cadastre a empresa, defina o slug de acesso e crie o usuário master do cliente.
+                    </p>
                   </div>
-              </div>
-
-              <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-4 max-h-[520px]">             
-                {empresas.map(emp => (               
-                  <div key={emp.id} className="p-5 bg-zinc-50/70 dark:bg-black/40 border border-zinc-200/80 dark:border-white/5 hover:border-zinc-300 dark:hover:border-white/20 transition-colors rounded-2xl flex items-center justify-between gap-4">                 
-                    <div className="flex items-center gap-4">                   
-                      <div className="w-12 h-12 bg-white dark:bg-white/5 border border-zinc-200 dark:border-white/10 rounded-2xl flex items-center justify-center text-[#86a621] dark:text-[#9FC131]">
-                          <Building2 size={20} />
-                      </div>                   
-                      <div>                     
-                        <h4 className="font-black text-base text-zinc-950 dark:text-white">{emp.nome}</h4>                     
-                        <p className="text-[11px] text-zinc-500 font-mono tracking-wider">/{emp.slug}</p>                   
-                      </div>                 
-                    </div>                 
-
-                    <button
-                      onClick={() => handleInspectCompany(emp)}
-                      className="min-h-[40px] px-4 py-2 bg-zinc-950 dark:bg-white/10 text-white hover:bg-black dark:hover:bg-white/20 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors flex items-center gap-2"
-                    >
-                      <Settings2 size={14} /> Chaves API
-                    </button>               
-                  </div>             
-                ))}           
-              </div>         
-            </div>       
-          </div>
-        )}
-      </div>     
-
-      {/* MODAL COMPLETO DE CONFIGURAÇÃO DE APIS E CHAVES POR EMPRESA */}
-      {selectedEmpresa && (
-        <div className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-md p-4 sm:p-6 flex items-center justify-center" onClick={() => setSelectedEmpresa(null)}>
-          <div className="bg-white dark:bg-[#0d0d10] border border-zinc-200/80 dark:border-white/10 rounded-[2.5rem] p-6 sm:p-8 max-w-3xl w-full shadow-2xl space-y-6 text-zinc-950 dark:text-white max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-            
-            <div className="flex justify-between items-center border-b border-zinc-200/80 dark:border-white/10 pb-4 flex-shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-[#9FC131]/20 text-[#86a621] dark:text-[#9FC131] flex items-center justify-center">
-                  <Settings2 size={24} />
-                </div>
-                <div>
-                  <h3 className="text-xl font-black text-zinc-950 dark:text-white">{selectedEmpresa.nome}</h3>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400">Configuração completa de Push WhatsApp, Mercado Pago e ERP Medicalsys.</p>
-                </div>
-              </div>
-              <button onClick={() => setSelectedEmpresa(null)} className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-full">
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="space-y-6 overflow-y-auto custom-scrollbar pr-2 flex-1">
-              
-              {/* SEÇÃO 1: ENDPOINT DE PUSH RM CHAT (WHATSAPP) */}
-              <div className="p-6 bg-emerald-50/70 dark:bg-gradient-to-br dark:from-green-950/30 dark:to-black/60 border border-emerald-200 dark:border-green-500/30 rounded-3xl space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <MessageSquare size={18} className="text-emerald-600 dark:text-green-400" />
-                    <h4 className="text-sm font-black text-emerald-900 dark:text-green-300 uppercase tracking-widest">
-                      Endpoint de Push · RM Chat API (WhatsApp)
-                    </h4>
-                  </div>
-                  <span className="text-[10px] font-bold text-zinc-600 dark:text-zinc-400 uppercase bg-white/80 dark:bg-black/50 px-3 py-1 rounded-full border border-zinc-200 dark:border-white/10">
-                    Webhook Exclusivo
-                  </span>
                 </div>
 
-                <p className="text-xs text-emerald-800/80 dark:text-zinc-300 leading-relaxed">
-                  Defina o link completo do webhook de push da RM Chat exclusivo para <strong>{selectedEmpresa.nome}</strong>.
-                </p>
-
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest block">
-                    URL do Webhook Push RM Chat:
-                  </label>
-                  <input
-                    type="url"
-                    value={empresaChaves.rmchat_webhook_url || ""}
-                    onChange={(e) => setEmpresaChaves({ ...empresaChaves, rmchat_webhook_url: e.target.value })}
-                    placeholder="https://acessoapi.rmchat.com.br/w/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                    className="w-full min-h-[48px] px-4 py-3 bg-white dark:bg-black/60 border border-emerald-300 dark:border-green-500/30 rounded-2xl text-xs font-mono text-emerald-950 dark:text-green-200 outline-none focus:border-emerald-500 transition-all placeholder:text-zinc-400"
-                  />
-                </div>
-
-                <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                  <div className="flex-1">
+                <div className="space-y-4 text-xs">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block ml-1">
+                      Nome da Clínica / Hospital *
+                    </label>
                     <input
+                      required
                       type="text"
-                      value={testNumber}
-                      onChange={(e) => setTestNumber(e.target.value)}
-                      placeholder="Telefone de teste (Ex: 5583999999999)"
-                      className="w-full min-h-[44px] px-4 py-2.5 bg-white dark:bg-black/40 border border-zinc-200 dark:border-white/10 rounded-xl text-xs font-mono text-zinc-900 dark:text-zinc-200 outline-none"
+                      placeholder="Ex: Clínica GastroCare Parnamirim"
+                      value={novaEmpresa.nome}
+                      onChange={(e) => {
+                        const nome = e.target.value;
+                        const autoSlug = nome
+                          .toLowerCase()
+                          .normalize("NFD")
+                          .replace(/[\u0300-\u036f]/g, "")
+                          .replace(/[^a-z0-9]/g, "-")
+                          .replace(/-+/g, "-")
+                          .replace(/^-|-$/g, "");
+                        setNovaEmpresa({ ...novaEmpresa, nome, slug: autoSlug });
+                      }}
+                      className="w-full px-4 py-3 bg-black/50 border border-white/10 rounded-xl font-medium outline-none focus:border-[#9FC131] text-white"
                     />
                   </div>
+
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block ml-1">
+                        Slug de Acesso URL *
+                      </label>
+                      <input
+                        required
+                        type="text"
+                        placeholder="gastrocare"
+                        value={novaEmpresa.slug}
+                        onChange={(e) => setNovaEmpresa({ ...novaEmpresa, slug: e.target.value.toLowerCase().trim() })}
+                        className="w-full px-4 py-3 bg-black/50 border border-white/10 rounded-xl font-mono outline-none focus:border-[#9FC131] text-white"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block ml-1">
+                        Subdomínio (Opcional)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="gastrocare.rmcare.com.br"
+                        value={novaEmpresa.subdominio}
+                        onChange={(e) => setNovaEmpresa({ ...novaEmpresa, subdominio: e.target.value.trim() })}
+                        className="w-full px-4 py-3 bg-black/50 border border-white/10 rounded-xl font-mono outline-none focus:border-[#9FC131] text-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block ml-1">
+                        E-mail de Contato
+                      </label>
+                      <input
+                        type="email"
+                        placeholder="contato@gastrocare.com"
+                        value={novaEmpresa.email}
+                        onChange={(e) => setNovaEmpresa({ ...novaEmpresa, email: e.target.value.trim() })}
+                        className="w-full px-4 py-3 bg-black/50 border border-white/10 rounded-xl font-medium outline-none focus:border-[#9FC131] text-white"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block ml-1">
+                        WhatsApp Oficial
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="5583999999999"
+                        value={novaEmpresa.telefone}
+                        onChange={(e) => setNovaEmpresa({ ...novaEmpresa, telefone: e.target.value.trim() })}
+                        className="w-full px-4 py-3 bg-black/50 border border-white/10 rounded-xl font-medium outline-none focus:border-[#9FC131] text-white"
+                      />
+                    </div>
+                  </div>
+
+                  {/* CREDENCIAIS INICIAIS DO ADMINISTRADOR */}
+                  <div className="p-4 bg-white/[0.02] border border-white/10 rounded-2xl space-y-3 pt-3">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-zinc-300 block">
+                      👤 Usuário Inicial de Acesso do Administrador
+                    </span>
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block ml-1">
+                          Usuário (Login) *
+                        </label>
+                        <input
+                          required
+                          type="text"
+                          placeholder="admin.gastro"
+                          value={novaEmpresa.admin_usuario}
+                          onChange={(e) => setNovaEmpresa({ ...novaEmpresa, admin_usuario: e.target.value.toLowerCase().trim() })}
+                          className="w-full px-4 py-3 bg-black/50 border border-white/10 rounded-xl font-medium outline-none focus:border-[#9FC131] text-white"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block ml-1">
+                          Senha Provisória *
+                        </label>
+                        <input
+                          required
+                          type="text"
+                          placeholder="Mudar@12345"
+                          value={novaEmpresa.admin_senha}
+                          onChange={(e) => setNovaEmpresa({ ...novaEmpresa, admin_senha: e.target.value })}
+                          className="w-full px-4 py-3 bg-black/50 border border-white/10 rounded-xl font-mono outline-none focus:border-[#9FC131] text-white"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-3 border-t border-white/10">
                   <button
                     type="button"
-                    onClick={handleTestPush}
-                    disabled={testingPush || !empresaChaves.rmchat_webhook_url}
-                    className="min-h-[44px] px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 flex-shrink-0 shadow-md"
+                    onClick={() => setActiveTab("clinicas")}
+                    className="px-5 py-2.5 rounded-xl border border-white/10 text-xs font-bold hover:bg-white/5 cursor-pointer"
                   >
-                    {testingPush ? <Activity size={14} className="animate-spin" /> : <Send size={14} />}
-                    {testingPush ? "Testando..." : "Testar Push no Servidor"}
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={creatingTenant}
+                    className="px-6 py-2.5 bg-[#9FC131] hover:bg-[#8eb025] text-black font-black text-xs uppercase rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {creatingTenant ? <Activity size={14} className="animate-spin" /> : <Plus size={14} />}
+                    <span>Criar e Provisionar</span>
                   </button>
                 </div>
+              </form>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </main>
 
-                {testPushResult && (
-                  <div className={`p-3 rounded-xl text-xs font-bold flex items-center gap-2 ${
-                    testPushResult.success ? 'bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30' : 'bg-red-500/20 text-red-800 dark:text-red-300 border border-red-500/30'
-                  }`}>
-                    {testPushResult.success ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
-                    <span>{testPushResult.message}</span>
+      {/* MODAL ULTRA MODERNO DE CONFIGURAÇÃO DE CHAVES & APIS */}
+      <AnimatePresence>
+        {editingEmpresa && (
+          <div
+            className="fixed inset-0 z-[99999] bg-black/70 backdrop-blur-md p-4 flex items-center justify-center"
+            onClick={() => setEditingEmpresa(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-[#0e1118]/95 backdrop-blur-3xl rounded-[2.5rem] p-6 md:p-8 max-w-2xl w-full shadow-2xl border border-white/15 space-y-5 max-h-[90vh] overflow-y-auto custom-scrollbar"
+            >
+              <div className="flex justify-between items-start border-b border-white/10 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-white/10 border border-white/15 text-white flex items-center justify-center">
+                    <Key size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-white tracking-tight">
+                      APIs & Credenciais: {editingEmpresa.nome}
+                    </h3>
+                    <p className="text-xs text-zinc-400 mt-0.5 font-mono">
+                      slug: {editingEmpresa.slug} • id: {editingEmpresa.id}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setEditingEmpresa(null)}
+                  className="p-2 text-zinc-400 hover:text-white rounded-full cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* ABAS DO MODAL */}
+              <div className="flex p-1 bg-white/5 border border-white/10 rounded-2xl gap-1">
+                {[
+                  { id: "rmchat", label: "⚡ RM Chat / Webhook", icon: Zap },
+                  { id: "mercadopago", label: "💳 Mercado Pago", icon: CreditCard },
+                  { id: "medicalsys", label: "🏥 ERP MedicalSYS", icon: Server }
+                ].map((tb) => {
+                  const isSel = modalSubTab === tb.id;
+                  const Icon = tb.icon;
+                  return (
+                    <button
+                      key={tb.id}
+                      type="button"
+                      onClick={() => {
+                        playDopamineSound("click");
+                        setModalSubTab(tb.id);
+                      }}
+                      className={`flex-1 py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                        isSel ? "bg-white text-black shadow-md" : "text-zinc-400 hover:text-white"
+                      }`}
+                    >
+                      <Icon size={13} />
+                      <span>{tb.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* CONTEÚDO DAS ABAS */}
+              <div className="space-y-4 text-xs pt-1">
+                {/* ABA 1: RM CHAT WEBHOOK */}
+                {modalSubTab === "rmchat" && (
+                  <div className="space-y-4">
+                    <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-xs text-emerald-300 space-y-1">
+                      <div className="font-bold flex items-center gap-1.5">
+                        <Zap size={14} /> Integração com RM Chat & N8N Webhook
+                      </div>
+                      <p className="text-[11px] opacity-80 leading-relaxed">
+                        As notificações de confirmação, lembretes e cancelamentos serão enviadas para esta URL via requisição HTTP POST em formato JSON.
+                      </p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block ml-1">
+                        URL do Webhook de Disparo (RM Chat / N8N / Webhook)
+                      </label>
+                      <input
+                        type="url"
+                        placeholder="https://n8n.seuservidor.com/webhook/rmchat-disparo"
+                        value={formKeys.rmchat_webhook_url}
+                        onChange={(e) => setFormKeys({ ...formKeys, rmchat_webhook_url: e.target.value })}
+                        className="w-full px-4 py-3 bg-black/60 border border-white/10 rounded-xl font-mono text-xs outline-none focus:border-[#9FC131] text-white"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1">
+                      <button
+                        type="button"
+                        onClick={handleTestarPushRmChat}
+                        disabled={testPushLoading || !formKeys.rmchat_webhook_url}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
+                      >
+                        {testPushLoading ? <Activity size={13} className="animate-spin" /> : <Play size={11} fill="currentColor" />}
+                        <span>{testPushLoading ? "Enviando teste..." : "⚡ Testar Disparo Webhook"}</span>
+                      </button>
+                    </div>
+
+                    {testPushResult && (
+                      <div className={`p-4 rounded-2xl text-xs border ${
+                        testPushResult.success
+                          ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300"
+                          : "bg-red-500/15 border-red-500/30 text-red-300"
+                      }`}>
+                        <div className="font-bold flex items-center gap-2">
+                          {testPushResult.success ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+                          <span>{testPushResult.message}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ABA 2: MERCADO PAGO */}
+                {modalSubTab === "mercadopago" && (
+                  <div className="space-y-4">
+                    <div className="p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl text-xs text-indigo-300 space-y-1">
+                      <div className="font-bold flex items-center gap-1.5">
+                        <CreditCard size={14} /> Credenciais do Mercado Pago (Pix & Cartão)
+                      </div>
+                      <p className="text-[11px] opacity-80 leading-relaxed">
+                        Chaves de produção para emissão de Pix Copia e Cola instantâneo e aprovação imediata no checkout.
+                      </p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block ml-1">
+                        Access Token (Produção)
+                      </label>
+                      <input
+                        type="password"
+                        placeholder="APP_USR-..."
+                        value={formKeys.mp_access_token}
+                        onChange={(e) => setFormKeys({ ...formKeys, mp_access_token: e.target.value })}
+                        className="w-full px-4 py-3 bg-black/60 border border-white/10 rounded-xl font-mono text-xs outline-none focus:border-[#9FC131] text-white"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block ml-1">
+                        Public Key (Produção)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="APP_USR-..."
+                        value={formKeys.mp_public_key}
+                        onChange={(e) => setFormKeys({ ...formKeys, mp_public_key: e.target.value })}
+                        className="w-full px-4 py-3 bg-black/60 border border-white/10 rounded-xl font-mono text-xs outline-none focus:border-[#9FC131] text-white"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* ABA 3: ERP MEDICALSYS */}
+                {modalSubTab === "medicalsys" && (
+                  <div className="space-y-4">
+                    <div className="p-4 bg-purple-500/10 border border-purple-500/20 rounded-2xl text-xs text-purple-300 space-y-1">
+                      <div className="font-bold flex items-center gap-1.5">
+                        <Server size={14} /> Integração com MedicalSYS ERP
+                      </div>
+                      <p className="text-[11px] opacity-80 leading-relaxed">
+                        Sincronização bidirecional de agendamentos e bloqueios de agenda em tempo real.
+                      </p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block ml-1">
+                        URL Base da API do MedicalSYS
+                      </label>
+                      <input
+                        type="url"
+                        placeholder="https://api.medicalsys.com.br/ws"
+                        value={formKeys.medicalsys_url}
+                        onChange={(e) => setFormKeys({ ...formKeys, medicalsys_url: e.target.value })}
+                        className="w-full px-4 py-3 bg-black/60 border border-white/10 rounded-xl font-mono text-xs outline-none focus:border-[#9FC131] text-white"
+                      />
+                    </div>
+
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block ml-1">
+                          Usuário ERP
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="ws_rmcare"
+                          value={formKeys.medicalsys_usuario}
+                          onChange={(e) => setFormKeys({ ...formKeys, medicalsys_usuario: e.target.value })}
+                          className="w-full px-4 py-3 bg-black/60 border border-white/10 rounded-xl font-mono text-xs outline-none focus:border-[#9FC131] text-white"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block ml-1">
+                          Senha ERP
+                        </label>
+                        <input
+                          type="password"
+                          placeholder="••••••••"
+                          value={formKeys.medicalsys_senha}
+                          onChange={(e) => setFormKeys({ ...formKeys, medicalsys_senha: e.target.value })}
+                          className="w-full px-4 py-3 bg-black/60 border border-white/10 rounded-xl font-mono text-xs outline-none focus:border-[#9FC131] text-white"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block ml-1">
+                          Código da Empresa no ERP
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="1"
+                          value={formKeys.medicalsys_cod_empresa}
+                          onChange={(e) => setFormKeys({ ...formKeys, medicalsys_cod_empresa: e.target.value })}
+                          className="w-full px-4 py-3 bg-black/60 border border-white/10 rounded-xl font-mono text-xs outline-none focus:border-[#9FC131] text-white"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block ml-1">
+                          Intervalo de Sincronização (minutos)
+                        </label>
+                        <input
+                          type="number"
+                          placeholder="15"
+                          value={formKeys.medicalsys_sync_interval}
+                          onChange={(e) =>
+                            setFormKeys({
+                              ...formKeys,
+                              medicalsys_sync_interval: parseInt(e.target.value, 10) || 15
+                            })
+                          }
+                          className="w-full px-4 py-3 bg-black/60 border border-white/10 rounded-xl font-mono text-xs outline-none focus:border-[#9FC131] text-white"
+                        />
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
 
-              {/* SEÇÃO 2: CADÊNCIA DE SINCRONIZAÇÃO AUTOMÁTICA */}
-              <div className="p-6 bg-zinc-50 dark:bg-black/40 border border-zinc-200/80 dark:border-white/10 rounded-3xl space-y-4">
-                <div className="flex items-center gap-2">
-                  <Clock size={18} className="text-purple-500" />
-                  <h4 className="text-sm font-black text-zinc-950 dark:text-white uppercase tracking-widest">
-                    Cadência de Sincronização Automática
-                  </h4>
-                </div>
-                <div className="grid sm:grid-cols-4 gap-2.5">
-                  {[
-                    { id: "manual", label: "Manual" },
-                    { id: "diario", label: "Diário" },
-                    { id: "semanal", label: "Semanal" },
-                    { id: "mensal", label: "Mensal" }
-                  ].map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setEmpresaChaves({ ...empresaChaves, auto_sync_cadence: item.id })}
-                      className={`p-3 rounded-xl border text-xs font-bold transition-all ${
-                        empresaChaves.auto_sync_cadence === item.id
-                          ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-sm"
-                          : "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400"
-                      }`}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
+              {/* BOTÕES DE SALVAR */}
+              <div className="flex justify-end gap-3 pt-3 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setEditingEmpresa(null)}
+                  disabled={savingKeys}
+                  className="px-5 py-2.5 rounded-xl border border-white/10 text-xs font-bold hover:bg-white/5 cursor-pointer"
+                >
+                  Fechar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSalvarChaves}
+                  disabled={savingKeys}
+                  className="px-6 py-2.5 bg-white hover:bg-zinc-200 text-black font-black text-xs uppercase rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {savingKeys ? <Activity size={14} className="animate-spin" /> : <Save size={14} />}
+                  <span>Salvar Alterações</span>
+                </button>
               </div>
-
-              {/* SEÇÃO 3: CREDENCIAIS MERCADO PAGO */}
-              <div className="p-6 bg-zinc-50 dark:bg-black/40 border border-zinc-200/80 dark:border-white/10 rounded-3xl space-y-4">
-                <div className="flex items-center gap-2">
-                  <CreditCard size={18} className="text-blue-500" />
-                  <h4 className="text-sm font-black text-zinc-950 dark:text-white uppercase tracking-widest">
-                    Mercado Pago (Pix & Checkout Transparente)
-                  </h4>
-                </div>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">
-                      Public Key
-                    </label>
-                    <input
-                      type="text"
-                      value={empresaChaves.mp_public_key || ""}
-                      onChange={(e) => setEmpresaChaves({ ...empresaChaves, mp_public_key: e.target.value })}
-                      placeholder="APP_USR-xxxxxxxx-xxxx..."
-                      className="w-full px-4 py-3 bg-white dark:bg-black/60 border border-zinc-200 dark:border-white/10 rounded-xl text-xs font-mono outline-none focus:border-[#9FC131]"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">
-                      Access Token
-                    </label>
-                    <input
-                      type="password"
-                      value={empresaChaves.mp_access_token || ""}
-                      onChange={(e) => setEmpresaChaves({ ...empresaChaves, mp_access_token: e.target.value })}
-                      placeholder="APP_USR-xxxxxxxx-xxxx..."
-                      className="w-full px-4 py-3 bg-white dark:bg-black/60 border border-zinc-200 dark:border-white/10 rounded-xl text-xs font-mono outline-none focus:border-[#9FC131]"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* SEÇÃO 4: MEDICALSYS ERP */}
-              <div className="p-6 bg-zinc-50 dark:bg-black/40 border border-zinc-200/80 dark:border-white/10 rounded-3xl space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Server size={18} className="text-indigo-500" />
-                    <h4 className="text-sm font-black text-zinc-950 dark:text-white uppercase tracking-widest">
-                      Medicalsys ERP Integrations
-                    </h4>
-                  </div>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(empresaChaves.medicalsys_enabled)}
-                      onChange={(e) => setEmpresaChaves({ ...empresaChaves, medicalsys_enabled: e.target.checked })}
-                      className="rounded"
-                    />
-                    <span className="text-xs font-bold text-zinc-700 dark:text-zinc-300">Sincronização Ativa</span>
-                  </label>
-                </div>
-
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">
-                      ID da Clínica no Medicalsys
-                    </label>
-                    <input
-                      type="text"
-                      value={empresaChaves.medicalsys_id_clinica || ""}
-                      onChange={(e) => setEmpresaChaves({ ...empresaChaves, medicalsys_id_clinica: e.target.value })}
-                      placeholder="Ex: 9"
-                      className="w-full px-4 py-3 bg-white dark:bg-black/60 border border-zinc-200 dark:border-white/10 rounded-xl text-xs font-mono outline-none focus:border-[#9FC131]"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">
-                      ID Padrão do Médico
-                    </label>
-                    <input
-                      type="text"
-                      value={empresaChaves.medicalsys_id_medico || ""}
-                      onChange={(e) => setEmpresaChaves({ ...empresaChaves, medicalsys_id_medico: e.target.value })}
-                      placeholder="Ex: 1"
-                      className="w-full px-4 py-3 bg-white dark:bg-black/60 border border-zinc-200 dark:border-white/10 rounded-xl text-xs font-mono outline-none focus:border-[#9FC131]"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">
-                      API Key
-                    </label>
-                    <input
-                      type="password"
-                      value={empresaChaves.medicalsys_apikey || ""}
-                      onChange={(e) => setEmpresaChaves({ ...empresaChaves, medicalsys_apikey: e.target.value })}
-                      placeholder="API Key Medicalsys"
-                      className="w-full px-4 py-3 bg-white dark:bg-black/60 border border-zinc-200 dark:border-white/10 rounded-xl text-xs font-mono outline-none focus:border-[#9FC131]"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">
-                      Customer API Key
-                    </label>
-                    <input
-                      type="password"
-                      value={empresaChaves.medicalsys_customer_apikey || ""}
-                      onChange={(e) => setEmpresaChaves({ ...empresaChaves, medicalsys_customer_apikey: e.target.value })}
-                      placeholder="Customer API Key Medicalsys"
-                      className="w-full px-4 py-3 bg-white dark:bg-black/60 border border-zinc-200 dark:border-white/10 rounded-xl text-xs font-mono outline-none focus:border-[#9FC131]"
-                    />
-                  </div>
-                </div>
-              </div>
-
-            </div>
-
-            <div className="flex justify-end gap-3 pt-4 border-t border-zinc-200/80 dark:border-white/10 flex-shrink-0">
-              <button onClick={() => setSelectedEmpresa(null)} className="px-6 py-3 min-h-[48px] rounded-xl border border-zinc-200 dark:border-white/10 text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
-                Cancelar
-              </button>
-              <button onClick={handleSaveCompanyKeys} disabled={savingKeys} className="px-8 py-3 min-h-[48px] bg-zinc-950 hover:bg-black dark:bg-[#9FC131] dark:hover:bg-[#86a621] text-white dark:text-black text-xs font-black uppercase tracking-widest flex items-center gap-2 shadow-lg rounded-xl transition-all">
-                {savingKeys ? <Activity size={14} className="animate-spin" /> : <Save size={14} />}
-                {savingKeys ? "Salvando..." : "Salvar Todas as Chaves"}
-              </button>
-            </div>
+            </motion.div>
           </div>
-        </div>
-      )}
-    </main>   
-  ); 
+        )}
+      </AnimatePresence>
+    </div>
+  );
 }

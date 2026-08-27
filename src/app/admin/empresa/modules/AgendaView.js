@@ -48,7 +48,8 @@ import {
   CalendarPlus,
   Stethoscope,
   Building2,
-  DollarSign
+  DollarSign,
+  ArrowRight
 } from "lucide-react";
 import {
   getHojeLocal,
@@ -75,6 +76,7 @@ import {
   actionDispararMensagemManualAdmin
 } from "@/actions/adminData";
 import { playDopamineSound, triggerHaptic } from "@/lib/dopamine";
+import { formatarTelefoneEnvio, formatarTelefoneExibicao } from "@/lib/phoneUtils";
 
 // Helper para cálculo de idade
 const calcularIdadeDataNasc = (dataNasc) => {
@@ -123,6 +125,16 @@ const minToTime = (min) => {
   return `${h}:${m}`;
 };
 
+// Helper para identificação de modalidade particular (apenas particular requer pagamento manual)
+const isItemParticular = (item) => {
+  if (!item) return false;
+  const mod = String(item.modalidade || item.convenio || "").toLowerCase().trim();
+  if (mod.includes("conv") || mod.includes("plano") || mod.includes("retorno") || mod.includes("cortesia")) {
+    return false;
+  }
+  return mod === "particular" || mod.includes("particular") || !mod;
+};
+
 const normalizeText = (t) =>
   String(t || "")
     .normalize("NFD")
@@ -137,11 +149,14 @@ export default function AgendaView({
   bloqueios = [],
   servicos = [],
   fetchAgendamentos,
+  fetchBloqueios,
   showToast,
   permissoes = [],
   isOwner = false
 }) {
   const [viewMode, setViewMode] = useState("cards");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState(new Date());
 
   useEffect(() => {
     try {
@@ -154,6 +169,37 @@ export default function AgendaView({
     } catch (e) {}
   }, []);
 
+  // Sincronizador Automático de 1 minuto (60s) para manter os dados atualizados em tempo real
+  useEffect(() => {
+    const autoSyncInterval = setInterval(async () => {
+      try {
+        if (fetchAgendamentos) await fetchAgendamentos();
+        if (fetchBloqueios) await fetchBloqueios();
+        setLastSyncedAt(new Date());
+      } catch (e) {
+        console.warn("Falha silenciosa no auto-sync da agenda:", e);
+      }
+    }, 60000);
+
+    return () => clearInterval(autoSyncInterval);
+  }, [fetchAgendamentos, fetchBloqueios]);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    playDopamineSound("click");
+    triggerHaptic("light");
+    try {
+      if (fetchAgendamentos) await fetchAgendamentos();
+      if (fetchBloqueios) await fetchBloqueios();
+      setLastSyncedAt(new Date());
+      if (showToast) showToast("Dados da agenda atualizados do banco com sucesso!");
+    } catch (err) {
+      if (showToast) showToast("Erro ao sincronizar dados com o banco.", "error");
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   // Verificação estrita de permissão para Ficha Clínica e Dados Sigilosos
   const temPermissaoSigiloClinico = useMemo(() => {
     if (isOwner) return true;
@@ -164,10 +210,11 @@ export default function AgendaView({
   const [searchTerm, setSearchTerm] = useState("");
   const [origemFilter, setOrigemFilter] = useState("todos");
   const [statusFilter, setStatusFilter] = useState("todos");
+  const [modalidadeFilter, setModalidadeFilter] = useState("todas");
   const [pagamentoFilter, setPagamentoFilter] = useState("todos");
   const [filterMedico, setFilterMedico] = useState("Todos");
 
-  // Ordenação de colunas da tabela de pacientes
+  // Ordenação de colunas da tabela e cards de pacientes
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
 
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -334,11 +381,6 @@ export default function AgendaView({
         ? a.enfermidades
         : [];
 
-      // Resolução Semântica Estrita:
-      // - medicoProfissional = Nome do Médico Humano ou "Corpo Clínico"
-      // - especialidade = Nome real da Especialidade Médica (Gastro, Endoscopia, Cardio)
-      // - tipoServico = Categoria ("Consulta" | "Exame" | "Retorno")
-      // - subtipoExame = Procedimento específico (se exame)
       let profLimpo = a.medico_profissional;
       let espLimpa = a.especialidade;
       let subLimpo = a.subtipo_exame;
@@ -434,11 +476,18 @@ export default function AgendaView({
         return item.tipo === origemFilter;
       })
       .filter((item) => {
+        if (modalidadeFilter === "todas") return true;
+        if (modalidadeFilter === "particular") return isItemParticular(item);
+        if (modalidadeFilter === "convenio") return !isItemParticular(item);
+        return true;
+      })
+      .filter((item) => {
         if (pagamentoFilter === "todos") return true;
         if (pagamentoFilter === "pago") return item.pago === true;
         if (pagamentoFilter === "pendente")
           return (
             item.pago === false &&
+            isItemParticular(item) &&
             item.tipo === "rmclick" &&
             item.statusAtendimento !== "cancelado"
           );
@@ -467,6 +516,9 @@ export default function AgendaView({
         } else if (sortConfig.key === "paciente") {
           valA = a.nomePaciente || "";
           valB = b.nomePaciente || "";
+        } else if (sortConfig.key === "data") {
+          valA = a.data || "";
+          valB = b.data || "";
         } else if (sortConfig.key === "origem") {
           valA = a.tipo || "";
           valB = b.tipo || "";
@@ -477,8 +529,8 @@ export default function AgendaView({
           valA = a.statusAtendimento || "";
           valB = b.statusAtendimento || "";
         } else if (sortConfig.key === "pagamento") {
-          valA = a.pago ? "pago" : "pendente";
-          valB = b.pago ? "pago" : "pendente";
+          valA = isItemParticular(a) ? (a.pago ? "pago" : "pendente") : (a.modalidade || "convenio");
+          valB = isItemParticular(b) ? (b.pago ? "pago" : "pendente") : (b.modalidade || "convenio");
         }
 
         const cmp = String(valA).localeCompare(String(valB), "pt-BR", { sensitivity: "base" });
@@ -498,6 +550,7 @@ export default function AgendaView({
     bloqueios,
     statusFilter,
     origemFilter,
+    modalidadeFilter,
     pagamentoFilter,
     filterMedico,
     searchTerm,
@@ -512,13 +565,17 @@ export default function AgendaView({
     }
     setSortConfig({ key, direction });
     playDopamineSound("click");
+    triggerHaptic("light");
   };
 
+  // Respeita fielmente a ordenação escolhida pelo usuário em "Pacientes do Dia" (ou padrão horário)
   const eventosAgendaMistaDiaria = useMemo(() => {
-    return listaUnificadaTodosPacientes
-      .filter((item) => item.data === selectedDay)
-      .sort((a, b) => (a.horario || "").localeCompare(b.horario || ""));
-  }, [listaUnificadaTodosPacientes, selectedDay]);
+    const doDia = listaUnificadaTodosPacientes.filter((item) => item.data === selectedDay);
+    if (!sortConfig.key) {
+      return [...doDia].sort((a, b) => (a.horario || "").localeCompare(b.horario || ""));
+    }
+    return doDia;
+  }, [listaUnificadaTodosPacientes, selectedDay, sortConfig]);
 
   // MOTOR UNIVERSAL DE CÁLCULO DE VAGAS E HORÁRIOS DISPONÍVEIS
   const calcularSlotsDisponiveis = ({
@@ -780,13 +837,13 @@ export default function AgendaView({
     try {
       const res = await actionAprovarPagamentoAgendamento(item.id);
       if (res?.success) {
-        showToast("Pagamento aprovado com sucesso! Confirmação enviada.");
+        if (showToast) showToast("Pagamento aprovado com sucesso! Confirmação enviada.");
         if (fetchAgendamentos) await fetchAgendamentos();
       } else {
-        showToast(res?.error || "Erro ao aprovar pagamento.", "error");
+        if (showToast) showToast(res?.error || "Erro ao aprovar pagamento.", "error");
       }
     } catch (e) {
-      showToast(`Erro: ${e.message}`, "error");
+      if (showToast) showToast(`Erro: ${e.message}`, "error");
     } finally {
       setApprovingPaymentId(null);
     }
@@ -810,13 +867,13 @@ export default function AgendaView({
         "Readequação operacional da grade de atendimentos da clínica";
 
       await actionCancelarAgendamentoAdmin(cancelModalItem.id, motivoFinal);
-      showToast("Agendamento cancelado. Horário liberado na agenda!");
+      if (showToast) showToast("Agendamento cancelado. Horário liberado na agenda!");
       if (fetchAgendamentos) await fetchAgendamentos();
       setCancelModalItem(null);
       setReason("");
       setConfirmarCancelamentoStep(false);
     } catch (err) {
-      showToast(`Erro ao cancelar: ${err.message}`, "error");
+      if (showToast) showToast(`Erro ao cancelar: ${err.message}`, "error");
     } finally {
       setIsProcessing(false);
     }
@@ -852,7 +909,7 @@ export default function AgendaView({
 
   const handleConfirmarRemarcacao = async () => {
     if (!rescheduleModalItem || !rescheduleSelectedDate || !rescheduleSelectedTime) {
-      showToast("Selecione uma nova data e um novo horário disponível.", "error");
+      if (showToast) showToast("Selecione uma nova data e um novo horário disponível.", "error");
       return;
     }
     setIsProcessing(true);
@@ -864,11 +921,11 @@ export default function AgendaView({
         rescheduleSelectedDate,
         rescheduleSelectedTime
       );
-      showToast("Agendamento remarcado com sucesso! Notificação enviada ao paciente.");
+      if (showToast) showToast("Agendamento remarcado com sucesso! Notificação enviada ao paciente.");
       if (fetchAgendamentos) await fetchAgendamentos();
       setRescheduleModalItem(null);
     } catch (err) {
-      showToast(`Erro ao remarcar: ${err.message}`, "error");
+      if (showToast) showToast(`Erro ao remarcar: ${err.message}`, "error");
     } finally {
       setIsProcessing(false);
     }
@@ -918,7 +975,7 @@ export default function AgendaView({
         }));
         setCpfAutofillFound(true);
         playDopamineSound("unlock");
-        showToast("Paciente identificado no banco da clínica!");
+        if (showToast) showToast("Paciente identificado no banco da clínica!");
       }
     }
   };
@@ -941,7 +998,7 @@ export default function AgendaView({
       !novoAgendForm.data_agendamento ||
       !novoAgendForm.horario_agendamento
     ) {
-      showToast("Preencha o nome do paciente, data e horário.", "error");
+      if (showToast) showToast("Preencha o nome do paciente, data e horário.", "error");
       return;
     }
 
@@ -972,14 +1029,14 @@ export default function AgendaView({
       });
 
       if (res?.success) {
-        showToast("Agendamento interno registrado com sucesso!");
+        if (showToast) showToast("Agendamento interno registrado com sucesso!");
         if (fetchAgendamentos) await fetchAgendamentos();
         setIsNovoAgendamentoOpen(false);
       } else {
-        showToast(res?.error || "Erro ao criar agendamento interno.", "error");
+        if (showToast) showToast(res?.error || "Erro ao criar agendamento interno.", "error");
       }
     } catch (e) {
-      showToast(`Erro: ${e.message}`, "error");
+      if (showToast) showToast(`Erro: ${e.message}`, "error");
     } finally {
       setIsProcessing(false);
     }
@@ -1054,7 +1111,7 @@ export default function AgendaView({
       setEnfermidadesPaciente((prev) => [...prev, limpo]);
     }
     setSearchEnfermidade("");
-    showToast(`"${limpo}" adicionada ao catálogo e vinculada ao paciente!`);
+    if (showToast) showToast(`"${limpo}" adicionada ao catálogo e vinculada ao paciente!`);
   };
 
   const handleRemoveEnfermidadeFromPatient = (enfNome) => {
@@ -1064,7 +1121,7 @@ export default function AgendaView({
 
   const handleSaveSensitiveData = async () => {
     if (!temPermissaoSigiloClinico) {
-      showToast("Acesso negado: sem permissão de sigilo clínico.", "error");
+      if (showToast) showToast("Acesso negado: sem permissão de sigilo clínico.", "error");
       return;
     }
     if (!sensitiveModalItem) return;
@@ -1079,10 +1136,10 @@ export default function AgendaView({
       });
 
       if (fetchAgendamentos) await fetchAgendamentos();
-      showToast("Ficha clínica e enfermidades salvas com sucesso!");
+      if (showToast) showToast("Ficha clínica e enfermidades salvas com sucesso!");
       setSensitiveModalItem(null);
     } catch (e) {
-      showToast(`Erro ao salvar dados clínicos: ${e.message}`, "error");
+      if (showToast) showToast(`Erro ao salvar dados clínicos: ${e.message}`, "error");
     } finally {
       setIsProcessing(false);
     }
@@ -1103,7 +1160,7 @@ export default function AgendaView({
   // Salvar edição de mensagem na fila
   const handleSalvarEdicaoMensagem = async (msgId) => {
     if (!editMsgTexto.trim()) {
-      showToast("O texto da mensagem não pode estar vazio.", "error");
+      if (showToast) showToast("O texto da mensagem não pode estar vazio.", "error");
       return;
     }
     setIsProcessing(true);
@@ -1133,9 +1190,9 @@ export default function AgendaView({
       );
 
       setEditingMsgId(null);
-      showToast("Mensagem atualizada na fila com sucesso!");
+      if (showToast) showToast("Mensagem atualizada na fila com sucesso!");
     } catch (err) {
-      showToast(`Erro ao atualizar mensagem: ${err.message}`, "error");
+      if (showToast) showToast(`Erro ao atualizar mensagem: ${err.message}`, "error");
     } finally {
       setIsProcessing(false);
     }
@@ -1150,9 +1207,9 @@ export default function AgendaView({
       setMensagensAgendamento((prev) =>
         prev.map((m) => (m.id === msgId ? { ...m, status: "cancelada" } : m))
       );
-      showToast("Envio da mensagem cancelado!");
+      if (showToast) showToast("Envio da mensagem cancelado!");
     } catch (err) {
-      showToast(`Erro ao cancelar mensagem: ${err.message}`, "error");
+      if (showToast) showToast(`Erro ao cancelar mensagem: ${err.message}`, "error");
     } finally {
       setIsProcessing(false);
     }
@@ -1168,9 +1225,9 @@ export default function AgendaView({
       setMensagensAgendamento((prev) =>
         prev.map((m) => (m.id === msgId ? { ...m, status: "enviada" } : m))
       );
-      showToast("Mensagem disparada com sucesso para o WhatsApp!");
+      if (showToast) showToast("Mensagem disparada com sucesso para o WhatsApp!");
     } catch (err) {
-      showToast(`Erro ao disparar: ${err.message}`, "error");
+      if (showToast) showToast(`Erro ao disparar: ${err.message}`, "error");
     } finally {
       setDisparandoMsgId(null);
     }
@@ -1179,11 +1236,11 @@ export default function AgendaView({
   // Criar e enfileirar nova mensagem personalizada para este paciente/exame
   const handleCriarMensagemAvulsa = async () => {
     if (!novaMsgTexto.trim()) {
-      showToast("Digite o conteúdo da mensagem.", "error");
+      if (showToast) showToast("Digite o conteúdo da mensagem.", "error");
       return;
     }
     if (!sensitiveModalItem?.telefonePaciente) {
-      showToast("Este paciente não possui telefone de WhatsApp cadastrado.", "error");
+      if (showToast) showToast("Este paciente não possui telefone de WhatsApp cadastrado.", "error");
       return;
     }
 
@@ -1212,9 +1269,9 @@ export default function AgendaView({
       setIsCriandoMensagem(false);
       setNovaMsgTexto("");
       setNovaMsgAnexoUrl("");
-      showToast("Nova mensagem agendada com sucesso!");
+      if (showToast) showToast("Nova mensagem agendada com sucesso!");
     } catch (err) {
-      showToast(`Erro ao agendar mensagem: ${err.message}`, "error");
+      if (showToast) showToast(`Erro ao agendar mensagem: ${err.message}`, "error");
     } finally {
       setIsProcessing(false);
     }
@@ -1264,9 +1321,15 @@ export default function AgendaView({
                 <CalendarDays size={24} strokeWidth={2} />
               </div>
               <div>
-                <h2 className="text-2xl md:text-3xl font-black text-zinc-950 dark:text-white tracking-tight">
-                  Agenda de Atendimentos
-                </h2>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-2xl md:text-3xl font-black text-zinc-950 dark:text-white tracking-tight">
+                    Agenda de Atendimentos
+                  </h2>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/50">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Auto-sync ativo (60s)
+                  </span>
+                </div>
                 <p className="text-xs md:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5 font-medium">
                   Visão consolidada de consultas e exames com proteção contra conflitos de horários.
                 </p>
@@ -1274,6 +1337,18 @@ export default function AgendaView({
             </div>
 
             <div className="flex items-center gap-3 flex-wrap">
+              {/* BOTÃO ATUALIZAR DADOS DO BANCO */}
+              <button
+                type="button"
+                onClick={handleManualRefresh}
+                disabled={isRefreshing}
+                className="min-h-[40px] px-3.5 py-2 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 font-extrabold text-xs rounded-2xl flex items-center gap-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                title="Puxar novos dados do banco agora"
+              >
+                <RefreshCw size={14} className={isRefreshing ? "animate-spin text-[#9FC131]" : ""} />
+                <span>{isRefreshing ? "Atualizando..." : "Atualizar"}</span>
+              </button>
+
               {/* BOTÃO NOVO AGENDAMENTO INTERNO */}
               <button
                 type="button"
@@ -1313,7 +1388,7 @@ export default function AgendaView({
                         ? "bg-white dark:bg-zinc-900 text-zinc-950 dark:text-white shadow-sm"
                         : "text-zinc-400 hover:text-zinc-700"
                     }`}
-                    title="Visão em Tabela"
+                    title="Visão em Lista / Tabela"
                   >
                     <List size={16} />
                   </button>
@@ -1322,35 +1397,35 @@ export default function AgendaView({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3.5 items-end pt-1">
-            <div className="lg:col-span-3 space-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 items-end pt-1">
+            <div className="space-y-1">
               <label className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-widest ml-1">
                 Buscar Paciente
               </label>
               <div className="relative">
                 <Search
-                  size={16}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400"
+                  size={15}
+                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400"
                 />
                 <input
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Nome, CPF ou Telefone..."
-                  className="w-full min-h-[48px] pl-10 pr-4 py-2.5 bg-white/90 dark:bg-zinc-900/90 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl text-xs font-semibold text-zinc-900 dark:text-white outline-none focus:border-[#9FC131] transition-all"
+                  placeholder="Nome, CPF..."
+                  className="w-full min-h-[44px] pl-9 pr-4 py-2 bg-white/90 dark:bg-zinc-900/90 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl text-xs font-semibold text-zinc-900 dark:text-white outline-none focus:border-[#9FC131] transition-all"
                 />
                 {searchTerm && (
                   <button
                     onClick={() => setSearchTerm("")}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700 cursor-pointer"
                   >
-                    <X size={16} />
+                    <X size={15} />
                   </button>
                 )}
               </div>
             </div>
 
-            <div className="lg:col-span-2 space-y-1">
+            <div className="space-y-1">
               <CustomSelect
                 label="Origem da Agenda"
                 value={origemFilter}
@@ -1363,7 +1438,20 @@ export default function AgendaView({
               />
             </div>
 
-            <div className="lg:col-span-2 space-y-1">
+            <div className="space-y-1">
+              <CustomSelect
+                label="Modalidade"
+                value={modalidadeFilter}
+                onChange={setModalidadeFilter}
+                options={[
+                  { value: "todas", label: "Todas Modalidades" },
+                  { value: "particular", label: "Particular" },
+                  { value: "convenio", label: "Convênio" }
+                ]}
+              />
+            </div>
+
+            <div className="space-y-1">
               <CustomSelect
                 label="Status Atendimento"
                 value={statusFilter}
@@ -1377,20 +1465,20 @@ export default function AgendaView({
               />
             </div>
 
-            <div className="lg:col-span-2 space-y-1">
+            <div className="space-y-1">
               <CustomSelect
                 label="Status Pagamento"
                 value={pagamentoFilter}
                 onChange={setPagamentoFilter}
                 options={[
-                  { value: "todos", label: "Todos os Pagamentos" },
+                  { value: "todos", label: "Todos Pagamentos" },
                   { value: "pendente", label: "Pagamento Pendente" },
                   { value: "pago", label: "Pago / Aprovado" }
                 ]}
               />
             </div>
 
-            <div className="lg:col-span-3 space-y-1">
+            <div className="space-y-1">
               <CustomSelect
                 label="Médico / Especialidade"
                 value={filterMedico}
@@ -1400,6 +1488,92 @@ export default function AgendaView({
               />
             </div>
           </div>
+
+          {/* BARRA DE ORDENAÇÃO RÁPIDA (EXIBIDA APENAS NO MODO CARDS) */}
+          {viewMode === "cards" && (
+            <div className="flex items-center justify-between gap-2 pt-2 border-t border-zinc-200/50 dark:border-zinc-800/60 flex-wrap">
+            <div className="flex items-center gap-1.5 text-xs text-zinc-500 font-semibold flex-wrap">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-400 flex items-center gap-1">
+                <ArrowUpDown size={12} /> Ordenar:
+              </span>
+              <button
+                type="button"
+                onClick={() => handleSort("horario")}
+                className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                  sortConfig.key === "horario"
+                    ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs"
+                    : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300"
+                }`}
+              >
+                <span>Horário</span>
+                {sortConfig.key === "horario" && (
+                  sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSort("paciente")}
+                className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                  sortConfig.key === "paciente"
+                    ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs"
+                    : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300"
+                }`}
+              >
+                <span>Paciente (Nome)</span>
+                {sortConfig.key === "paciente" && (
+                  sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                )}
+              </button>
+
+              {subTab === "lista" && (
+                <button
+                  type="button"
+                  onClick={() => handleSort("data")}
+                  className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                    sortConfig.key === "data"
+                      ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs"
+                      : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300"
+                  }`}
+                >
+                  <span>Data</span>
+                  {sortConfig.key === "data" && (
+                    sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                  )}
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => handleSort("especialista")}
+                className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                  sortConfig.key === "especialista"
+                    ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs"
+                    : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300"
+                }`}
+              >
+                <span>Especialista</span>
+                {sortConfig.key === "especialista" && (
+                  sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                )}
+              </button>
+
+              {sortConfig.key && (
+                <button
+                  type="button"
+                  onClick={() => setSortConfig({ key: null, direction: "asc" })}
+                  className="text-[10px] text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 underline font-bold ml-1 cursor-pointer"
+                >
+                  Limpar Ordenação
+                </button>
+              )}
+            </div>
+
+            <div className="text-[10px] text-zinc-400 font-mono">
+              Última atualização: {lastSyncedAt.toLocaleTimeString("pt-BR")}
+            </div>
+          </div>
+          )}
         </div>
 
         {/* CONTEÚDO PRINCIPAL: CALENDÁRIO OU LISTA */}
@@ -1583,25 +1757,31 @@ export default function AgendaView({
                                       : "Confirmado"}
                                   </span>
 
-                                  {/* BADGE DE PAGAMENTO */}
+                                  {/* BADGE DE PAGAMENTO / MODALIDADE */}
                                   {item.tipo === "rmclick" && (
-                                    <span
-                                      className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-md flex items-center gap-1 ${
-                                        item.pago
-                                          ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/40"
-                                          : "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200/40"
-                                      }`}
-                                    >
-                                      {item.pago ? (
-                                        <>
-                                          <CheckCircle2 size={11} /> Pago / Aprovado
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Clock3 size={11} /> Pagamento Pendente
-                                        </>
-                                      )}
-                                    </span>
+                                    isItemParticular(item) ? (
+                                      <span
+                                        className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-md flex items-center gap-1 ${
+                                          item.pago
+                                            ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/40"
+                                            : "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200/40"
+                                        }`}
+                                      >
+                                        {item.pago ? (
+                                          <>
+                                            <CheckCircle2 size={11} /> Pago / Aprovado
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Clock3 size={11} /> Pagamento Pendente
+                                          </>
+                                        )}
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-md bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200/40 flex items-center gap-1">
+                                        <CreditCard size={11} /> {item.modalidade || "Convênio"}
+                                      </span>
+                                    )
                                   )}
                                 </div>
 
@@ -1628,12 +1808,13 @@ export default function AgendaView({
                                   )}
                                   {item.telefonePaciente && (
                                     <a
-                                      href={`https://wa.me/55${item.telefonePaciente.replace(/\D/g, "")}`}
+                                      href={`https://wa.me/${formatarTelefoneEnvio(item.telefonePaciente)}`}
                                       target="_blank"
                                       rel="noreferrer"
                                       className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-bold hover:underline"
+                                      title={`WhatsApp: ${formatarTelefoneExibicao(item.telefonePaciente)}`}
                                     >
-                                      <Phone size={12} /> {item.telefonePaciente}
+                                      <Phone size={12} /> {formatarTelefoneExibicao(item.telefonePaciente)}
                                     </a>
                                   )}
                                 </div>
@@ -1658,16 +1839,17 @@ export default function AgendaView({
 
                             {/* AÇÕES NO CARD */}
                             <div className="flex items-center gap-2 self-end md:self-center flex-wrap">
-                              {/* BOTÃO APROVAR PAGAMENTO MANUAL */}
+                              {/* BOTÃO APROVAR PAGAMENTO MANUAL (APENAS PARTICULAR) */}
                               {!item.pago &&
                                 item.tipo === "rmclick" &&
+                                isItemParticular(item) &&
                                 !isCanceled && (
                                   <button
                                     type="button"
                                     onClick={() => handleAprovarPagamento(item)}
                                     disabled={isApproving}
                                     className="min-h-[40px] px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 text-xs font-extrabold transition-all shadow-sm cursor-pointer"
-                                    title="Confirmar que o paciente efetuou o pagamento"
+                                    title="Confirmar que o paciente particular efetuou o pagamento"
                                   >
                                     {isApproving ? (
                                       <Activity size={14} className="animate-spin" />
@@ -1854,15 +2036,21 @@ export default function AgendaView({
                                 </span>
                               </td>
                               <td className="p-4">
-                                <span
-                                  className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
-                                    item.pago
-                                      ? "bg-emerald-100 text-emerald-800"
-                                      : "bg-amber-100 text-amber-800"
-                                  }`}
-                                >
-                                  {item.pago ? "Pago" : "Pendente"}
-                                </span>
+                                {isItemParticular(item) ? (
+                                  <span
+                                    className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                                      item.pago
+                                        ? "bg-emerald-100 text-emerald-800"
+                                        : "bg-amber-100 text-amber-800"
+                                    }`}
+                                  >
+                                    {item.pago ? "Pago" : "Pendente"}
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300">
+                                    {item.modalidade || "Convênio"}
+                                  </span>
+                                )}
                               </td>
 
                               {/* COLUNA DE AÇÕES */}
@@ -1870,6 +2058,7 @@ export default function AgendaView({
                                 <div className="inline-flex items-center justify-end gap-2">
                                   {!item.pago &&
                                     item.tipo === "rmclick" &&
+                                    isItemParticular(item) &&
                                     item.statusAtendimento !== "cancelado" && (
                                       <button
                                         type="button"
@@ -1937,10 +2126,10 @@ export default function AgendaView({
                 <div className="flex justify-between items-center mb-6">
                   <div>
                     <h3 className="text-lg font-bold text-zinc-950 dark:text-white">
-                      Lista Geral de Atendimentos
+                      Lista Geral de Todos os Atendimentos
                     </h3>
                     <p className="text-xs text-zinc-500 mt-0.5">
-                      Visão unificada de todos os pacientes locais e integrados do ERP.
+                      Visão unificada de todos os pacientes locais e integrados do ERP com filtros avançados.
                     </p>
                   </div>
                   <span className="text-xs font-bold px-3.5 py-1 bg-zinc-100 dark:bg-zinc-800 rounded-full text-zinc-700 dark:text-zinc-300 border border-zinc-200/50 dark:border-zinc-700/50">
@@ -1952,10 +2141,12 @@ export default function AgendaView({
                   <div className="py-20 text-center rounded-3xl border border-dashed border-zinc-200 dark:border-zinc-800 text-zinc-500 bg-white/40 dark:bg-white/[0.02]">
                     Nenhum paciente encontrado com esses filtros de busca.
                   </div>
-                ) : (
+                ) : viewMode === "cards" ? (
                   <div className="grid gap-3.5">
                     {listaUnificadaTodosPacientes.map((item) => {
                       const isCanceled = item.statusAtendimento === "cancelado";
+                      const isApproving = approvingPaymentId === item.id;
+
                       return (
                         <div
                           key={item.id}
@@ -2003,6 +2194,33 @@ export default function AgendaView({
                                     ? "Reagendado"
                                     : "Confirmado"}
                                 </span>
+
+                                {/* BADGE DE PAGAMENTO / MODALIDADE */}
+                                {item.tipo === "rmclick" && (
+                                  isItemParticular(item) ? (
+                                    <span
+                                      className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-md flex items-center gap-1 ${
+                                        item.pago
+                                          ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/40"
+                                          : "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200/40"
+                                      }`}
+                                    >
+                                      {item.pago ? (
+                                        <>
+                                          <CheckCircle2 size={11} /> Pago
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Clock3 size={11} /> Pendente
+                                        </>
+                                      )}
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-md bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200/40 flex items-center gap-1">
+                                      <CreditCard size={11} /> {item.modalidade || "Convênio"}
+                                    </span>
+                                  )
+                                )}
                               </div>
 
                               <p className="text-xs text-zinc-500 mt-1 flex flex-wrap gap-3">
@@ -2020,22 +2238,24 @@ export default function AgendaView({
                               </p>
 
                               <p className="text-xs text-zinc-400 mt-1">
-                                Data: <strong>{item.data}</strong> às{" "}
+                                Data: <strong>{item.data ? item.data.split("-").reverse().join("/") : "--/--/----"}</strong> às{" "}
                                 <strong>{item.horario || "--:--"}h</strong>
                               </p>
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2 self-end md:self-center">
+                          <div className="flex items-center gap-2 self-end md:self-center flex-wrap">
                             {!item.pago &&
                               item.tipo === "rmclick" &&
+                              isItemParticular(item) &&
                               !isCanceled && (
                                 <button
                                   type="button"
                                   onClick={() => handleAprovarPagamento(item)}
+                                  disabled={isApproving}
                                   className="min-h-[40px] px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 text-xs font-extrabold transition-all shadow-sm cursor-pointer"
                                 >
-                                  <CheckCircle2 size={14} />
+                                  {isApproving ? <Activity size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
                                   <span>Aprovar Pagamento</span>
                                 </button>
                               )}
@@ -2074,6 +2294,208 @@ export default function AgendaView({
                         </div>
                       );
                     })}
+                  </div>
+                ) : (
+                  /* TABELA COMPLETA PARA TODOS OS PACIENTES */
+                  <div className="bg-white dark:bg-[#111116] border border-zinc-200/80 dark:border-zinc-800 rounded-2xl overflow-x-auto shadow-sm">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/60 font-bold uppercase tracking-wider text-zinc-400 select-none">
+                          <th
+                            onClick={() => handleSort("data")}
+                            className="p-4 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                          >
+                            <div className="flex items-center gap-1">
+                              <span>Data</span>
+                              {sortConfig.key === "data" ? (
+                                sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                              ) : (
+                                <ArrowUpDown size={11} className="opacity-40" />
+                              )}
+                            </div>
+                          </th>
+                          <th
+                            onClick={() => handleSort("horario")}
+                            className="p-4 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                          >
+                            <div className="flex items-center gap-1">
+                              <span>Horário</span>
+                              {sortConfig.key === "horario" ? (
+                                sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                              ) : (
+                                <ArrowUpDown size={11} className="opacity-40" />
+                              )}
+                            </div>
+                          </th>
+                          <th
+                            onClick={() => handleSort("paciente")}
+                            className="p-4 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                          >
+                            <div className="flex items-center gap-1">
+                              <span>Paciente</span>
+                              {sortConfig.key === "paciente" ? (
+                                sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                              ) : (
+                                <ArrowUpDown size={11} className="opacity-40" />
+                              )}
+                            </div>
+                          </th>
+                          <th
+                            onClick={() => handleSort("especialista")}
+                            className="p-4 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                          >
+                            <div className="flex items-center gap-1">
+                              <span>Especialista / Atendimento</span>
+                              {sortConfig.key === "especialista" ? (
+                                sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                              ) : (
+                                <ArrowUpDown size={11} className="opacity-40" />
+                              )}
+                            </div>
+                          </th>
+                          <th
+                            onClick={() => handleSort("status")}
+                            className="p-4 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                          >
+                            <div className="flex items-center gap-1">
+                              <span>Status</span>
+                              {sortConfig.key === "status" ? (
+                                sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                              ) : (
+                                <ArrowUpDown size={11} className="opacity-40" />
+                              )}
+                            </div>
+                          </th>
+                          <th
+                            onClick={() => handleSort("pagamento")}
+                            className="p-4 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                          >
+                            <div className="flex items-center gap-1">
+                              <span>Pagamento</span>
+                              {sortConfig.key === "pagamento" ? (
+                                sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                              ) : (
+                                <ArrowUpDown size={11} className="opacity-40" />
+                              )}
+                            </div>
+                          </th>
+                          <th className="p-4 text-right pr-6 whitespace-nowrap">Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800 font-medium">
+                        {listaUnificadaTodosPacientes.map((item) => (
+                          <tr
+                            key={item.id}
+                            className="hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors"
+                          >
+                            <td className="p-4 font-bold text-zinc-800 dark:text-zinc-200 whitespace-nowrap">
+                              {item.data ? item.data.split("-").reverse().join("/") : "--/--/----"}
+                            </td>
+                            <td className="p-4 font-black text-zinc-950 dark:text-white whitespace-nowrap">
+                              {item.horario || "--:--"}
+                            </td>
+                            <td className="p-4">
+                              <div className="font-bold text-zinc-950 dark:text-white">
+                                {item.nomePaciente}
+                              </div>
+                              {item.cpfPaciente && (
+                                <div className="text-[10px] text-zinc-400 font-mono">
+                                  CPF: {item.cpfPaciente}
+                                </div>
+                              )}
+                            </td>
+                            <td className="p-4">
+                              <div className="text-zinc-900 dark:text-zinc-100 font-bold">
+                                {item.medicoProfissional}
+                              </div>
+                              <div className="text-[10px] text-zinc-400">
+                                {item.especialidade} • {item.tipoServico}
+                              </div>
+                            </td>
+                            <td className="p-4">
+                              <span
+                                className={`px-2.5 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                                  item.statusAtendimento === "cancelado"
+                                    ? "bg-red-100 text-red-700"
+                                    : "bg-emerald-100 text-emerald-800"
+                                }`}
+                              >
+                                {item.statusAtendimento}
+                              </span>
+                            </td>
+                            <td className="p-4">
+                              {isItemParticular(item) ? (
+                                <span
+                                  className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                                    item.pago
+                                      ? "bg-emerald-100 text-emerald-800"
+                                      : "bg-amber-100 text-amber-800"
+                                  }`}
+                                >
+                                  {item.pago ? "Pago" : "Pendente"}
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300">
+                                  {item.modalidade || "Convênio"}
+                                </span>
+                              )}
+                            </td>
+
+                            {/* COLUNA DE AÇÕES */}
+                            <td className="p-4 text-right pr-6 whitespace-nowrap">
+                              <div className="inline-flex items-center justify-end gap-2">
+                                {!item.pago &&
+                                  item.tipo === "rmclick" &&
+                                  isItemParticular(item) &&
+                                  item.statusAtendimento !== "cancelado" && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAprovarPagamento(item)}
+                                      className="min-h-[34px] px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-extrabold inline-flex items-center gap-1 shadow-sm cursor-pointer"
+                                      title="Aprovar Pagamento Manual"
+                                    >
+                                      <CheckCircle2 size={12} />
+                                      <span>Aprovar</span>
+                                    </button>
+                                  )}
+
+                                {temPermissaoSigiloClinico && (
+                                  <button
+                                    onClick={() => handleOpenSensitiveModal(item)}
+                                    className="min-h-[34px] px-3 py-1.5 border border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 text-[11px] font-bold inline-flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                                  >
+                                    <ShieldCheck size={13} className="text-blue-500" />
+                                    <span>Ficha</span>
+                                  </button>
+                                )}
+
+                                {item.statusAtendimento !== "cancelado" && (
+                                  <>
+                                    <button
+                                      onClick={() => handleAbrirRemarcacao(item)}
+                                      className="min-h-[34px] px-3 py-1.5 border border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 text-[11px] font-bold inline-flex items-center gap-1 transition-colors shadow-sm cursor-pointer"
+                                    >
+                                      <RotateCcw
+                                        size={12}
+                                        className="text-[#86a621] dark:text-[#9FC131]"
+                                      />
+                                      <span>Remarcar</span>
+                                    </button>
+                                    <button
+                                      onClick={() => handleAbrirModalCancelamento(item)}
+                                      className="min-h-[34px] p-2 text-red-600 dark:text-red-400 bg-red-50/60 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/60 border border-red-200/50 dark:border-red-900/40 rounded-xl inline-flex items-center justify-center transition-colors shadow-sm cursor-pointer"
+                                      title="Cancelar Atendimento"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </motion.div>
@@ -2927,15 +3349,13 @@ export default function AgendaView({
                         </span>
                         {sensitiveModalItem.telefonePaciente ? (
                           <a
-                            href={`https://wa.me/55${sensitiveModalItem.telefonePaciente.replace(
-                              /\D/g,
-                              ""
-                            )}`}
+                            href={`https://wa.me/${formatarTelefoneEnvio(sensitiveModalItem.telefonePaciente)}`}
                             target="_blank"
                             rel="noreferrer"
                             className="font-bold text-emerald-600 dark:text-emerald-400 hover:underline inline-flex items-center gap-1 mt-0.5"
+                            title={`WhatsApp: ${formatarTelefoneExibicao(sensitiveModalItem.telefonePaciente)}`}
                           >
-                            <Phone size={11} /> {sensitiveModalItem.telefonePaciente}{" "}
+                            <Phone size={11} /> {formatarTelefoneExibicao(sensitiveModalItem.telefonePaciente)}{" "}
                             <ExternalLink size={10} />
                           </a>
                         ) : (

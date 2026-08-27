@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -19,7 +19,7 @@ import {
   X
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
-import { checkIdentifier, authenticateUser, actionRedefinirSenhaPrimeiroAcesso } from "@/actions/auth";
+import { checkIdentifier, authenticateUser, actionRedefinirSenhaPrimeiroAcesso, getSessionAdminInfo } from "@/actions/auth";
 import { playDopamineSound, triggerConfetti, triggerHaptic } from "@/lib/dopamine";
 
 const spring = { type: "spring", stiffness: 420, damping: 30 };
@@ -44,6 +44,25 @@ export default function LoginUnificado() {
   const [resetConfirmPass, setResetConfirmPass] = useState("");
   const [showResetNewPass, setShowResetNewPass] = useState(false);
   const [showResetConfirmPass, setShowResetConfirmPass] = useState(false);
+
+  // Verificação de sessão já ativa ao carregar a página (evita re-digitar senha se já logado)
+  useEffect(() => {
+    const checkActiveSession = async () => {
+      try {
+        const info = await getSessionAdminInfo();
+        if (info) {
+          if (info.role === "sistema") {
+            window.location.replace("/admin/sistema");
+          } else {
+            window.location.replace("/admin/empresa");
+          }
+        }
+      } catch (e) {
+        // Sem sessão ativa, continua no login
+      }
+    };
+    checkActiveSession();
+  }, []);
 
   const showMsg = (type, text) => {
     setStatusMsg({ type, text });
@@ -180,13 +199,13 @@ export default function LoginUnificado() {
       const targetRole = result.role || role;
       setTimeout(() => {
         if (targetRole === "paciente") {
-          router.push("/paciente/dashboard");
+          window.location.replace("/paciente/dashboard");
         } else if (targetRole === "sistema") {
-          router.push("/admin/sistema");
+          window.location.replace("/admin/sistema");
         } else {
-          router.push("/admin/empresa");
+          window.location.replace("/admin/empresa");
         }
-      }, 600);
+      }, 400);
     } catch (err) {
       showMsg("error", "Falha no processo de autenticação.");
     } finally {
@@ -224,11 +243,11 @@ export default function LoginUnificado() {
 
       setTimeout(() => {
         if (result.role === "sistema") {
-          router.push("/admin/sistema");
+          window.location.replace("/admin/sistema");
         } else {
-          router.push("/admin/empresa");
+          window.location.replace("/admin/empresa");
         }
-      }, 800);
+      }, 500);
     } catch (err) {
       showMsg("error", `Erro ao salvar nova senha: ${err.message}`);
     } finally {
@@ -277,7 +296,7 @@ export default function LoginUnificado() {
         </AnimatePresence>
 
         <AnimatePresence mode="wait">
-          {/* PASSO 1: IDENTIFICAÇÃO */}
+          {/* PASSO 1: IDENTIFICAÇÃO UNIFICADA (PACIENTES, CLÍNICAS & SUPER MASTER) */}
           {step === 1 && (
             <motion.form
               key="step1"
@@ -290,7 +309,7 @@ export default function LoginUnificado() {
             >
               <div className="text-center space-y-1.5">
                 <h2 className="text-2xl font-black text-white tracking-tight">Portal Seguro</h2>
-                <p className="text-xs text-zinc-400 font-medium">Identifique-se para acessar seu ambiente.</p>
+                <p className="text-xs text-zinc-400 font-medium">Acesso unificado para clínicas, administradores e pacientes.</p>
               </div>
 
               <div className="space-y-2">
@@ -402,7 +421,7 @@ export default function LoginUnificado() {
             </motion.form>
           )}
 
-          {/* PASSO 3: REDEFINIÇÃO DE SENHA NO PRIMEIRO ACESSO COM PROGRESSO E MOTION DESIGN */}
+          {/* PASSO 3: REDEFINIÇÃO DE SENHA NO PRIMEIRO ACESSO */}
           {step === 3 && (
             <motion.form
               key="step3"
@@ -423,7 +442,7 @@ export default function LoginUnificado() {
                 </p>
               </div>
 
-              {/* BARRA DE PROGRESSO COM MOTION DESIGN */}
+              {/* BARRA DE PROGRESSO */}
               <div className="p-3.5 rounded-2xl bg-black/40 border border-white/10 space-y-2">
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-400">
@@ -462,7 +481,7 @@ export default function LoginUnificado() {
                 </div>
               </div>
 
-              {/* CAMPOS DE NOVA SENHA E REPETIR SENHA */}
+              {/* CAMPOS DE NOVA SENHA */}
               <div className="space-y-3.5">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1 flex items-center gap-1.5">

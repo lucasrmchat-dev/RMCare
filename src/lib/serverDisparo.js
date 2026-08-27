@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { formatarTelefoneEnvio } from "@/lib/phoneUtils";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -47,7 +48,9 @@ export async function dispararGatilhoServidor({
     const tel = paciente.telefone_whatsapp || "";
     if (!tel) return false;
 
-    const nomeCompleto = (paciente.nome_completo || "").trim();
+    const telFormatadoEnvio = formatarTelefoneEnvio(tel);
+
+    const nomeCompleto = (paciente.nome_completo || "").trim() || "Paciente";
     const primeiroNome = nomeCompleto.split(" ")[0] || "Paciente";
     const sobrenome = nomeCompleto.split(" ").slice(1).join(" ");
 
@@ -71,10 +74,13 @@ export async function dispararGatilhoServidor({
       ag.tipo_servico === "Exame" ||
       /(colonoscopia|endoscopia|ultrassom|exame)/i.test(`${nomeEspecialidade} ${nomeProfissional}`);
 
+    // Variáveis universais para mensagens
+    // A variável {nome} agora se transforma no Nome Completo conforme solicitado
     const vars = {
-      nome: primeiroNome,
-      sobrenome: sobrenome,
+      nome: nomeCompleto,
       nome_completo: nomeCompleto,
+      primeiro_nome: nomeCompleto,
+      sobrenome: sobrenome,
       servico: isExame ? nomeEspecialidade : nomeProfissional,
       especialista: nomeProfissional,
       medico: nomeProfissional,
@@ -96,8 +102,8 @@ export async function dispararGatilhoServidor({
       motivo_cancelamento: motivoFinal,
       justificativa: motivoFinal,
       cpf: paciente.cpf || "",
-      telefone: tel,
-      whatsapp: tel,
+      telefone: telFormatadoEnvio,
+      whatsapp: telFormatadoEnvio,
       clinica: emp.nome || "Clínica",
       nome_clinica: emp.nome || "Clínica",
       valor: ag.valor_total ? `R$ ${Number(ag.valor_total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : ""
@@ -155,8 +161,9 @@ export async function dispararGatilhoServidor({
               paciente: {
                 id: paciente.id || null,
                 nome: nomeCompleto,
-                primeiro_nome: primeiroNome,
-                telefone: tel.replace(/\D/g, ""),
+                nome_completo: nomeCompleto,
+                primeiro_nome: nomeCompleto,
+                telefone: telFormatadoEnvio,
                 cpf: paciente.cpf || null,
                 email: paciente.email || null,
                 enfermidades: paciente.enfermidades || []
@@ -172,9 +179,9 @@ export async function dispararGatilhoServidor({
           } else {
             // Disparo padrão via WhatsApp (RM Chat)
             payload = {
-              name: primeiroNome,
-              number: tel.replace(/\D/g, ""),
-              phone: tel.replace(/\D/g, ""),
+              name: nomeCompleto,
+              number: telFormatadoEnvio,
+              phone: telFormatadoEnvio,
               texto: msgFormatada,
               mensagem: msgFormatada,
               media_url: regra.anexo_url || null
@@ -207,8 +214,8 @@ export async function dispararGatilhoServidor({
         const payloadInsert = {
           empresa_id: empresaId,
           agendamento_id: agendamentoId,
-          telefone_whatsapp: tel,
-          nome_paciente: primeiroNome,
+          telefone_whatsapp: telFormatadoEnvio,
+          nome_paciente: nomeCompleto,
           mensagem: msgFormatada,
           status: enviadoComSucesso ? "enviada" : "pendente",
           gatilho: gatilho,

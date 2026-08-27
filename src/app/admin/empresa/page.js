@@ -479,6 +479,7 @@ export default function EmpresaAdmin() {
                 bloqueios={bloqueios}
                 servicos={servicos}
                 fetchAgendamentos={fetchAgendamentos}
+                fetchBloqueios={fetchBloqueios}
                 showToast={showToast}
                 permissoes={loggedAdmin?.permissoes}
                 isOwner={loggedAdmin?.is_owner}
