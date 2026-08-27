@@ -1,32 +1,28 @@
-# Checklist de Execução - RMCare
+# Task: RM Care Fixes & Master Admin Architecture
 
-- [x] **Diagnóstico e Análise de Código**
-  - [x] Analisar `AgendaView.js`, `PersonalizacaoView.js`, `AdminSessionBar.js`, `login/page.js`, `admin/sistema/page.js`, `actions/auth.js`, `actions/adminData.js` e endpoints de webhook.
-- [x] **1. Correção de Ordenação e Filtros em "Pacientes do Dia" (AgendaView.js)**
-  - [x] Corrigir `eventosAgendaMistaDiaria` para respeitar a ordenação dinâmica (`sortConfig.key` por Horário, Paciente A-Z/Z-A, Especialista, Status, Pagamento).
-  - [x] Adicionar barra de ordenação rápida acessível em ambos os modos (Cards e Tabela).
-- [x] **2. Correção de "Cards" vs "Lista" (Tabela) em "Todos os Pacientes" (AgendaView.js)**
-  - [x] Implementar alternância entre modo Cards e Tabela no `subTab === "lista"`.
-  - [x] Adicionar cabeçalhos de tabela ordenáveis (Data, Horário, Paciente, Especialista, Status, Pagamento).
-  - [x] Incluir ações alinhadas (Aprovar Pagamento, Ficha, Remarcar, Cancelar).
-- [x] **3. Botão de Atualizar e Sincronizador Automático de 1 Minuto (AgendaView.js & EmpresaAdmin)**
-  - [x] Adicionar botão "Atualizar" no cabeçalho da agenda com animação de spinner e feedback toast.
-  - [x] Configurar auto-sync com intervalo de 60 segundos (1 minuto) para manter os dados atualizados com o banco em tempo real.
-  - [x] Passar `fetchBloqueios` em conjunto com `fetchAgendamentos` em `app/admin/empresa/page.js`.
-- [x] **4. Nova Coluna "Dias / Tempo de Envio / Antecedência" nas Mensagens WhatsApp (PersonalizacaoView.js)**
-  - [x] Criar helper `formatarTempoRegra` para detalhar antecedência (ex: "1 dia antes às 08:00", "0 dias / Imediato", "30 min após término").
-  - [x] Adicionar coluna "Dias / Tempo Envio" na tabela de automações com ordenação.
-  - [x] Adicionar badges correspondentes na visualização em Cards.
-- [x] **5. Botões e Modal de Teste para Webhook e Template de WhatsApp (PersonalizacaoView.js)**
-  - [x] Adicionar botão "Testar" na tabela e cards de mensagens.
-  - [x] Criar modal interativo de teste com inserção de telefone, prévia com variáveis dinâmicas e retorno ao vivo do status HTTP.
-  - [x] Integrar `actionTestarMensagemWhatsAppTemplate` e `actionTestarWebhookFluxoInteligente`.
-- [x] **6. Ajustes no Cabeçalho e Menu de Perfil (AdminSessionBar.js)**
-  - [x] Remover "Sessão Ativa" de dentro do dropdown do usuário.
-  - [x] Manter timer de sessão ativa na barra principal externa.
-  - [x] Elevar `z-index` do dropdown (`z-[10001]`) e do header (`z-[9999]`) para eliminar qualquer bug de sobreposição.
-- [x] **7. Unificação do Login e Redesign do Painel Master (login/page.js, admin/sistema/page.js)**
-  - [x] Eliminar repetição de login redirecionando diretamente via `window.location.replace`.
-  - [x] Adicionar verificação de sessão ativa no carregamento do `/login`.
-  - [x] Redesenhar painel do Super Master com métricas executivas, abas categorizadas de APIs (RM Chat, Mercado Pago, Medicalsys) e teste de webhook.
-- [x] **Revisão e Entrega**
+- [/] 1. Diagnostics & Root-Cause Analysis
+  - [x] Analyze Turbopack build errors (`actionAtualizarChavesEmpresaMaster`, `actionCriarEmpresaMaster`, `actionListarEmpresasMaster`, etc.)
+  - [ ] Inspect `src/actions/adminData.js` and `src/actions/auth.js`
+  - [ ] Inspect `src/app/admin/empresa/modules/AgendaView.js` for sorting, card/list toggle, auto-refresh, and manual refresh
+  - [ ] Inspect `src/app/admin/empresa/modules/PersonalizacaoView.js`, `src/lib/serverDisparo.js`, `src/app/api/disparar-webhook/route.js`, `src/app/api/processar-fila/route.js` for WhatsApp / Webhook triggers, days/timing column, and test buttons
+  - [ ] Inspect `src/components/AdminSessionBar.js`, `SidebarPremium.js`, `Navbar.js` for profile dropdown (remove "Sessão Ativa" from dropdown, fix z-index layering)
+  - [ ] Inspect login flow (`src/app/login`, `src/actions/auth.js`, middleware/proxy) to unify master & empresa login and fix double-login issue
+- [ ] 2. Core Fixes & Action Exports
+  - [ ] Implement & export all master admin actions in `src/actions/adminData.js` (`actionListarEmpresasMaster`, `actionCriarEmpresaMaster`, `actionAtualizarChavesEmpresaMaster`, `actionExcluirEmpresaMaster`, `actionTestarPushRmChat`)
+  - [ ] Unify login logic in `src/actions/auth.js` and login routes to eliminate double authentication prompts and smoothly redirect by role
+- [ ] 3. AgendaView Enhancements (Pacientes do Dia & Todos os Pacientes)
+  - [ ] Fix sorting logic (by time asc/desc, by patient name asc/desc A-Z and Z-A) ensuring responsive updates
+  - [ ] Fix Cards vs List view switching functionality
+  - [ ] Add manual Refresh button ("Atualizar dados")
+  - [ ] Add 60-second auto-synchronizer (polling with indicator)
+- [ ] 4. WhatsApp & Webhooks Architecture
+  - [ ] Add Days/Timing column and badges in message automations list/editor (ex: "1 dia antes", "Imediatamente", "2 dias após", etc.)
+  - [ ] Fix webhook firing logic in `serverDisparo.js` and API routes
+  - [ ] Add test button for Webhook & test button for WhatsApp template
+- [ ] 5. Profile Dropdown & Layout/Z-Index Visual Fixes
+  - [ ] Remove "Sessão Ativa" from user profile popover/dropdown (keeping outside session bar)
+  - [ ] Fix z-index stacking issues where profile dropdown or controls get hidden under other elements
+  - [ ] Refine and modernize UI across master system admin and clinic admin
+- [ ] 6. Build Verification & Full Validation
+  - [ ] Run `npm run build` or Next.js build verification to ensure zero build errors
+  - [ ] Verify all routes and user requirements

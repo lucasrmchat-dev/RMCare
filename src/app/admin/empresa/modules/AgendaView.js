@@ -415,7 +415,7 @@ export default function AgendaView({
         tipo: "rmclick",
         data: a.data_agendamento,
         horario: a.horario_agendamento?.substring(0, 5),
-        nomePaciente: pac.nome_completo || "Paciente RMAgenda",
+        nomePaciente: (pac.nome_completo || a.nome_paciente || pac.nome || a.nome || "Paciente RMAgenda").trim(),
         cpfPaciente: pac.cpf || null,
         telefonePaciente: pac.telefone_whatsapp || null,
         emailPaciente: pac.email || null,
@@ -443,7 +443,7 @@ export default function AgendaView({
         tipo: "medicalsys",
         data: b.data,
         horario: b.horario?.substring(0, 5),
-        nomePaciente: b.nome_paciente || "Paciente ERP",
+        nomePaciente: (b.nome_paciente || b.paciente_nome || b.nome || "Paciente ERP").trim(),
         cpfPaciente: b.cpf_paciente || null,
         telefonePaciente: b.telefone_paciente || null,
         emailPaciente: null,
@@ -513,18 +513,30 @@ export default function AgendaView({
         if (sortConfig.key === "horario") {
           valA = a.horario || "";
           valB = b.horario || "";
+          const cmp = (valA || "").localeCompare(valB || "");
+          if (cmp !== 0) return sortConfig.direction === "asc" ? cmp : -cmp;
+          return normalizeText(a.nomePaciente).localeCompare(normalizeText(b.nomePaciente), "pt-BR");
         } else if (sortConfig.key === "paciente") {
           valA = a.nomePaciente || "";
           valB = b.nomePaciente || "";
+          const cmp = normalizeText(valA).localeCompare(normalizeText(b.nomePaciente), "pt-BR");
+          if (cmp !== 0) return sortConfig.direction === "asc" ? cmp : -cmp;
+          return (a.horario || "").localeCompare(b.horario || "");
         } else if (sortConfig.key === "data") {
           valA = a.data || "";
           valB = b.data || "";
+          const cmp = (valA || "").localeCompare(valB || "");
+          if (cmp !== 0) return sortConfig.direction === "asc" ? cmp : -cmp;
+          return (a.horario || "").localeCompare(b.horario || "");
         } else if (sortConfig.key === "origem") {
           valA = a.tipo || "";
           valB = b.tipo || "";
         } else if (sortConfig.key === "especialista") {
           valA = a.medicoProfissional || "";
           valB = b.medicoProfissional || "";
+          const cmp = normalizeText(valA).localeCompare(normalizeText(valB), "pt-BR");
+          if (cmp !== 0) return sortConfig.direction === "asc" ? cmp : -cmp;
+          return (a.horario || "").localeCompare(b.horario || "");
         } else if (sortConfig.key === "status") {
           valA = a.statusAtendimento || "";
           valB = b.statusAtendimento || "";
@@ -560,8 +572,8 @@ export default function AgendaView({
 
   const handleSort = (key) => {
     let direction = "asc";
-    if (sortConfig.key === key && sortConfig.direction === "asc") {
-      direction = "desc";
+    if (sortConfig.key === key) {
+      direction = sortConfig.direction === "asc" ? "desc" : "asc";
     }
     setSortConfig({ key, direction });
     playDopamineSound("click");
@@ -1365,32 +1377,46 @@ export default function AgendaView({
                 </span>
                 <div className="flex p-1 bg-zinc-100/80 dark:bg-zinc-800/80 rounded-xl border border-zinc-200/60 dark:border-zinc-700/60 gap-1">
                   <button
+                    type="button"
                     onClick={() => {
                       playDopamineSound("click");
+                      triggerHaptic("light");
                       setViewMode("cards");
+                      try {
+                        localStorage.setItem("rmcare_default_view_mode", "cards");
+                        localStorage.setItem("rmcare_view_mode", "cards");
+                      } catch (e) {}
                     }}
-                    className={`p-2 rounded-lg transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer ${
+                    className={`px-2.5 py-1.5 rounded-lg transition-all min-h-[34px] flex items-center gap-1.5 cursor-pointer text-xs font-bold ${
                       viewMode === "cards"
-                        ? "bg-white dark:bg-zinc-900 text-zinc-950 dark:text-white shadow-sm"
-                        : "text-zinc-400 hover:text-zinc-700"
+                        ? "bg-white dark:bg-zinc-900 text-zinc-950 dark:text-white shadow-sm font-black"
+                        : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
                     }`}
                     title="Visão em Cards"
                   >
-                    <LayoutGrid size={16} />
+                    <LayoutGrid size={15} />
+                    <span className="hidden sm:inline">Cards</span>
                   </button>
                   <button
+                    type="button"
                     onClick={() => {
                       playDopamineSound("click");
+                      triggerHaptic("light");
                       setViewMode("tabela");
+                      try {
+                        localStorage.setItem("rmcare_default_view_mode", "tabela");
+                        localStorage.setItem("rmcare_view_mode", "tabela");
+                      } catch (e) {}
                     }}
-                    className={`p-2 rounded-lg transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer ${
+                    className={`px-2.5 py-1.5 rounded-lg transition-all min-h-[34px] flex items-center gap-1.5 cursor-pointer text-xs font-bold ${
                       viewMode === "tabela"
-                        ? "bg-white dark:bg-zinc-900 text-zinc-950 dark:text-white shadow-sm"
-                        : "text-zinc-400 hover:text-zinc-700"
+                        ? "bg-white dark:bg-zinc-900 text-zinc-950 dark:text-white shadow-sm font-black"
+                        : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
                     }`}
                     title="Visão em Lista / Tabela"
                   >
-                    <List size={16} />
+                    <List size={15} />
+                    <span className="hidden sm:inline">Lista</span>
                   </button>
                 </div>
               </div>
@@ -1489,9 +1515,8 @@ export default function AgendaView({
             </div>
           </div>
 
-          {/* BARRA DE ORDENAÇÃO RÁPIDA (EXIBIDA APENAS NO MODO CARDS) */}
-          {viewMode === "cards" && (
-            <div className="flex items-center justify-between gap-2 pt-2 border-t border-zinc-200/50 dark:border-zinc-800/60 flex-wrap">
+          {/* BARRA DE ORDENAÇÃO RÁPIDA (DISPONÍVEL EM TODOS OS MODOS) */}
+          <div className="flex items-center justify-between gap-2 pt-2 border-t border-zinc-200/50 dark:border-zinc-800/60 flex-wrap">
             <div className="flex items-center gap-1.5 text-xs text-zinc-500 font-semibold flex-wrap">
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-400 flex items-center gap-1">
                 <ArrowUpDown size={12} /> Ordenar:
@@ -1501,7 +1526,7 @@ export default function AgendaView({
                 onClick={() => handleSort("horario")}
                 className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
                   sortConfig.key === "horario"
-                    ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs"
+                    ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
                     : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300"
                 }`}
               >
@@ -1516,7 +1541,7 @@ export default function AgendaView({
                 onClick={() => handleSort("paciente")}
                 className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
                   sortConfig.key === "paciente"
-                    ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs"
+                    ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
                     : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300"
                 }`}
               >
@@ -1526,29 +1551,27 @@ export default function AgendaView({
                 )}
               </button>
 
-              {subTab === "lista" && (
-                <button
-                  type="button"
-                  onClick={() => handleSort("data")}
-                  className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
-                    sortConfig.key === "data"
-                      ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs"
-                      : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300"
-                  }`}
-                >
-                  <span>Data</span>
-                  {sortConfig.key === "data" && (
-                    sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
-                  )}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => handleSort("data")}
+                className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                  sortConfig.key === "data"
+                    ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
+                    : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300"
+                }`}
+              >
+                <span>Data</span>
+                {sortConfig.key === "data" && (
+                  sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                )}
+              </button>
 
               <button
                 type="button"
                 onClick={() => handleSort("especialista")}
                 className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
                   sortConfig.key === "especialista"
-                    ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs"
+                    ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
                     : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300"
                 }`}
               >
@@ -1573,7 +1596,6 @@ export default function AgendaView({
               Última atualização: {lastSyncedAt.toLocaleTimeString("pt-BR")}
             </div>
           </div>
-          )}
         </div>
 
         {/* CONTEÚDO PRINCIPAL: CALENDÁRIO OU LISTA */}

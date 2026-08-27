@@ -1011,9 +1011,160 @@ export async function actionProvisionarEmpresa({ nome, slug, usuario, senha }) {
 export async function actionListarEmpresas() {
   const admin = await getAdminLogado(false);
   if (admin.role !== "sistema") throw new Error("Acesso negado: apenas o administrador master pode listar todas as empresas.");
-  const { data, error } = await supabaseAdmin.from("empresas").select("id,nome,slug,created_at").order("created_at", { ascending: false });
+  const { data, error } = await supabaseAdmin.from("empresas").select("*").order("created_at", { ascending: false });
   if (error) throw error;
   return data || [];
+}
+
+export async function actionListarEmpresasMaster() {
+  return actionListarEmpresas();
+}
+
+export async function actionCriarEmpresaMaster({
+  nome,
+  slug,
+  subdominio,
+  email,
+  telefone,
+  admin_usuario,
+  admin_senha
+}) {
+  const admin = await getAdminLogado(false);
+  if (admin.role !== "sistema") {
+    throw new Error("Apenas administradores do sistema podem provisionar novos ambientes.");
+  }
+
+  const cleanSlug = slug
+    ? slug.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "")
+    : "";
+  const cleanUser = admin_usuario ? admin_usuario.trim().toLowerCase() : "";
+
+  if (!nome?.trim() || cleanSlug.length < 3 || cleanUser.length < 3 || (admin_senha || "").length < 6) {
+    throw new Error("Preencha nome da clínica, slug, usuário e uma senha com pelo menos 6 caracteres.");
+  }
+
+  // 1. Tenta via RPC provisionar_empresa se disponível
+  try {
+    const { data: rpcData, error: rpcErr } = await supabaseAdmin.rpc("provisionar_empresa", {
+      p_nome: nome.trim(),
+      p_slug: cleanSlug,
+      p_usuario: cleanUser,
+      p_senha: admin_senha
+    });
+
+    if (!rpcErr && rpcData) {
+      if (subdominio || email || telefone) {
+        await supabaseAdmin
+          .from("empresas")
+          .update({
+            subdominio: subdominio?.trim() || null,
+            email: email?.trim() || null,
+            telefone: telefone?.trim() || null
+          })
+          .eq("slug", cleanSlug);
+      }
+      return { success: true, data: rpcData };
+    }
+  } catch (e) {}
+
+  // 2. Criação direta no Supabase com fallback seguro
+  const { data: novaEmp, error: errEmp } = await supabaseAdmin
+    .from("empresas")
+    .insert({
+      nome: nome.trim(),
+      slug: cleanSlug,
+      subdominio: subdominio?.trim() || null,
+      email: email?.trim() || null,
+      telefone: telefone?.trim() || null,
+      config_campos: {
+        ordem_etapas: [
+          "boas_vindas",
+          "identificacao",
+          "especialidade",
+          "triagem",
+          "modalidade",
+          "agenda",
+          "checkout"
+        ],
+        tema: {
+          cor_primaria: "#9FC131",
+          cor_secundaria: "#10B981",
+          escopo_tema: "ambos",
+          visualizacao_padrao: "lista"
+        }
+      },
+      config_regras: {
+        retorno_prazo_dias: 30,
+        retorno_exige_pagamento: false,
+        delay_confirmacao_segundos: 0
+      }
+    })
+    .select()
+    .single();
+
+  if (errEmp) {
+    if (errEmp.code === "23505") throw new Error("Slug já cadastrado em outra clínica.");
+    throw new Error(errEmp.message);
+  }
+
+  const { error: errAdm } = await supabaseAdmin
+    .from("administradores")
+    .insert({
+      usuario: cleanUser,
+      senha_hash: admin_senha,
+      nome: `Admin ${nome.trim()}`,
+      role: "empresa",
+      empresa_id: novaEmp.id,
+      is_owner: true,
+      primeiro_acesso: false,
+      permissoes: [
+        "agenda",
+        "metricas",
+        "equipe",
+        "bloqueios",
+        "politicas",
+        "triagem",
+        "personalizacao",
+        "integracoes",
+        "conta"
+      ]
+    });
+
+  if (errAdm) {
+    if (errAdm.code === "23505") throw new Error("Este nome de usuário administrativo já está em uso.");
+    throw new Error(errAdm.message);
+  }
+
+  return { success: true, data: novaEmp };
+}
+
+export async function actionAtualizarChavesEmpresaMaster(empresaId, config_chaves) {
+  return actionSalvarChavesEmpresaMaster(empresaId, config_chaves);
+}
+
+export async function actionExcluirEmpresaMaster(empresaId) {
+  const admin = await getAdminLogado(false);
+  if (admin.role !== "sistema") {
+    throw new Error("Apenas administradores do sistema podem excluir clínicas.");
+  }
+
+  try {
+    await supabaseAdmin.from("administradores").delete().eq("empresa_id", empresaId);
+    await supabaseAdmin.from("agendamentos").delete().eq("empresa_id", empresaId);
+    await supabaseAdmin.from("servicos").delete().eq("empresa_id", empresaId);
+    await supabaseAdmin.from("bloqueios_horarios").delete().eq("empresa_id", empresaId);
+    await supabaseAdmin.from("fila_mensagens").delete().eq("empresa_id", empresaId);
+    await supabaseAdmin.from("regras_agenda").delete().eq("empresa_id", empresaId);
+    await supabaseAdmin.from("perguntas_triagem").delete().eq("empresa_id", empresaId);
+
+    const { error } = await supabaseAdmin.from("empresas").delete().eq("id", empresaId);
+    if (error) throw error;
+
+    return { success: true };
+  } catch (err) {
+    console.error("Erro ao excluir empresa master:", err);
+    throw new Error(`Falha ao excluir clínica: ${err.message}`);
+  }
 }
 
 /* ==========================================
