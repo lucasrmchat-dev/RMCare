@@ -157,7 +157,7 @@ export async function fetchAdminAgendamentos() {
   return data || [];
 }
 
-export async function actionCancelarAgendamentoAdmin(id, motivo = "Cancelado pela clínica") {
+export async function actionCancelarAgendamentoAdmin(id, motivo = null) {
   const admin = await getAdminLogado(true);
   const { data: appointment } = await supabaseAdmin
     .from("agendamentos")
@@ -167,12 +167,16 @@ export async function actionCancelarAgendamentoAdmin(id, motivo = "Cancelado pel
     .maybeSingle();
 
   if (!appointment) throw new Error("Agendamento não encontrado.");
+
+  const motivoPadrao = "Readequação operacional da grade de atendimentos da clínica";
+  const motivoEfetivo = (motivo && String(motivo).trim()) ? String(motivo).trim() : motivoPadrao;
+
   const { data, error } = await supabaseAdmin.rpc("cancelar_agendamento", {
     p_agendamento_id: id,
     p_empresa_id: admin.empresa_id,
     p_paciente_id: null,
     p_cancelado_por: "administrador",
-    p_motivo: motivo
+    p_motivo: motivoEfetivo
   });
   if (error) throw error;
 
@@ -183,13 +187,63 @@ export async function actionCancelarAgendamentoAdmin(id, motivo = "Cancelado pel
       agendamentoId: id,
       empresaId: admin.empresa_id,
       gatilho: "cancelado",
-      motivo
+      motivo: motivoEfetivo
     });
   } catch (errDisparo) {
     console.error("Aviso ao disparar WhatsApp de cancelamento:", errDisparo);
   }
 
   return data;
+}
+
+export async function actionAprovarPagamentoAgendamento(id) {
+  try {
+    const admin = await getAdminLogado(true);
+    const { data: ag, error: errAg } = await supabaseAdmin
+      .from("agendamentos")
+      .select("id, empresa_id, status_pagamento_antecipado, pacientes(*)")
+      .eq("id", id)
+      .eq("empresa_id", admin.empresa_id)
+      .maybeSingle();
+
+    if (errAg || !ag) throw new Error("Agendamento não encontrado.");
+
+    let { data: updated, error: errUpdate } = await supabaseAdmin
+      .from("agendamentos")
+      .update({ status_pagamento_antecipado: true })
+      .eq("id", id)
+      .eq("empresa_id", admin.empresa_id)
+      .select("*, pacientes(*)")
+      .single();
+
+    if (errUpdate) throw errUpdate;
+
+    // Dispara mensagem WhatsApp de Pagamento Aprovado se configurada
+    try {
+      const { dispararGatilhoServidor } = await import("@/lib/serverDisparo");
+      await dispararGatilhoServidor({
+        agendamentoId: id,
+        empresaId: admin.empresa_id,
+        gatilho: "pagamento_aprovado"
+      });
+    } catch (errDisparo) {
+      console.warn("Aviso ao disparar WhatsApp de pagamento aprovado:", errDisparo);
+    }
+
+    // Registrar auditoria
+    await actionRegistrarAuditoria({
+      modulo: "agenda",
+      acao: "Aprovação de Pagamento",
+      detalhes: `Pagamento aprovado manualmente para o agendamento #${id} (${ag.pacientes?.nome_completo || "Paciente"}) por ${admin.usuario}.`,
+      novo: { status_pagamento_antecipado: true },
+      alterado_por: admin.usuario
+    });
+
+    return { success: true, data: updated };
+  } catch (err) {
+    console.error("Erro em actionAprovarPagamentoAgendamento:", err);
+    return { success: false, error: err.message };
+  }
 }
 
 export async function actionExcluirAgendamentoAdmin(id) {

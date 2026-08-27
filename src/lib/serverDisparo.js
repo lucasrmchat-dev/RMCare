@@ -49,9 +49,20 @@ export async function dispararGatilhoServidor({
 
     const nomeCompleto = (paciente.nome_completo || "").trim();
     const primeiroNome = nomeCompleto.split(" ")[0] || "Paciente";
+    const sobrenome = nomeCompleto.split(" ").slice(1).join(" ");
 
+    // Motivo padrão de cancelamento / remarcação se não fornecido
+    const motivoPadrao = "Readequação operacional da grade de atendimentos da clínica";
+    const motivoFinal = (motivo && String(motivo).trim()) ? String(motivo).trim() : motivoPadrao;
+
+    // Histórico de datas (anterior e nova)
+    const dataAnterior = ag.data_agendamento;
+    const horaAnterior = ag.horario_agendamento ? ag.horario_agendamento.substring(0, 5) : "";
+    const dataAnteriorFormatada = dataAnterior ? dataAnterior.split("-").reverse().join("/") : "";
+
+    // Data/Hora Nova (remarcada ou atual)
     const dataFinal = novaData || ag.data_agendamento;
-    const horaFinal = novoHorario || ag.horario_agendamento;
+    const horaFinal = (novoHorario || ag.horario_agendamento || "").substring(0, 5);
     const dataFormatada = dataFinal ? dataFinal.split("-").reverse().join("/") : "";
 
     const nomeProfissional = ag.medico_profissional || ag.subtipo_exame || "Especialista";
@@ -62,6 +73,7 @@ export async function dispararGatilhoServidor({
 
     const vars = {
       nome: primeiroNome,
+      sobrenome: sobrenome,
       nome_completo: nomeCompleto,
       servico: isExame ? nomeEspecialidade : nomeProfissional,
       especialista: nomeProfissional,
@@ -71,10 +83,24 @@ export async function dispararGatilhoServidor({
       subtipo_exame: isExame ? nomeEspecialidade : "",
       categoria: isExame ? "Exames" : "Consultas",
       tipo_servico: isExame ? "Exame" : "Consulta",
+      modalidade: ag.modalidade || "Particular",
       data: dataFormatada,
       hora: horaFinal || "",
-      motivo: motivo || "Solicitação realizada",
-      clinica: emp.nome || "Clínica"
+      nova_data: dataFormatada,
+      novo_horario: horaFinal || "",
+      data_anterior: dataAnteriorFormatada,
+      hora_anterior: horaAnterior || "",
+      data_antiga: dataAnteriorFormatada,
+      hora_antiga: horaAnterior || "",
+      motivo: motivoFinal,
+      motivo_cancelamento: motivoFinal,
+      justificativa: motivoFinal,
+      cpf: paciente.cpf || "",
+      telefone: tel,
+      whatsapp: tel,
+      clinica: emp.nome || "Clínica",
+      nome_clinica: emp.nome || "Clínica",
+      valor: ag.valor_total ? `R$ ${Number(ag.valor_total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : ""
     };
 
     const configWebhooks = emp.config_campos?.config_webhooks || emp.config_chaves?.config_webhooks || {};
@@ -117,6 +143,9 @@ export async function dispararGatilhoServidor({
                 id: agendamentoId,
                 data: dataFinal,
                 horario: horaFinal,
+                data_anterior: dataAnterior,
+                horario_anterior: horaAnterior,
+                motivo_cancelamento: motivoFinal,
                 servico: isExame ? nomeEspecialidade : nomeProfissional,
                 especialista: nomeProfissional,
                 especialidade: nomeEspecialidade,

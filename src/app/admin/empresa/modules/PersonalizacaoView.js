@@ -41,7 +41,9 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  Info
+  Info,
+  Clock3,
+  Zap
 } from "lucide-react";
 import {
   fadeUp,
@@ -140,13 +142,70 @@ const DEFAULT_ORDEM_ETAPAS = [
   "checkout"
 ];
 
-// Helper para limpar prefixos "Categoria:" ou "Especialidade:"
+// Helper para limpar prefixos "categoria:", "especialidade:", "modalidade:"
 const limparNomeAlvo = (str) => {
   if (!str) return "Todas";
   return String(str)
-    .replace(/categoria:\s*/gi, "")
-    .replace(/especialidade:\s*/gi, "")
+    .replace(/^(categoria|especialidade|modalidade|tipo|servico):\s*/gi, "")
     .trim() || "Todas";
+};
+
+// Helper visual para badges de alvos
+const obterBadgeAlvo = (alvoStr) => {
+  if (!alvoStr || alvoStr === "Todas" || alvoStr === "todos") {
+    return {
+      tipo: "global",
+      texto: "Todas",
+      badgeClass: "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border-zinc-200/60 dark:border-zinc-700/60"
+    };
+  }
+  const str = String(alvoStr).trim();
+  if (str.startsWith("categoria:")) {
+    return {
+      tipo: "categoria",
+      texto: `Cat: ${str.replace("categoria:", "").trim()}`,
+      badgeClass: "bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200/50"
+    };
+  }
+  if (str.startsWith("especialidade:")) {
+    return {
+      tipo: "especialidade",
+      texto: `Esp: ${str.replace("especialidade:", "").trim()}`,
+      badgeClass: "bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200/50"
+    };
+  }
+  if (str.startsWith("modalidade:")) {
+    return {
+      tipo: "modalidade",
+      texto: `Mod: ${str.replace("modalidade:", "").trim()}`,
+      badgeClass: "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200/50"
+    };
+  }
+  if (str.startsWith("tipo:")) {
+    return {
+      tipo: "tipo",
+      texto: `Tipo: ${str.replace("tipo:", "").trim()}`,
+      badgeClass: "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200/50"
+    };
+  }
+  return {
+    tipo: "especialidade",
+    texto: str,
+    badgeClass: "bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200/50"
+  };
+};
+
+// Helper para normalizar o valor do select de alvo
+const normalizarAlvoValue = (alvo, options) => {
+  if (!alvo || alvo === "Todas" || alvo === "todos") return "Todas";
+  if (options.some((o) => o.value === alvo)) return alvo;
+  const clean = alvo.replace(/^(categoria|especialidade|modalidade|tipo|servico):\s*/i, "").trim().toLowerCase();
+  const match = options.find((o) => {
+    const oClean = o.value.replace(/^(categoria|especialidade|modalidade|tipo|servico):\s*/i, "").trim().toLowerCase();
+    return oClean === clean;
+  });
+  if (match) return match.value;
+  return alvo;
 };
 
 export default function PersonalizacaoView({ subTab = "jornada", showToast, servicos = [] }) {
@@ -162,6 +221,8 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
     mostrar_whatsapp: true,
     whatsapp_atendimento: "",
     mensagem_redirecionamento_whatsapp: "",
+    tipo_checkout_pagamento: "online",
+    msg_pagamento_whatsapp: "",
     ordem_etapas: [...DEFAULT_ORDEM_ETAPAS],
     ocultar_boas_vindas: false,
     ocultar_especialidade: false,
@@ -171,6 +232,8 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
     logo_url: "",
     formato_logo: "arredondada",
     enviar_mensagens_importados_erp: true,
+    categorias_atendimento: ["Consultas", "Exames"],
+    especialidades_categorizadas: [],
     tema: {
       escopo_tema: "ambos",
       cor_primaria: "#9FC131",
@@ -206,6 +269,86 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
   const [loadingHistorico, setLoadingHistorico] = useState(false);
   const [disparandoId, setDisparandoId] = useState(null);
   const [mensagemVisualizar, setMensagemVisualizar] = useState(null);
+
+  // Categorias disponíveis extraídas dinamicamente
+  const categoriasDisponiveis = useMemo(() => {
+    const setCat = new Set();
+    setCat.add("Consultas");
+    setCat.add("Exames");
+
+    if (Array.isArray(campos?.categorias_atendimento)) {
+      campos.categorias_atendimento.forEach((c) => {
+        if (typeof c === "string" && c.trim()) setCat.add(c.trim());
+        else if (c?.nome) setCat.add(c.nome.trim());
+      });
+    }
+
+    if (Array.isArray(campos?.especialidades_categorizadas)) {
+      campos.especialidades_categorizadas.forEach((ec) => {
+        if (ec?.categoria && ec.categoria.trim()) setCat.add(ec.categoria.trim());
+      });
+    }
+
+    return Array.from(setCat);
+  }, [campos.categorias_atendimento, campos.especialidades_categorizadas]);
+
+  // Catálogo de especialidades disponíveis
+  const catalogoEspecialidades = useMemo(() => {
+    const map = new Map();
+    (servicos || [])
+      .filter((s) => s.ativo !== false)
+      .forEach((s) => {
+        const nome = (s.especialidade || s.nome || "").trim();
+        if (nome && !map.has(nome)) {
+          map.set(nome, { nome, categoria: s.tipo || "Geral" });
+        }
+      });
+
+    if (Array.isArray(campos?.especialidades_categorizadas)) {
+      campos.especialidades_categorizadas.forEach((ec) => {
+        if (ec?.nome && ec.nome.trim()) {
+          const nomeClean = ec.nome.trim();
+          map.set(nomeClean, { nome: nomeClean, categoria: ec.categoria || "Geral" });
+        }
+      });
+    }
+
+    return Array.from(map.values());
+  }, [servicos, campos.especialidades_categorizadas]);
+
+  // Lista estruturada para o Select de Alvo
+  const listaOpcoesAlvo = useMemo(() => {
+    const opts = [
+      { value: "Todas", label: "Todas (Qualquer atendimento / Global)" }
+    ];
+
+    // 1. Categorias dinâmicas
+    categoriasDisponiveis.forEach((cat) => {
+      opts.push({
+        value: `categoria:${cat}`,
+        label: `📁 Categoria: ${cat}`
+      });
+    });
+
+    // 2. Especialidades
+    catalogoEspecialidades.forEach((esp) => {
+      opts.push({
+        value: `especialidade:${esp.nome}`,
+        label: `🩺 Especialidade: ${esp.nome} (${esp.categoria})`
+      });
+    });
+
+    // 3. Modalidades
+    const modalidades = ["Particular", "Convênio", "Retorno"];
+    modalidades.forEach((mod) => {
+      opts.push({
+        value: `modalidade:${mod}`,
+        label: `💳 Modalidade: ${mod}`
+      });
+    });
+
+    return opts;
+  }, [categoriasDisponiveis, catalogoEspecialidades]);
 
   const carregarHistorico = async () => {
     setLoadingHistorico(true);
@@ -267,6 +410,14 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
             mensagem_redirecionamento_whatsapp:
               emp.config_campos?.mensagem_redirecionamento_whatsapp ||
               prev.mensagem_redirecionamento_whatsapp ||
+              "",
+            tipo_checkout_pagamento:
+              emp.config_campos?.tipo_checkout_pagamento ||
+              prev.tipo_checkout_pagamento ||
+              "online",
+            msg_pagamento_whatsapp:
+              emp.config_campos?.msg_pagamento_whatsapp ||
+              prev.msg_pagamento_whatsapp ||
               "",
             ordem_etapas:
               Array.isArray(emp.config_campos?.ordem_etapas) && emp.config_campos.ordem_etapas.length > 0
@@ -387,14 +538,21 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
     const novaRegra = {
       id: Date.now().toString(),
       alvo: filterEspecialidade !== "Todas" ? filterEspecialidade : "Todas",
-      especialidade: filterEspecialidade !== "Todas" ? filterEspecialidade : "Todas",
       tipo_envio: "whatsapp", // "whatsapp" | "webhook"
       url_webhook_customizada: "",
+      gatilho: filterGatilho !== "Todos" ? filterGatilho : "imediato",
+      // Configurações para Lembrete Antes do Atendimento ("agendado")
+      dias_antes: 1,
+      unidade_antes: "dias", // "dias" | "horas"
+      hora_envio: "08:00",
+      // Configurações para Pós-Atendimento ("pos_atendimento")
+      pos_base: "termino", // "termino" | "inicio"
+      pos_unidade: "minutos", // "minutos" | "horas" | "dias"
+      pos_tempo: 30, // 30 min, 1h, 1 dia
+      // Filtros de refinamento adicionais
+      filtro_modalidade: "todas", // "todas" | "Particular" | "Convênio" | "Retorno"
       filtrar_enfermidade: false,
       enfermidade_alvo: "Refluxo",
-      gatilho: filterGatilho !== "Todos" ? filterGatilho : "imediato",
-      dias_antes: 1,
-      hora_envio: "08:00",
       mensagem: "Olá {nome}, seu agendamento de {servico} com {especialista} ({modalidade}) está confirmado!"
     };
     setRegrasMensagens([novaRegra, ...regrasMensagens]);
@@ -442,6 +600,13 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
     }));
   };
 
+  const inserirVariavelPagamentoWhatsApp = (tag) => {
+    setCampos((prev) => ({
+      ...prev,
+      msg_pagamento_whatsapp: `${prev.msg_pagamento_whatsapp || ""} ${tag}`.trim()
+    }));
+  };
+
   const tipoEnvioOptions = [
     { value: "whatsapp", label: "💬 Mensagem WhatsApp Normal (Texto / Anexo)" },
     { value: "webhook", label: "⚡ Disparo de Webhook (Fluxo Inteligente / Chatbot)" }
@@ -449,7 +614,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
 
   const gatilhoOptions = [
     { value: "imediato", label: "Na hora do Agendamento (Instantâneo)" },
-    { value: "agendado", label: "Dias antes do Atendimento (Lembrete)" },
+    { value: "agendado", label: "Antes do Atendimento (Lembrete Programado)" },
     { value: "pos_atendimento", label: "Após Consulta / Exame (Pós-Atendimento)" },
     { value: "remarcado", label: "Quando Remarcado / Reagendado" },
     { value: "cancelado", label: "Quando Cancelado" },
@@ -468,8 +633,12 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
     { tag: "{especialidade}", desc: "Especialidade médica" },
     { tag: "{telefone}", desc: "WhatsApp do paciente" },
     { tag: "{cpf}", desc: "CPF do paciente" },
-    { tag: "{data}", desc: "Data do atendimento" },
-    { tag: "{hora}", desc: "Horário agendado" },
+    { tag: "{data}", desc: "Data do atendimento (ou nova data remarcada)" },
+    { tag: "{hora}", desc: "Horário agendado (ou novo horário remarcado)" },
+    { tag: "{data_anterior}", desc: "Data anterior (em remarcações)" },
+    { tag: "{hora_anterior}", desc: "Horário anterior (em remarcações)" },
+    { tag: "{motivo_cancelamento}", desc: "Motivo / Justificativa do cancelamento" },
+    { tag: "{motivo}", desc: "Motivo informado pela clínica" },
     { tag: "{valor}", desc: "Valor a pagar" },
     { tag: "{chave_pix}", desc: "Chave Pix copia e cola" },
     { tag: "{link_pagamento}", desc: "Link direto do checkout" }
@@ -486,13 +655,39 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
 
   const regrasFiltradas = useMemo(() => {
     let filtered = regrasMensagens.filter((regra) => {
+      // 1. Filtro por Gatilho
       if (filterGatilho !== "Todos" && regra.gatilho !== filterGatilho) return false;
+
+      // 2. Filtro por Alvo (Especialidade, Categoria ou Modalidade)
       if (filterEspecialidade !== "Todas") {
-        const alvoRaw = (regra.alvo || "").toLowerCase();
+        const alvoRaw = (regra.alvo || regra.especialidade || "").toLowerCase().trim();
         const targetClean = filterEspecialidade.toLowerCase().trim();
-        if (alvoRaw === "todas") return true;
-        return alvoRaw.includes(targetClean);
+
+        if (alvoRaw === "todas" || alvoRaw === "todos") return true;
+
+        if (targetClean.startsWith("categoria:")) {
+          const cat = targetClean.replace("categoria:", "").trim();
+          if (alvoRaw.includes(cat)) return true;
+        } else if (targetClean.startsWith("especialidade:")) {
+          const esp = targetClean.replace("especialidade:", "").trim();
+          if (alvoRaw.includes(esp)) return true;
+        } else if (targetClean.startsWith("modalidade:")) {
+          const mod = targetClean.replace("modalidade:", "").trim();
+          if (alvoRaw.includes(mod) || (regra.filtro_modalidade && regra.filtro_modalidade.toLowerCase().includes(mod))) return true;
+        } else {
+          if (alvoRaw.includes(targetClean) || targetClean.includes(alvoRaw)) return true;
+        }
+        return false;
       }
+
+      // 3. Filtro por Texto na Mensagem
+      if (filterTextoMensagem.trim()) {
+        const query = filterTextoMensagem.toLowerCase().trim();
+        const msg = (regra.mensagem || "").toLowerCase();
+        const alvoStr = (regra.alvo || regra.especialidade || "").toLowerCase();
+        if (!msg.includes(query) && !alvoStr.includes(query)) return false;
+      }
+
       return true;
     });
 
@@ -519,7 +714,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
     }
 
     return filtered;
-  }, [regrasMensagens, filterGatilho, filterEspecialidade, sortMensagens]);
+  }, [regrasMensagens, filterGatilho, filterEspecialidade, filterTextoMensagem, sortMensagens]);
 
   const handleSortHistorico = (key) => {
     let direction = "asc";
@@ -1042,6 +1237,131 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                   </div>
                 </div>
               </section>
+
+              {/* FORMA DE PAGAMENTO NO CHECKOUT (ONLINE VS WHATSAPP MANUAL) */}
+              <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm space-y-5">
+                <div className="flex items-center gap-3 border-b border-zinc-100 dark:border-white/5 pb-4">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                    <CreditCard size={18} strokeWidth={1.5} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-zinc-950 dark:text-white">
+                      Forma de Cobrança & Checkout de Pacientes Particulares
+                    </h3>
+                    <p className="text-xs text-zinc-500">
+                      Defina se o paciente paga automaticamente pelo Mercado Pago ou é direcionado ao WhatsApp da clínica para cobrança manual pela atendente.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
+                    Modo de Pagamento / Checkout:
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {[
+                      {
+                        id: "online",
+                        label: "Pagamento Online Automático",
+                        desc: "Mercado Pago: Pix Copia e Cola, QR Code e Cartão de Crédito com conciliação automática."
+                      },
+                      {
+                        id: "whatsapp",
+                        label: "Cobrança Manual via WhatsApp",
+                        desc: "O paciente é redirecionado ao WhatsApp da clínica com todos os dados preenchidos para a atendente gerar o Pix/cobrança e aprovar no painel."
+                      },
+                      {
+                        id: "ambos",
+                        label: "Híbrido / Ambos os Canais",
+                        desc: "O paciente pode escolher entre pagar online instantaneamente ou falar com a atendente no WhatsApp."
+                      }
+                    ].map((opt) => {
+                      const isSel = (campos.tipo_checkout_pagamento || "online") === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => {
+                            playDopamineSound("select");
+                            triggerHaptic("light");
+                            setCampos((prev) => ({ ...prev, tipo_checkout_pagamento: opt.id }));
+                          }}
+                          className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                            isSel
+                              ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-md font-bold ring-2 ring-[#9FC131]"
+                              : "bg-zinc-50/70 dark:bg-zinc-900/60 border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-black">{opt.label}</span>
+                            {isSel && <Check size={14} className="text-[#9FC131]" />}
+                          </div>
+                          <p className="text-[11px] opacity-75 leading-relaxed">{opt.desc}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* TEMPLATE DA MENSAGEM DE WHATSAPP PARA PAGAMENTO */}
+                {((campos.tipo_checkout_pagamento || "online") === "whatsapp" || (campos.tipo_checkout_pagamento || "online") === "ambos") && (
+                  <div className="pt-4 border-t border-zinc-100 dark:border-white/5 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <label className="text-xs font-bold uppercase tracking-wider text-zinc-900 dark:text-white block">
+                          Mensagem de Cobrança Enviada ao WhatsApp da Atendente
+                        </label>
+                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                          Texto gerado para o cliente enviar à atendente contendo resumo completo do agendamento para emissão da chave Pix / pagamento.
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap gap-1">
+                        {[
+                          "{nome}",
+                          "{cpf}",
+                          "{telefone}",
+                          "{servico}",
+                          "{especialista}",
+                          "{especialidade}",
+                          "{data}",
+                          "{hora}",
+                          "{valor}",
+                          "{modalidade}",
+                          "{clinica}"
+                        ].map((tag) => (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => inserirVariavelPagamentoWhatsApp(tag)}
+                            className="px-2 py-0.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded text-[10px] font-mono font-bold cursor-pointer transition-colors"
+                          >
+                            + {tag}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="p-3.5 bg-zinc-50/80 dark:bg-zinc-900/60 rounded-2xl border border-zinc-200/80 dark:border-zinc-800">
+                      <textarea
+                        value={campos.msg_pagamento_whatsapp || ""}
+                        onChange={(e) =>
+                          setCampos({ ...campos, msg_pagamento_whatsapp: e.target.value })
+                        }
+                        placeholder="Olá! Gostaria de confirmar meu agendamento na {clinica}:&#10;👤 Paciente: {nome}&#10;📄 CPF: {cpf}&#10;📱 Telefone: {telefone}&#10;🩺 Atendimento: {servico} ({modalidade})&#10;👨‍⚕️ Especialista: {especialista}&#10;📅 Data: {data} às {hora}&#10;💰 Valor da Entrada: {valor}&#10;&#10;Por favor, me envie a chave Pix ou link para pagamento e garantia da vaga!"
+                        className="w-full bg-transparent text-xs font-medium text-zinc-900 dark:text-zinc-100 outline-none min-h-[110px] resize-none custom-scrollbar leading-relaxed"
+                      />
+                    </div>
+
+                    <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-start gap-2.5 text-xs text-emerald-900 dark:text-emerald-300">
+                      <Sparkles size={15} className="text-emerald-500 shrink-0 mt-0.5" />
+                      <p>
+                        <strong>Fluxo da Atendente:</strong> O agendamento fica com status <em>"Pagamento Pendente"</em> na Agenda Admin até que a atendente receba o comprovante e clique em <strong>"Aprovar Pagamento"</strong> no card do paciente.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </section>
             </motion.div>
           )}
 
@@ -1087,7 +1407,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                           setCampos((prev) => ({ ...prev, tema: newTheme }));
                           aplicarTemaEmTempoReal(newTheme);
                           setVisualizacaoMensagens(m.id);
-                          showToast(`Visualização padrão definida como \"${m.label.split(" ")[2] || m.label}\".`);
+                          showToast(`Visualização padrão definida como "${m.label.split(" ")[2] || m.label}".`);
                         }}
                         className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex items-start gap-3.5 ${
                           isSel
@@ -1369,7 +1689,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                   <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
                     <div className="md:col-span-6 space-y-1">
                       <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider block ml-1">
-                        Buscar na Mensagem / Especialidade
+                        Buscar na Mensagem / Especialidade / Alvo
                       </label>
                       <div className="relative">
                         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
@@ -1394,12 +1714,12 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
 
                     <div className="md:col-span-3 space-y-1">
                       <CustomSelect
-                        label="Nicho / Especialidade"
+                        label="Alvo / Especialidade / Categoria"
                         value={filterEspecialidade}
                         onChange={setFilterEspecialidade}
                         options={[
-                          { value: "Todas", label: "Todas as Especialidades" },
-                          ...servicos.map((s) => ({ value: s.nome, label: s.nome }))
+                          { value: "Todas", label: "Todos os Alvos" },
+                          ...listaOpcoesAlvo.filter((o) => o.value !== "Todas")
                         ]}
                       />
                     </div>
@@ -1413,7 +1733,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                       Automações de WhatsApp ({regrasFiltradas.length})
                     </h3>
                     <p className="text-xs text-zinc-500">
-                      Mensagens enviadas automaticamente para o WhatsApp dos pacientes com prévia compacta.
+                      Mensagens enviadas automaticamente para o WhatsApp dos pacientes com prévia e personalização flexível.
                     </p>
                   </div>
 
@@ -1485,7 +1805,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                             </th>
                             <th
                               onClick={() => handleSortMensagens("alvo")}
-                              className="p-3.5 w-36 lg:w-40 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                              className="p-3.5 w-36 lg:w-44 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
                             >
                               <div className="flex items-center gap-1">
                                 <span>Alvo</span>
@@ -1518,7 +1838,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                         <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800 font-medium">
                           {regrasFiltradas.map((regra, idx) => {
                             const isExpanded = editingRegraId === regra.id;
-                            const nomeAlvoLimpo = limparNomeAlvo(regra.alvo || regra.especialidade);
+                            const badgeAlvo = obterBadgeAlvo(regra.alvo || regra.especialidade);
 
                             return (
                               <React.Fragment key={regra.id}>
@@ -1532,21 +1852,39 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                                       <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-bold text-[10.5px] border border-blue-200/50 block truncate">
                                         {gatilhoOptions.find((g) => g.value === regra.gatilho)?.label || regra.gatilho}
                                       </span>
-                                      {regra.tipo_envio === "webhook" ? (
-                                        <span className="px-1.5 py-0.2 rounded bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-[8.5px] font-extrabold uppercase inline-flex items-center gap-1 border border-amber-200/40">
-                                          <Zap size={8} /> Webhook
-                                        </span>
-                                      ) : (
-                                        <span className="px-1.5 py-0.2 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-[8.5px] font-extrabold uppercase inline-flex items-center gap-1 border border-emerald-200/40">
-                                          <MessageSquare size={8} /> WhatsApp
-                                        </span>
-                                      )}
+                                      
+                                      <div className="flex items-center gap-1 flex-wrap">
+                                        {regra.tipo_envio === "webhook" ? (
+                                          <span className="px-1.5 py-0.2 rounded bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-[8.5px] font-extrabold uppercase inline-flex items-center gap-1 border border-amber-200/40">
+                                            <Zap size={8} /> Webhook
+                                          </span>
+                                        ) : (
+                                          <span className="px-1.5 py-0.2 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-[8.5px] font-extrabold uppercase inline-flex items-center gap-1 border border-emerald-200/40">
+                                            <MessageSquare size={8} /> WhatsApp
+                                          </span>
+                                        )}
+
+                                        {regra.gatilho === "pos_atendimento" && (
+                                          <span className="text-[9px] text-zinc-500 dark:text-zinc-400 font-medium">
+                                            {regra.pos_tempo || 30} {regra.pos_unidade || "min"} pós-{regra.pos_base === "inicio" ? "início" : "fim"}
+                                          </span>
+                                        )}
+
+                                        {regra.gatilho === "agendado" && (
+                                          <span className="text-[9px] text-zinc-500 dark:text-zinc-400 font-medium">
+                                            {regra.dias_antes || 1} {regra.unidade_antes || "dias"} antes ({regra.hora_envio || "08:00"})
+                                          </span>
+                                        )}
+                                      </div>
                                     </div>
                                   </td>
 
                                   <td className="p-3.5 font-bold text-zinc-900 dark:text-white">
-                                    <span className="truncate block max-w-[130px]" title={nomeAlvoLimpo}>
-                                      {nomeAlvoLimpo}
+                                    <span
+                                      className={`px-2 py-1 rounded-lg text-[10.5px] font-extrabold border inline-block truncate max-w-[150px] ${badgeAlvo.badgeClass}`}
+                                      title={badgeAlvo.texto}
+                                    >
+                                      {badgeAlvo.texto}
                                     </span>
                                   </td>
 
@@ -1618,11 +1956,11 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                                       <div className="p-5 bg-white dark:bg-[#0e0e12] space-y-4 shadow-inner">
                                         <div className="grid lg:grid-cols-2 gap-5">
                                           <div className="space-y-3">
-                                            <TextInput
-                                              label="Alvo da Mensagem"
-                                              placeholder="Ex: Todas ou nome da especialidade"
-                                              value={nomeAlvoLimpo}
-                                              onChange={(e) => atualizarRegra(regra.id, "alvo", e.target.value)}
+                                            <CustomSelect
+                                              label="Alvo da Mensagem (Especialidade, Categoria ou Modalidade)"
+                                              value={normalizarAlvoValue(regra.alvo || regra.especialidade, listaOpcoesAlvo)}
+                                              onChange={(v) => atualizarRegra(regra.id, "alvo", v)}
+                                              options={listaOpcoesAlvo}
                                             />
 
                                             <div className="grid sm:grid-cols-2 gap-3">
@@ -1650,26 +1988,151 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                                               />
                                             )}
 
-                                            {regra.gatilho === "agendado" && (
-                                              <div className="grid grid-cols-2 gap-2">
-                                                <TextInput
-                                                  type="number"
-                                                  label="Dias Antes"
-                                                  value={regra.dias_antes ?? 1}
-                                                  onChange={(e) =>
-                                                    atualizarRegra(regra.id, "dias_antes", e.target.value)
-                                                  }
-                                                />
-                                                <TextInput
-                                                  type="time"
-                                                  label="Hora Envio"
-                                                  value={regra.hora_envio || "08:00"}
-                                                  onChange={(e) =>
-                                                    atualizarRegra(regra.id, "hora_envio", e.target.value)
-                                                  }
-                                                />
+                                            {/* CONFIGURAÇÃO DE TEMPO PARA PÓS-ATENDIMENTO */}
+                                            {regra.gatilho === "pos_atendimento" && (
+                                              <div className="p-3.5 bg-emerald-500/5 dark:bg-emerald-950/20 border border-emerald-500/30 rounded-2xl space-y-3">
+                                                <div className="flex items-center justify-between">
+                                                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
+                                                    <Clock3 size={13} /> Tempo de Disparo Pós-Atendimento
+                                                  </span>
+                                                  <span className="text-[10px] text-zinc-400 font-medium">
+                                                    {regra.pos_base === "inicio" ? "A partir do início" : "A partir do término"}
+                                                  </span>
+                                                </div>
+
+                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                                  <CustomSelect
+                                                    label="Referência"
+                                                    value={regra.pos_base || "termino"}
+                                                    onChange={(v) => atualizarRegra(regra.id, "pos_base", v)}
+                                                    options={[
+                                                      { value: "termino", label: "Após o Término da Consulta/Exame" },
+                                                      { value: "inicio", label: "Após o Horário de Início" }
+                                                    ]}
+                                                  />
+
+                                                  <CustomSelect
+                                                    label="Unidade de Tempo"
+                                                    value={regra.pos_unidade || "minutos"}
+                                                    onChange={(v) => atualizarRegra(regra.id, "pos_unidade", v)}
+                                                    options={[
+                                                      { value: "minutos", label: "Minutos" },
+                                                      { value: "horas", label: "Horas" },
+                                                      { value: "dias", label: "Dias" }
+                                                    ]}
+                                                  />
+
+                                                  <TextInput
+                                                    type="number"
+                                                    label="Quantidade / Tempo"
+                                                    placeholder="Ex: 30"
+                                                    value={regra.pos_tempo ?? (regra.dias_depois || 30)}
+                                                    onChange={(e) =>
+                                                      atualizarRegra(regra.id, "pos_tempo", parseInt(e.target.value, 10) || 0)
+                                                    }
+                                                  />
+                                                </div>
+
+                                                {regra.pos_unidade === "dias" && (
+                                                  <div className="pt-2 border-t border-emerald-500/20">
+                                                    <TextInput
+                                                      type="time"
+                                                      label="Horário de Envio no Dia Programado"
+                                                      value={regra.hora_envio || "08:00"}
+                                                      onChange={(e) => atualizarRegra(regra.id, "hora_envio", e.target.value)}
+                                                    />
+                                                  </div>
+                                                )}
+
+                                                <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                                                  💡 A mensagem será programada para{" "}
+                                                  <strong>
+                                                    {regra.pos_tempo ?? 30} {regra.pos_unidade || "minutos"}{" "}
+                                                    {regra.pos_base === "inicio" ? "após o início" : "após o término"}
+                                                  </strong>{" "}
+                                                  da consulta/exame.
+                                                </p>
                                               </div>
                                             )}
+
+                                            {/* CONFIGURAÇÃO DE TEMPO PARA LEMBRETE ANTES DO ATENDIMENTO */}
+                                            {regra.gatilho === "agendado" && (
+                                              <div className="p-3.5 bg-blue-500/5 dark:bg-blue-950/20 border border-blue-500/30 rounded-2xl space-y-3">
+                                                <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 dark:text-blue-300 flex items-center gap-1.5">
+                                                  <Clock3 size={13} /> Tempo de Disparo do Lembrete
+                                                </span>
+
+                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                                  <CustomSelect
+                                                    label="Unidade"
+                                                    value={regra.unidade_antes || "dias"}
+                                                    onChange={(v) => atualizarRegra(regra.id, "unidade_antes", v)}
+                                                    options={[
+                                                      { value: "dias", label: "Dias Antes" },
+                                                      { value: "horas", label: "Horas Antes" }
+                                                    ]}
+                                                  />
+
+                                                  <TextInput
+                                                    type="number"
+                                                    label="Quantidade"
+                                                    value={regra.dias_antes ?? 1}
+                                                    onChange={(e) =>
+                                                      atualizarRegra(regra.id, "dias_antes", parseInt(e.target.value, 10) || 1)
+                                                    }
+                                                  />
+
+                                                  <TextInput
+                                                    type="time"
+                                                    label="Hora Fixo Envio"
+                                                    value={regra.hora_envio || "08:00"}
+                                                    onChange={(e) =>
+                                                      atualizarRegra(regra.id, "hora_envio", e.target.value)
+                                                    }
+                                                  />
+                                                </div>
+                                              </div>
+                                            )}
+
+                                            {/* FILTROS DE REFINAMENTO OPCIONAL (MODALIDADE / ENFERMIDADE) */}
+                                            <div className="p-3.5 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl space-y-3">
+                                              <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+                                                <Filter size={12} /> Refinamento Adicional de Filtros (Opcional)
+                                              </span>
+
+                                              <div className="grid sm:grid-cols-2 gap-3">
+                                                <CustomSelect
+                                                  label="Filtrar por Modalidade"
+                                                  value={regra.filtro_modalidade || "todas"}
+                                                  onChange={(v) => atualizarRegra(regra.id, "filtro_modalidade", v)}
+                                                  options={[
+                                                    { value: "todas", label: "Todas as Modalidades" },
+                                                    { value: "Particular", label: "Apenas Particular" },
+                                                    { value: "Convênio", label: "Apenas Convênio" },
+                                                    { value: "Retorno", label: "Apenas Retorno" }
+                                                  ]}
+                                                />
+
+                                                <div className="flex items-center justify-between pt-5 px-2">
+                                                  <ToggleSwitch
+                                                    checked={Boolean(regra.filtrar_enfermidade)}
+                                                    onChange={(v) => atualizarRegra(regra.id, "filtrar_enfermidade", v)}
+                                                    label="Filtrar por Enfermidade"
+                                                  />
+                                                </div>
+                                              </div>
+
+                                              {regra.filtrar_enfermidade && (
+                                                <div className="pt-2 border-t border-zinc-200/60 dark:border-zinc-800">
+                                                  <TextInput
+                                                    label="Nome da Enfermidade Alvo"
+                                                    placeholder="Ex: Refluxo, Gastrite, Hipertensão..."
+                                                    value={regra.enfermidade_alvo || ""}
+                                                    onChange={(e) => atualizarRegra(regra.id, "enfermidade_alvo", e.target.value)}
+                                                  />
+                                                </div>
+                                              )}
+                                            </div>
                                           </div>
 
                                           <div className="space-y-2 flex flex-col justify-between">
@@ -1750,14 +2213,15 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                               {index + 1}
                             </span>
                             <h4 className="font-bold text-xs text-zinc-950 dark:text-white">
-                              Critérios de Disparo
+                              Critérios de Disparo & Alvo
                             </h4>
                           </div>
 
-                          <TextInput
-                            label="Alvo da Mensagem"
-                            value={limparNomeAlvo(regra.alvo || regra.especialidade)}
-                            onChange={(e) => atualizarRegra(regra.id, "alvo", e.target.value)}
+                          <CustomSelect
+                            label="Alvo da Mensagem (Especialidade, Categoria ou Modalidade)"
+                            value={normalizarAlvoValue(regra.alvo || regra.especialidade, listaOpcoesAlvo)}
+                            onChange={(v) => atualizarRegra(regra.id, "alvo", v)}
+                            options={listaOpcoesAlvo}
                           />
 
                           <div className="grid sm:grid-cols-2 gap-3">
@@ -1785,26 +2249,126 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                             />
                           )}
 
-                          {regra.gatilho === "agendado" && (
-                            <div className="grid grid-cols-2 gap-2">
-                              <TextInput
-                                type="number"
-                                label="Dias Antes"
-                                value={regra.dias_antes ?? 1}
-                                onChange={(e) =>
-                                  atualizarRegra(regra.id, "dias_antes", e.target.value)
-                                }
-                              />
-                              <TextInput
-                                type="time"
-                                label="Hora Envio"
-                                value={regra.hora_envio || "08:00"}
-                                onChange={(e) =>
-                                  atualizarRegra(regra.id, "hora_envio", e.target.value)
-                                }
-                              />
+                          {/* PÓS-ATENDIMENTO NO CARD */}
+                          {regra.gatilho === "pos_atendimento" && (
+                            <div className="p-3.5 bg-emerald-500/5 dark:bg-emerald-950/20 border border-emerald-500/30 rounded-2xl space-y-3">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
+                                <Clock3 size={13} /> Configuração de Disparo Pós-Atendimento
+                              </span>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                <CustomSelect
+                                  label="Referência"
+                                  value={regra.pos_base || "termino"}
+                                  onChange={(v) => atualizarRegra(regra.id, "pos_base", v)}
+                                  options={[
+                                    { value: "termino", label: "Após Término da Consulta/Exame" },
+                                    { value: "inicio", label: "Após Horário de Início" }
+                                  ]}
+                                />
+
+                                <CustomSelect
+                                  label="Unidade"
+                                  value={regra.pos_unidade || "minutos"}
+                                  onChange={(v) => atualizarRegra(regra.id, "pos_unidade", v)}
+                                  options={[
+                                    { value: "minutos", label: "Minutos" },
+                                    { value: "horas", label: "Horas" },
+                                    { value: "dias", label: "Dias" }
+                                  ]}
+                                />
+
+                                <TextInput
+                                  type="number"
+                                  label="Tempo"
+                                  value={regra.pos_tempo ?? (regra.dias_depois || 30)}
+                                  onChange={(e) =>
+                                    atualizarRegra(regra.id, "pos_tempo", parseInt(e.target.value, 10) || 0)
+                                  }
+                                />
+                              </div>
+
+                              {regra.pos_unidade === "dias" && (
+                                <TextInput
+                                  type="time"
+                                  label="Horário Fixo de Envio"
+                                  value={regra.hora_envio || "08:00"}
+                                  onChange={(e) => atualizarRegra(regra.id, "hora_envio", e.target.value)}
+                                />
+                              )}
                             </div>
                           )}
+
+                          {/* LEMBRETE NO CARD */}
+                          {regra.gatilho === "agendado" && (
+                            <div className="p-3.5 bg-blue-500/5 dark:bg-blue-950/20 border border-blue-500/30 rounded-2xl space-y-3">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 dark:text-blue-300 flex items-center gap-1.5">
+                                <Clock3 size={13} /> Tempo do Lembrete
+                              </span>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                <CustomSelect
+                                  label="Unidade"
+                                  value={regra.unidade_antes || "dias"}
+                                  onChange={(v) => atualizarRegra(regra.id, "unidade_antes", v)}
+                                  options={[
+                                    { value: "dias", label: "Dias Antes" },
+                                    { value: "horas", label: "Horas Antes" }
+                                  ]}
+                                />
+
+                                <TextInput
+                                  type="number"
+                                  label="Quantidade"
+                                  value={regra.dias_antes ?? 1}
+                                  onChange={(e) =>
+                                    atualizarRegra(regra.id, "dias_antes", parseInt(e.target.value, 10) || 1)
+                                  }
+                                />
+
+                                <TextInput
+                                  type="time"
+                                  label="Hora Envio"
+                                  value={regra.hora_envio || "08:00"}
+                                  onChange={(e) =>
+                                    atualizarRegra(regra.id, "hora_envio", e.target.value)
+                                  }
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {/* REFINAMENTOS NO CARD */}
+                          <div className="p-3.5 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl space-y-3">
+                            <CustomSelect
+                              label="Filtrar por Modalidade (Opcional)"
+                              value={regra.filtro_modalidade || "todas"}
+                              onChange={(v) => atualizarRegra(regra.id, "filtro_modalidade", v)}
+                              options={[
+                                { value: "todas", label: "Todas as Modalidades" },
+                                { value: "Particular", label: "Apenas Particular" },
+                                { value: "Convênio", label: "Apenas Convênio" },
+                                { value: "Retorno", label: "Apenas Retorno" }
+                              ]}
+                            />
+
+                            <div className="flex items-center justify-between pt-1">
+                              <ToggleSwitch
+                                checked={Boolean(regra.filtrar_enfermidade)}
+                                onChange={(v) => atualizarRegra(regra.id, "filtrar_enfermidade", v)}
+                                label="Filtrar por Enfermidade"
+                              />
+                            </div>
+
+                            {regra.filtrar_enfermidade && (
+                              <TextInput
+                                label="Nome da Enfermidade"
+                                placeholder="Ex: Refluxo..."
+                                value={regra.enfermidade_alvo || ""}
+                                onChange={(e) => atualizarRegra(regra.id, "enfermidade_alvo", e.target.value)}
+                              />
+                            )}
+                          </div>
                         </div>
 
                         <div className="flex-1 flex flex-col justify-between space-y-3">

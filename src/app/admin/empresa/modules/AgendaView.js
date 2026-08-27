@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronLeft,
@@ -42,7 +42,13 @@ import {
   Check,
   Sparkles,
   RefreshCw,
-  SlidersHorizontal
+  SlidersHorizontal,
+  CreditCard,
+  AlertTriangle,
+  CalendarPlus,
+  Stethoscope,
+  Building2,
+  DollarSign
 } from "lucide-react";
 import {
   getHojeLocal,
@@ -56,7 +62,10 @@ import {
   actionCancelarAgendamentoAdmin,
   actionExcluirAgendamentoAdmin,
   actionRemarcarAgendamentoAdmin,
+  actionAprovarPagamentoAgendamento,
+  actionCriarAgendamentoManualAdmin,
   fetchAdminCustomization,
+  fetchAdminRegras,
   actionSalvarEnfermidadesPaciente,
   actionSalvarCatalogoEnfermidades,
   actionBuscarMensagensDoAgendamento,
@@ -99,6 +108,28 @@ const formatarDataHoraAmigavel = (isoString) => {
   }
 };
 
+// Helpers de tempo para a Agenda Inteligente
+const timeToMin = (tStr) => {
+  if (!tStr) return 0;
+  const parts = tStr.trim().split(":");
+  return parseInt(parts[0], 10) * 60 + parseInt(parts[1] || "0", 10);
+};
+
+const minToTime = (min) => {
+  const h = Math.floor(min / 60)
+    .toString()
+    .padStart(2, "0");
+  const m = (min % 60).toString().padStart(2, "0");
+  return `${h}:${m}`;
+};
+
+const normalizeText = (t) =>
+  String(t || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
 export default function AgendaView({
   subTab = "calendario",
   setSubTab,
@@ -114,7 +145,9 @@ export default function AgendaView({
 
   useEffect(() => {
     try {
-      const defaultMode = localStorage.getItem("rmcare_default_view_mode") || localStorage.getItem("rmcare_view_mode");
+      const defaultMode =
+        localStorage.getItem("rmcare_default_view_mode") ||
+        localStorage.getItem("rmcare_view_mode");
       if (defaultMode === "cards" || defaultMode === "tabela") {
         setViewMode(defaultMode);
       }
@@ -131,6 +164,7 @@ export default function AgendaView({
   const [searchTerm, setSearchTerm] = useState("");
   const [origemFilter, setOrigemFilter] = useState("todos");
   const [statusFilter, setStatusFilter] = useState("todos");
+  const [pagamentoFilter, setPagamentoFilter] = useState("todos");
   const [filterMedico, setFilterMedico] = useState("Todos");
 
   // Ordenação de colunas da tabela de pacientes
@@ -139,12 +173,41 @@ export default function AgendaView({
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(getHojeLocal());
 
+  // Regras de Agenda da Empresa
+  const [regrasAgenda, setRegrasAgenda] = useState([]);
+  const [empresaConfig, setEmpresaConfig] = useState(null);
+
   // Modais de Ações
   const [cancelModalItem, setCancelModalItem] = useState(null);
   const [cancelReason, setReason] = useState("");
+  const [confirmarCancelamentoStep, setConfirmarCancelamentoStep] = useState(false);
+
+  // Modal Inteligente de Remarcação (com Calendário e Horários em Tempo Real)
   const [rescheduleModalItem, setRescheduleModalItem] = useState(null);
-  const [newDate, setNewDate] = useState("");
-  const [newTime, setNewTime] = useState("");
+  const [rescheduleMonth, setRescheduleMonth] = useState(new Date());
+  const [rescheduleSelectedDate, setRescheduleSelectedDate] = useState("");
+  const [rescheduleSelectedTime, setRescheduleSelectedTime] = useState("");
+
+  // Modal de Novo Agendamento Interno (com Calendário e Horários em Tempo Real)
+  const [isNovoAgendamentoOpen, setIsNovoAgendamentoOpen] = useState(false);
+  const [novoAgendMonth, setNovoAgendMonth] = useState(new Date());
+  const [novoAgendForm, setNovoAgendForm] = useState({
+    cpf: "",
+    nome: "",
+    telefone: "",
+    email: "",
+    data_nascimento: "",
+    tipo_servico: "Consulta",
+    especialidade: "",
+    medico_profissional: "",
+    subtipo_exame: "",
+    modalidade: "Particular",
+    convenio_nome: "",
+    data_agendamento: "",
+    horario_agendamento: "",
+    observacoes: ""
+  });
+  const [cpfAutofillFound, setCpfAutofillFound] = useState(false);
 
   // Modal de Dados Sensíveis, Enfermidades & Mensagens da Fila
   const [sensitiveModalItem, setSensitiveModalItem] = useState(null);
@@ -162,6 +225,7 @@ export default function AgendaView({
   ]);
   const [searchEnfermidade, setSearchEnfermidade] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [approvingPaymentId, setApprovingPaymentId] = useState(null);
 
   // Estados da Fila de Mensagens do Agendamento / Exame
   const [mensagensAgendamento, setMensagensAgendamento] = useState([]);
@@ -176,15 +240,25 @@ export default function AgendaView({
   const [novaMsgAnexoUrl, setNovaMsgAnexoUrl] = useState("");
   const [disparandoMsgId, setDisparandoMsgId] = useState(null);
 
+  // Carregar regras e configurações da clínica
   useEffect(() => {
     const carregarConfigGeral = async () => {
       try {
-        const emp = await fetchAdminCustomization();
-        if (emp?.config_campos?.catalogo_enfermidades) {
-          setCatalogoEnfermidades(emp.config_campos.catalogo_enfermidades);
+        const [emp, regras] = await Promise.all([
+          fetchAdminCustomization(),
+          fetchAdminRegras()
+        ]);
+        if (emp) {
+          setEmpresaConfig(emp);
+          if (emp.config_campos?.catalogo_enfermidades) {
+            setCatalogoEnfermidades(emp.config_campos.catalogo_enfermidades);
+          }
+        }
+        if (Array.isArray(regras)) {
+          setRegrasAgenda(regras);
         }
       } catch (e) {
-        console.error("Erro ao carregar catálogo de enfermidades:", e);
+        console.error("Erro ao carregar configurações da agenda:", e);
       }
     };
     carregarConfigGeral();
@@ -205,7 +279,7 @@ export default function AgendaView({
   };
 
   const profissionaisOptions = useMemo(() => {
-    const defaultOption = { value: "Todos", label: "Todos os Profissionais" };
+    const defaultOption = { value: "Todos", label: "Todos os Profissionais / Exames" };
     if (!servicos || servicos.length === 0) return [defaultOption];
 
     const options = servicos
@@ -217,6 +291,24 @@ export default function AgendaView({
 
     return [defaultOption, ...options];
   }, [servicos]);
+
+  const especialidadesOptions = useMemo(() => {
+    const defaultOption = { value: "", label: "Selecione uma especialidade..." };
+    const confCats = empresaConfig?.config_campos?.especialidades_categorizadas || [];
+    const fromConf = confCats.map((c) => c.nome).filter(Boolean);
+    const fromSrv = (servicos || [])
+      .flatMap((s) => (s.especialidade ? s.especialidade.split(",").map((e) => e.trim()) : []))
+      .filter(Boolean);
+
+    const todas = [...new Set([...fromConf, ...fromSrv])].filter(Boolean).sort();
+    return [
+      defaultOption,
+      ...todas.map((e) => ({
+        value: e,
+        label: e
+      }))
+    ];
+  }, [empresaConfig, servicos]);
 
   const matchesSearch = (nome, cpf, fone) => {
     if (!searchTerm.trim()) return true;
@@ -232,6 +324,7 @@ export default function AgendaView({
     return false;
   };
 
+  // Resolução Semântica Limpa: Especialista vs Especialidade vs Categoria
   const listaUnificadaTodosPacientes = useMemo(() => {
     const locais = agendamentos.map((a) => {
       const pac = a.pacientes || {};
@@ -241,52 +334,38 @@ export default function AgendaView({
         ? a.enfermidades
         : [];
 
-      // 1. Identificar o Especialista real (Médico/Profissional humano)
-      let especialistaHumano = a.medico_profissional || null;
-      if (
-        !especialistaHumano ||
-        especialistaHumano === "A definir" ||
-        especialistaHumano === "Corpo Clínico" ||
-        especialistaHumano === "Todos"
-      ) {
-        especialistaHumano = null;
+      // Resolução Semântica Estrita:
+      // - medicoProfissional = Nome do Médico Humano ou "Corpo Clínico"
+      // - especialidade = Nome real da Especialidade Médica (Gastro, Endoscopia, Cardio)
+      // - tipoServico = Categoria ("Consulta" | "Exame" | "Retorno")
+      // - subtipoExame = Procedimento específico (se exame)
+      let profLimpo = a.medico_profissional;
+      let espLimpa = a.especialidade;
+      let subLimpo = a.subtipo_exame;
+      let tipoServ = a.tipo_servico || "Consulta";
+
+      const isProfNomeExame =
+        profLimpo &&
+        /(endoscopia|colonoscopia|ultrassom|tomografia|ressonancia|raio-x|biopsia|exame)/i.test(
+          profLimpo
+        );
+
+      if (isProfNomeExame) {
+        if (!subLimpo) subLimpo = profLimpo;
+        if (!espLimpa || espLimpa === "Consulta" || espLimpa === "Exame") espLimpa = profLimpo;
+        profLimpo = "Corpo Clínico";
+        tipoServ = "Exame";
       }
 
-      // Procedimento/Exame vs Médico Humano
-      const isNomeExame =
-        especialistaHumano &&
-        (especialistaHumano.toLowerCase().includes("endoscopia") ||
-          especialistaHumano.toLowerCase().includes("colonoscopia") ||
-          especialistaHumano.toLowerCase().includes("ultrassom") ||
-          especialistaHumano.toLowerCase().includes("tomografia") ||
-          especialistaHumano.toLowerCase().includes("ressonancia") ||
-          especialistaHumano.toLowerCase().includes("raio-x") ||
-          especialistaHumano.toLowerCase().includes("exame") ||
-          especialistaHumano === a.subtipo_exame);
-
-      if (isNomeExame) {
-        especialistaHumano = null;
-      }
-
-      // 2. Identificar a Especialidade clínica real
-      let especialidadeClinica = a.especialidade;
-      if (!especialidadeClinica || especialidadeClinica === "Consulta" || especialidadeClinica === "Exame") {
-        if (a.subtipo_exame && a.subtipo_exame !== "Consulta" && a.subtipo_exame !== "Exame") {
-          especialidadeClinica = a.subtipo_exame;
-        } else if (a.medico_profissional && isNomeExame) {
-          especialidadeClinica = a.medico_profissional;
-        } else {
-          // Buscar a especialidade cadastrada do médico no banco de serviços
-          const srv = (servicos || []).find((s) => s.nome === a.medico_profissional);
-          if (srv?.especialidade) {
-            especialidadeClinica = srv.especialidade.split(",")[0].trim();
-          }
+      if (!espLimpa || espLimpa === "Consulta" || espLimpa === "Exame") {
+        if (subLimpo) espLimpa = subLimpo;
+        else if (profLimpo && profLimpo !== "Corpo Clínico") {
+          const srv = servicos.find((s) => s.nome === profLimpo);
+          if (srv?.especialidade) espLimpa = srv.especialidade.split(",")[0].trim();
         }
       }
 
-      if (!especialidadeClinica || especialidadeClinica === "Consulta" || especialidadeClinica === "Exame") {
-        especialidadeClinica = a.tipo_servico === "Exame" ? "Exame Clínico" : "Clínica Geral";
-      }
+      if (!espLimpa) espLimpa = tipoServ === "Exame" ? "Exame Clínico" : "Clínica Geral";
 
       return {
         id: a.id,
@@ -300,13 +379,14 @@ export default function AgendaView({
         emailPaciente: pac.email || null,
         dataNascimento: pac.data_nascimento || null,
         enfermidades: enfermidadesList,
-        medicoProfissional: especialistaHumano || "Corpo Clínico",
-        especialidade: especialidadeClinica,
-        subtipoExame: a.subtipo_exame || null,
-        tipoServico: a.tipo_servico || (a.especialidade?.toLowerCase().includes("exame") ? "Exame" : "Consulta"),
+        medicoProfissional: profLimpo || "Corpo Clínico",
+        especialidade: espLimpa,
+        subtipoExame: subLimpo || null,
+        tipoServico: tipoServ,
         modalidade: a.modalidade || "Particular",
+        convenio: a.modalidade === "Convênio" ? "Convênio" : null,
         statusAtendimento: a.status_atendimento || "agendado",
-        pago: a.status_pagamento_antecipado,
+        pago: Boolean(a.status_pagamento_antecipado),
         remarcado: !!a.remarcado_em,
         motivoCancelamento: a.motivo_cancelamento,
         rawItem: a
@@ -327,8 +407,10 @@ export default function AgendaView({
         emailPaciente: null,
         dataNascimento: null,
         enfermidades: [],
-        medicoProfissional: b.medico_profissional,
+        medicoProfissional: b.medico_profissional || "ERP Medicalsys",
         especialidade: b.especialidade || "Geral",
+        subtipoExame: null,
+        tipoServico: "Consulta",
         convenio: b.convenio || "Convênio",
         modalidade: b.convenio || "Convênio",
         statusAtendimento: b.situacao === "canc" ? "cancelado" : "agendado",
@@ -352,10 +434,27 @@ export default function AgendaView({
         return item.tipo === origemFilter;
       })
       .filter((item) => {
-        if (filterMedico === "Todos") return true;
-        return item.medicoProfissional === filterMedico;
+        if (pagamentoFilter === "todos") return true;
+        if (pagamentoFilter === "pago") return item.pago === true;
+        if (pagamentoFilter === "pendente")
+          return (
+            item.pago === false &&
+            item.tipo === "rmclick" &&
+            item.statusAtendimento !== "cancelado"
+          );
+        return true;
       })
-      .filter((item) => matchesSearch(item.nomePaciente, item.cpfPaciente, item.telefonePaciente));
+      .filter((item) => {
+        if (filterMedico === "Todos") return true;
+        return (
+          item.medicoProfissional === filterMedico ||
+          item.especialidade === filterMedico ||
+          item.subtipoExame === filterMedico
+        );
+      })
+      .filter((item) =>
+        matchesSearch(item.nomePaciente, item.cpfPaciente, item.telefonePaciente)
+      );
 
     if (sortConfig.key) {
       result.sort((a, b) => {
@@ -377,6 +476,9 @@ export default function AgendaView({
         } else if (sortConfig.key === "status") {
           valA = a.statusAtendimento || "";
           valB = b.statusAtendimento || "";
+        } else if (sortConfig.key === "pagamento") {
+          valA = a.pago ? "pago" : "pendente";
+          valB = b.pago ? "pago" : "pendente";
         }
 
         const cmp = String(valA).localeCompare(String(valB), "pt-BR", { sensitivity: "base" });
@@ -391,7 +493,17 @@ export default function AgendaView({
     }
 
     return result;
-  }, [agendamentos, bloqueios, statusFilter, origemFilter, filterMedico, searchTerm, sortConfig]);
+  }, [
+    agendamentos,
+    bloqueios,
+    statusFilter,
+    origemFilter,
+    pagamentoFilter,
+    filterMedico,
+    searchTerm,
+    sortConfig,
+    servicos
+  ]);
 
   const handleSort = (key) => {
     let direction = "asc";
@@ -408,42 +520,466 @@ export default function AgendaView({
       .sort((a, b) => (a.horario || "").localeCompare(b.horario || ""));
   }, [listaUnificadaTodosPacientes, selectedDay]);
 
+  // MOTOR UNIVERSAL DE CÁLCULO DE VAGAS E HORÁRIOS DISPONÍVEIS
+  const calcularSlotsDisponiveis = ({
+    targetDate,
+    targetMedico,
+    targetEspecialidade,
+    targetTipoServico,
+    targetModalidade,
+    excludeId = null
+  }) => {
+    if (!targetDate) return { isEnabled: false, slots: [] };
+
+    const [y, m, d] = targetDate.split("-").map(Number);
+    const diaWeek = new Date(y, m - 1, d).getDay();
+
+    const srvAlvo = (servicos || []).find((s) => {
+      if (s.ativo === false) return false;
+      const cleanSrv = normalizeText(s.nome);
+      const cleanTarget = normalizeText(targetMedico);
+      return cleanSrv === cleanTarget || (cleanTarget && cleanSrv.includes(cleanTarget));
+    });
+
+    const espStr = normalizeText(targetEspecialidade);
+    const tipoStr = normalizeText(targetTipoServico || "Consulta");
+    const modStr = normalizeText(targetModalidade || "Particular");
+
+    // Validação de regras ativas
+    const isRuleValid = (r) => {
+      if (!r.tipos_permitidos || !Array.isArray(r.tipos_permitidos) || r.tipos_permitidos.length === 0)
+        return true;
+      const permitidos = r.tipos_permitidos.map(normalizeText).filter(Boolean);
+      if (permitidos.includes("todos") || permitidos.includes("todas")) return true;
+
+      const tipoRestr = permitidos.filter((p) => ["consulta", "exame", "retorno"].includes(p));
+      if (tipoRestr.length > 0 && !tipoRestr.includes(tipoStr)) return false;
+
+      const modRestr = permitidos.filter((p) => ["particular", "convenio"].includes(p));
+      if (modRestr.length > 0) {
+        const isConv = modStr === "convenio" || modStr.includes("conv");
+        if (isConv && !modRestr.includes("convenio")) return false;
+        if (!isConv && !modRestr.includes("particular")) return false;
+      }
+      return true;
+    };
+
+    const rMedico = (regrasAgenda || []).filter(
+      (r) => r.servico_id && r.servico_id === srvAlvo?.id && r.ativo !== false && isRuleValid(r)
+    );
+
+    const rEspecialidade = (regrasAgenda || []).filter((r) => {
+      if (r.servico_id || r.ativo === false || !isRuleValid(r)) return false;
+      const permitidos = (r.tipos_permitidos || []).map(normalizeText);
+      const rEsp = normalizeText(r.especialidade);
+      return (
+        espStr &&
+        (permitidos.some((p) => p === espStr || p.includes(espStr) || espStr.includes(p)) ||
+          rEsp === espStr ||
+          rEsp.includes(espStr) ||
+          espStr.includes(rEsp))
+      );
+    });
+
+    const rGeral = (regrasAgenda || []).filter((r) => {
+      if (r.servico_id || r.ativo === false) return false;
+      if (r.especialidade && r.especialidade !== "Todas") return false;
+      return isRuleValid(r);
+    });
+
+    // Interseção estrita de dia
+    const medicoRulesToday = rMedico.filter((r) =>
+      (r.dias_semana || []).map((d) => parseInt(d, 10)).includes(diaWeek)
+    );
+    const espRulesToday = rEspecialidade.filter((r) =>
+      (r.dias_semana || []).map((d) => parseInt(d, 10)).includes(diaWeek)
+    );
+    const geralRulesToday = rGeral.filter((r) =>
+      (r.dias_semana || []).map((d) => parseInt(d, 10)).includes(diaWeek)
+    );
+
+    let isDiaValido = false;
+    if (rMedico.length > 0 && rEspecialidade.length > 0) {
+      if (medicoRulesToday.length > 0 && espRulesToday.length > 0) isDiaValido = true;
+    } else if (rMedico.length > 0) {
+      isDiaValido = medicoRulesToday.length > 0;
+    } else if (rEspecialidade.length > 0) {
+      isDiaValido = espRulesToday.length > 0;
+    } else if (rGeral.length > 0) {
+      isDiaValido = geralRulesToday.length > 0;
+    } else {
+      isDiaValido = [1, 2, 3, 4, 5].includes(diaWeek); // Seg a Sex padrão
+    }
+
+    if (!isDiaValido) return { isEnabled: false, slots: [] };
+
+    // Montar janelas e intervalos ocupados
+    const janelas = [];
+    if (rMedico.length > 0 && rEspecialidade.length > 0) {
+      medicoRulesToday.forEach((dr) => {
+        espRulesToday.forEach((sr) => {
+          const sMin = Math.max(timeToMin(dr.hora_inicio), timeToMin(sr.hora_inicio));
+          const eMin = Math.min(timeToMin(dr.hora_fim), timeToMin(sr.hora_fim));
+          if (sMin < eMin) {
+            const drLast = dr.ultimo_horario_agendamento
+              ? timeToMin(dr.ultimo_horario_agendamento)
+              : null;
+            const srLast = sr.ultimo_horario_agendamento
+              ? timeToMin(sr.ultimo_horario_agendamento)
+              : null;
+            let effLast = null;
+            if (drLast !== null && srLast !== null) effLast = Math.min(drLast, srLast);
+            else if (srLast !== null) effLast = srLast;
+            else if (drLast !== null) effLast = drLast;
+
+            const durSlot =
+              sr.duracao_slot_minutos > 0
+                ? sr.duracao_slot_minutos
+                : dr.duracao_slot_minutos > 0
+                ? dr.duracao_slot_minutos
+                : 30;
+
+            janelas.push({
+              startStr: minToTime(sMin),
+              endStr: minToTime(eMin),
+              duracao: durSlot,
+              ultimoHorario: effLast ? minToTime(effLast) : null,
+              ocupacaoSequencial: Boolean(dr.ocupacao_sequencial || sr.ocupacao_sequencial)
+            });
+          }
+        });
+      });
+    } else if (rMedico.length > 0) {
+      medicoRulesToday.forEach((dr) => {
+        janelas.push({
+          startStr: dr.hora_inicio,
+          endStr: dr.hora_fim,
+          duracao: dr.duracao_slot_minutos > 0 ? dr.duracao_slot_minutos : 30,
+          ultimoHorario: dr.ultimo_horario_agendamento || null,
+          ocupacaoSequencial: Boolean(dr.ocupacao_sequencial)
+        });
+      });
+    } else if (rEspecialidade.length > 0) {
+      espRulesToday.forEach((sr) => {
+        janelas.push({
+          startStr: sr.hora_inicio,
+          endStr: sr.hora_fim,
+          duracao: sr.duracao_slot_minutos > 0 ? sr.duracao_slot_minutos : 30,
+          ultimoHorario: sr.ultimo_horario_agendamento || null,
+          ocupacaoSequencial: Boolean(sr.ocupacao_sequencial)
+        });
+      });
+    } else if (geralRulesToday.length > 0) {
+      geralRulesToday.forEach((gr) => {
+        janelas.push({
+          startStr: gr.hora_inicio,
+          endStr: gr.hora_fim,
+          duracao: gr.duracao_slot_minutos > 0 ? gr.duracao_slot_minutos : 30,
+          ultimoHorario: gr.ultimo_horario_agendamento || null,
+          ocupacaoSequencial: Boolean(gr.ocupacao_sequencial)
+        });
+      });
+    } else {
+      janelas.push(
+        { startStr: "08:00", endStr: "12:00", duracao: 30, ultimoHorario: null, ocupacaoSequencial: false },
+        { startStr: "14:00", endStr: "18:00", duracao: 30, ultimoHorario: null, ocupacaoSequencial: false }
+      );
+    }
+
+    // Identificar intervalos ocupados na data
+    const intervals = [];
+    const profTargetNorm = normalizeText(targetMedico);
+    const espTargetNorm = normalizeText(targetEspecialidade);
+
+    (agendamentos || []).forEach((a) => {
+      if (a.data_agendamento !== targetDate || a.status_atendimento === "cancelado") return;
+      if (excludeId && (a.id === excludeId || a.agendamento_id === excludeId)) return;
+
+      const aProf = normalizeText(a.medico_profissional);
+      const aEsp = normalizeText(a.especialidade);
+      const aSub = normalizeText(a.subtipo_exame);
+
+      const matchProf = profTargetNorm && (aProf.includes(profTargetNorm) || profTargetNorm.includes(aProf));
+      const matchEsp = espTargetNorm && (aEsp === espTargetNorm || aSub === espTargetNorm);
+
+      if (matchProf || matchEsp || !profTargetNorm) {
+        const startMin = timeToMin(a.horario_agendamento);
+        const dur = 30;
+        intervals.push({ startMin, endMin: startMin + dur, hora: a.horario_agendamento?.substring(0, 5) });
+      }
+    });
+
+    (bloqueios || []).forEach((b) => {
+      if (b.data !== targetDate) return;
+      const bProf = normalizeText(b.medico_profissional);
+      const bEsp = normalizeText(b.especialidade);
+
+      const matchProf =
+        !b.medico_profissional ||
+        b.medico_profissional === "Todos" ||
+        (profTargetNorm && (bProf.includes(profTargetNorm) || profTargetNorm.includes(bProf)));
+      const matchEsp = !b.especialidade || (espTargetNorm && bEsp === espTargetNorm);
+
+      if (matchProf || matchEsp) {
+        const startMin = timeToMin(b.horario);
+        intervals.push({ startMin, endMin: startMin + 30, hora: b.horario?.substring(0, 5) });
+      }
+    });
+
+    // Gerar slots para cada janela
+    const slotsMap = new Map();
+    let isSeqAtiva = false;
+
+    janelas.forEach((j) => {
+      if (j.ocupacaoSequencial) isSeqAtiva = true;
+      const startMin = timeToMin(j.startStr);
+      const endMin = timeToMin(j.endStr);
+      const dur = j.duracao;
+      let lastAllowed = endMin - dur;
+      if (j.ultimoHorario) {
+        const customLast = timeToMin(j.ultimoHorario);
+        if (customLast > 0) lastAllowed = Math.min(lastAllowed, customLast);
+      }
+
+      for (let m = startMin; m <= lastAllowed; m += dur) {
+        const hStr = minToTime(m);
+        const hasCollision = intervals.some((iv) => Math.max(m, iv.startMin) < Math.min(m + dur, iv.endMin));
+
+        if (!slotsMap.has(hStr) || (slotsMap.get(hStr).isOccupied && !hasCollision)) {
+          slotsMap.set(hStr, { h: hStr, isOccupied: hasCollision });
+        }
+      }
+    });
+
+    const sortedSlots = Array.from(slotsMap.values()).sort((a, b) => a.h.localeCompare(b.h));
+    const hojeStr = getHojeLocal();
+    const agoraMin = new Date().getHours() * 60 + new Date().getMinutes();
+
+    let encontrouPrimeiroLivre = false;
+    const finalSlots = sortedSlots.map(({ h, isOccupied }) => {
+      const isPast = targetDate === hojeStr && timeToMin(h) <= agoraMin + 30;
+      let off = isPast || isOccupied;
+
+      if (isSeqAtiva && !off) {
+        if (encontrouPrimeiroLivre) off = true;
+        else encontrouPrimeiroLivre = true;
+      }
+      return { h, off, isOccupied };
+    });
+
+    return { isEnabled: finalSlots.some((s) => !s.off), slots: finalSlots };
+  };
+
+  // APROVAR PAGAMENTO MANUAL
+  const handleAprovarPagamento = async (item) => {
+    if (!item?.id) return;
+    setApprovingPaymentId(item.id);
+    playDopamineSound("select");
+    triggerHaptic("success");
+
+    try {
+      const res = await actionAprovarPagamentoAgendamento(item.id);
+      if (res?.success) {
+        showToast("Pagamento aprovado com sucesso! Confirmação enviada.");
+        if (fetchAgendamentos) await fetchAgendamentos();
+      } else {
+        showToast(res?.error || "Erro ao aprovar pagamento.", "error");
+      }
+    } catch (e) {
+      showToast(`Erro: ${e.message}`, "error");
+    } finally {
+      setApprovingPaymentId(null);
+    }
+  };
+
+  // CANCELAR AGENDAMENTO COM SEGURANÇA E MOTIVO PADRÃO PROFISSIONAL
+  const handleAbrirModalCancelamento = (item) => {
+    playDopamineSound("click");
+    setCancelModalItem(item.rawItem || item);
+    setReason("");
+    setConfirmarCancelamentoStep(false);
+  };
+
   const handleCancelarAdmin = async () => {
     if (!cancelModalItem) return;
     setIsProcessing(true);
     playDopamineSound("click");
     try {
-      await actionCancelarAgendamentoAdmin(
-        cancelModalItem.id,
-        cancelReason || "Cancelado pelo Administrador"
-      );
-      if (showToast) showToast("Agendamento cancelado. Horário liberado no sistema!");
+      const motivoFinal =
+        cancelReason.trim() ||
+        "Readequação operacional da grade de atendimentos da clínica";
+
+      await actionCancelarAgendamentoAdmin(cancelModalItem.id, motivoFinal);
+      showToast("Agendamento cancelado. Horário liberado na agenda!");
       if (fetchAgendamentos) await fetchAgendamentos();
       setCancelModalItem(null);
       setReason("");
+      setConfirmarCancelamentoStep(false);
     } catch (err) {
-      if (showToast) showToast(`Erro ao cancelar: ${err.message}`, "error");
+      showToast(`Erro ao cancelar: ${err.message}`, "error");
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const handleRemarcarAdmin = async () => {
-    if (!rescheduleModalItem || !newDate || !newTime) {
-      if (showToast) showToast("Informe a nova data e o novo horário.", "error");
+  // REMARCAÇÃO INTELIGENTE (CALENDÁRIO & HORÁRIOS INTERATIVOS)
+  const handleAbrirRemarcacao = (item) => {
+    playDopamineSound("click");
+    triggerHaptic("light");
+    const target = item.rawItem || item;
+    setRescheduleModalItem(target);
+
+    const initialDate = target.data_agendamento || target.data || selectedDay;
+    setRescheduleSelectedDate(initialDate);
+    setRescheduleSelectedTime(target.horario_agendamento?.substring(0, 5) || target.horario || "");
+    if (initialDate) {
+      const [y, m] = initialDate.split("-").map(Number);
+      setRescheduleMonth(new Date(y, m - 1, 1));
+    }
+  };
+
+  const slotsRemarcacao = useMemo(() => {
+    if (!rescheduleModalItem || !rescheduleSelectedDate) return { isEnabled: false, slots: [] };
+    return calcularSlotsDisponiveis({
+      targetDate: rescheduleSelectedDate,
+      targetMedico: rescheduleModalItem.medico_profissional || rescheduleModalItem.medicoProfissional,
+      targetEspecialidade: rescheduleModalItem.especialidade,
+      targetTipoServico: rescheduleModalItem.tipo_servico || rescheduleModalItem.tipoServico,
+      targetModalidade: rescheduleModalItem.modalidade,
+      excludeId: rescheduleModalItem.id
+    });
+  }, [rescheduleModalItem, rescheduleSelectedDate, regrasAgenda, agendamentos, bloqueios]);
+
+  const handleConfirmarRemarcacao = async () => {
+    if (!rescheduleModalItem || !rescheduleSelectedDate || !rescheduleSelectedTime) {
+      showToast("Selecione uma nova data e um novo horário disponível.", "error");
       return;
     }
     setIsProcessing(true);
-    playDopamineSound("click");
+    playDopamineSound("select");
+    triggerHaptic("success");
     try {
-      await actionRemarcarAgendamentoAdmin(rescheduleModalItem.id, newDate, newTime);
-      if (showToast) showToast("Agendamento remarcado com sucesso!");
+      await actionRemarcarAgendamentoAdmin(
+        rescheduleModalItem.id,
+        rescheduleSelectedDate,
+        rescheduleSelectedTime
+      );
+      showToast("Agendamento remarcado com sucesso! Notificação enviada ao paciente.");
       if (fetchAgendamentos) await fetchAgendamentos();
       setRescheduleModalItem(null);
-      setNewDate("");
-      setNewTime("");
     } catch (err) {
-      if (showToast) showToast(`Erro ao remarcar: ${err.message}`, "error");
+      showToast(`Erro ao remarcar: ${err.message}`, "error");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // NOVO AGENDAMENTO INTERNO (PELO ADMINISTRADOR / RECEPÇÃO)
+  const handleAbrirNovoAgendamento = () => {
+    playDopamineSound("click");
+    triggerHaptic("medium");
+    setNovoAgendForm({
+      cpf: "",
+      nome: "",
+      telefone: "",
+      email: "",
+      data_nascimento: "",
+      tipo_servico: "Consulta",
+      especialidade: especialidadesOptions[1]?.value || "",
+      medico_profissional: "",
+      subtipo_exame: "",
+      modalidade: "Particular",
+      convenio_nome: "",
+      data_agendamento: selectedDay || getHojeLocal(),
+      horario_agendamento: "",
+      observacoes: ""
+    });
+    setCpfAutofillFound(false);
+    setNovoAgendMonth(new Date());
+    setIsNovoAgendamentoOpen(true);
+  };
+
+  // Auto-lookup de CPF para Novo Agendamento Interno
+  const handleLookupCpfInterno = (cpfDigitado) => {
+    const limpo = cpfDigitado.replace(/\D/g, "");
+    if (limpo.length === 11) {
+      const matchLocal = agendamentos.find((a) => {
+        const pac = a.pacientes || {};
+        return (pac.cpf || "").replace(/\D/g, "") === limpo;
+      });
+      if (matchLocal?.pacientes) {
+        const p = matchLocal.pacientes;
+        setNovoAgendForm((prev) => ({
+          ...prev,
+          nome: p.nome_completo || prev.nome,
+          telefone: p.telefone_whatsapp || prev.telefone,
+          email: p.email || prev.email,
+          data_nascimento: p.data_nascimento || prev.data_nascimento
+        }));
+        setCpfAutofillFound(true);
+        playDopamineSound("unlock");
+        showToast("Paciente identificado no banco da clínica!");
+      }
+    }
+  };
+
+  const slotsNovoAgendamento = useMemo(() => {
+    if (!isNovoAgendamentoOpen || !novoAgendForm.data_agendamento)
+      return { isEnabled: false, slots: [] };
+    return calcularSlotsDisponiveis({
+      targetDate: novoAgendForm.data_agendamento,
+      targetMedico: novoAgendForm.medico_profissional,
+      targetEspecialidade: novoAgendForm.especialidade,
+      targetTipoServico: novoAgendForm.tipo_servico,
+      targetModalidade: novoAgendForm.modalidade
+    });
+  }, [isNovoAgendamentoOpen, novoAgendForm, regrasAgenda, agendamentos, bloqueios]);
+
+  const handleSalvarNovoAgendamentoInterno = async () => {
+    if (
+      !novoAgendForm.nome?.trim() ||
+      !novoAgendForm.data_agendamento ||
+      !novoAgendForm.horario_agendamento
+    ) {
+      showToast("Preencha o nome do paciente, data e horário.", "error");
+      return;
+    }
+
+    setIsProcessing(true);
+    playDopamineSound("select");
+    triggerHaptic("success");
+    try {
+      const res = await actionCriarAgendamentoManualAdmin({
+        nome: novoAgendForm.nome.trim(),
+        cpf: novoAgendForm.cpf || null,
+        telefone: novoAgendForm.telefone || null,
+        email: novoAgendForm.email || null,
+        data_nascimento: novoAgendForm.data_nascimento || null,
+        tipo_servico: novoAgendForm.tipo_servico,
+        especialidade: novoAgendForm.especialidade || "Clínica Geral",
+        medico_profissional: novoAgendForm.medico_profissional || "Corpo Clínico",
+        subtipo_exame:
+          novoAgendForm.tipo_servico === "Exame"
+            ? novoAgendForm.subtipo_exame || novoAgendForm.especialidade
+            : null,
+        modalidade:
+          novoAgendForm.modalidade === "Convênio" && novoAgendForm.convenio_nome
+            ? `Convênio (${novoAgendForm.convenio_nome.trim()})`
+            : novoAgendForm.modalidade,
+        data_agendamento: novoAgendForm.data_agendamento,
+        horario_agendamento: novoAgendForm.horario_agendamento,
+        observacoes: novoAgendForm.observacoes || null
+      });
+
+      if (res?.success) {
+        showToast("Agendamento interno registrado com sucesso!");
+        if (fetchAgendamentos) await fetchAgendamentos();
+        setIsNovoAgendamentoOpen(false);
+      } else {
+        showToast(res?.error || "Erro ao criar agendamento interno.", "error");
+      }
+    } catch (e) {
+      showToast(`Erro: ${e.message}`, "error");
     } finally {
       setIsProcessing(false);
     }
@@ -470,7 +1006,10 @@ export default function AgendaView({
   const handleOpenSensitiveModal = (item) => {
     if (!temPermissaoSigiloClinico) {
       if (showToast) {
-        showToast("Acesso restrito: você não possui permissão de Sigilo Clínico para visualizar ou editar fichas médicas.", "error");
+        showToast(
+          "Acesso restrito: você não possui permissão de Sigilo Clínico para visualizar ou editar fichas médicas.",
+          "error"
+        );
       }
       return;
     }
@@ -584,7 +1123,9 @@ export default function AgendaView({
             ? {
                 ...m,
                 mensagem: editMsgTexto.trim(),
-                data_hora_programada: editMsgDataHora ? new Date(editMsgDataHora).toISOString() : m.data_hora_programada,
+                data_hora_programada: editMsgDataHora
+                  ? new Date(editMsgDataHora).toISOString()
+                  : m.data_hora_programada,
                 anexo_url: editMsgAnexoUrl?.trim() || null
               }
             : m
@@ -655,7 +1196,9 @@ export default function AgendaView({
         telefone: sensitiveModalItem.telefonePaciente,
         nomePaciente: sensitiveModalItem.nomePaciente,
         mensagem: novaMsgTexto.trim(),
-        dataHoraProgramada: novaMsgDataHora ? new Date(novaMsgDataHora).toISOString() : new Date().toISOString(),
+        dataHoraProgramada: novaMsgDataHora
+          ? new Date(novaMsgDataHora).toISOString()
+          : new Date().toISOString(),
         anexo_url: novaMsgAnexoUrl?.trim() || null,
         gatilho: "avulsa_manual"
       });
@@ -694,9 +1237,15 @@ export default function AgendaView({
   // Contagem de status das mensagens daquele agendamento
   const statsMensagensAgendamento = useMemo(() => {
     const total = mensagensAgendamento.length;
-    const pendentes = mensagensAgendamento.filter((m) => m.status === "pendente" || m.status === "rascunho").length;
-    const enviadas = mensagensAgendamento.filter((m) => m.status === "enviada" || m.status === "enviado").length;
-    const canceladas = mensagensAgendamento.filter((m) => m.status === "cancelada" || m.status === "falha").length;
+    const pendentes = mensagensAgendamento.filter(
+      (m) => m.status === "pendente" || m.status === "rascunho"
+    ).length;
+    const enviadas = mensagensAgendamento.filter(
+      (m) => m.status === "enviada" || m.status === "enviado"
+    ).length;
+    const canceladas = mensagensAgendamento.filter(
+      (m) => m.status === "cancelada" || m.status === "falha"
+    ).length;
     return { total, pendentes, enviadas, canceladas };
   }, [mensagensAgendamento]);
 
@@ -707,7 +1256,7 @@ export default function AgendaView({
       className="flex-1 flex flex-col h-full overflow-hidden w-full max-w-7xl mx-auto p-4 md:p-6 lg:p-8"
     >
       <div className="bg-white/85 dark:bg-[#0c0c0e]/85 backdrop-blur-3xl saturate-150 rounded-[2.5rem] border border-zinc-200/80 dark:border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.04)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.4)] flex flex-col h-full overflow-hidden">
-        {/* CABEÇALHO & FILTROS */}
+        {/* CABEÇALHO, AÇÃO NOVO AGENDAMENTO & FILTROS */}
         <div className="px-6 md:px-8 pt-6 pb-5 border-b border-zinc-100 dark:border-white/5 bg-zinc-50/50 dark:bg-zinc-900/20 flex flex-col gap-5">
           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
             <div className="flex items-center gap-3.5">
@@ -716,53 +1265,65 @@ export default function AgendaView({
               </div>
               <div>
                 <h2 className="text-2xl md:text-3xl font-black text-zinc-950 dark:text-white tracking-tight">
-                  Agenda de Pacientes
+                  Agenda de Atendimentos
                 </h2>
                 <p className="text-xs md:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5 font-medium">
-                  Visão consolidada de atendimentos com filtros avançados e busca unificada.
+                  Visão consolidada de consultas e exames com proteção contra conflitos de horários.
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mr-1">
-                Visualização:
-              </span>
-              <div className="flex p-1 bg-zinc-100/80 dark:bg-zinc-800/80 rounded-xl border border-zinc-200/60 dark:border-zinc-700/60 gap-1">
-                <button
-                  onClick={() => {
-                    playDopamineSound("click");
-                    setViewMode("cards");
-                  }}
-                  className={`p-2 rounded-lg transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer ${
-                    viewMode === "cards"
-                      ? "bg-white dark:bg-zinc-900 text-zinc-950 dark:text-white shadow-sm"
-                      : "text-zinc-400 hover:text-zinc-700"
-                  }`}
-                  title="Visão em Cards"
-                >
-                  <LayoutGrid size={16} />
-                </button>
-                <button
-                  onClick={() => {
-                    playDopamineSound("click");
-                    setViewMode("tabela");
-                  }}
-                  className={`p-2 rounded-lg transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer ${
-                    viewMode === "tabela"
-                      ? "bg-white dark:bg-zinc-900 text-zinc-950 dark:text-white shadow-sm"
-                      : "text-zinc-400 hover:text-zinc-700"
-                  }`}
-                  title="Visão em Tabela"
-                >
-                  <List size={16} />
-                </button>
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* BOTÃO NOVO AGENDAMENTO INTERNO */}
+              <button
+                type="button"
+                onClick={handleAbrirNovoAgendamento}
+                className="min-h-[40px] px-4 py-2 bg-zinc-950 hover:bg-black dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-extrabold text-xs rounded-2xl flex items-center gap-2 shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
+              >
+                <CalendarPlus size={16} strokeWidth={2.2} />
+                <span>Novo Agendamento</span>
+              </button>
+
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mr-1 hidden sm:inline">
+                  Visualização:
+                </span>
+                <div className="flex p-1 bg-zinc-100/80 dark:bg-zinc-800/80 rounded-xl border border-zinc-200/60 dark:border-zinc-700/60 gap-1">
+                  <button
+                    onClick={() => {
+                      playDopamineSound("click");
+                      setViewMode("cards");
+                    }}
+                    className={`p-2 rounded-lg transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer ${
+                      viewMode === "cards"
+                        ? "bg-white dark:bg-zinc-900 text-zinc-950 dark:text-white shadow-sm"
+                        : "text-zinc-400 hover:text-zinc-700"
+                    }`}
+                    title="Visão em Cards"
+                  >
+                    <LayoutGrid size={16} />
+                  </button>
+                  <button
+                    onClick={() => {
+                      playDopamineSound("click");
+                      setViewMode("tabela");
+                    }}
+                    className={`p-2 rounded-lg transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer ${
+                      viewMode === "tabela"
+                        ? "bg-white dark:bg-zinc-900 text-zinc-950 dark:text-white shadow-sm"
+                        : "text-zinc-400 hover:text-zinc-700"
+                    }`}
+                    title="Visão em Tabela"
+                  >
+                    <List size={16} />
+                  </button>
+                </div>
               </div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3.5 items-end pt-1">
-            <div className="lg:col-span-4 space-y-1">
+            <div className="lg:col-span-3 space-y-1">
               <label className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-widest ml-1">
                 Buscar Paciente
               </label>
@@ -781,7 +1342,7 @@ export default function AgendaView({
                 {searchTerm && (
                   <button
                     onClick={() => setSearchTerm("")}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700 cursor-pointer"
                   >
                     <X size={16} />
                   </button>
@@ -789,7 +1350,7 @@ export default function AgendaView({
               </div>
             </div>
 
-            <div className="lg:col-span-3 space-y-1">
+            <div className="lg:col-span-2 space-y-1">
               <CustomSelect
                 label="Origem da Agenda"
                 value={origemFilter}
@@ -804,7 +1365,7 @@ export default function AgendaView({
 
             <div className="lg:col-span-2 space-y-1">
               <CustomSelect
-                label="Status"
+                label="Status Atendimento"
                 value={statusFilter}
                 onChange={setStatusFilter}
                 options={[
@@ -816,9 +1377,22 @@ export default function AgendaView({
               />
             </div>
 
+            <div className="lg:col-span-2 space-y-1">
+              <CustomSelect
+                label="Status Pagamento"
+                value={pagamentoFilter}
+                onChange={setPagamentoFilter}
+                options={[
+                  { value: "todos", label: "Todos os Pagamentos" },
+                  { value: "pendente", label: "Pagamento Pendente" },
+                  { value: "pago", label: "Pago / Aprovado" }
+                ]}
+              />
+            </div>
+
             <div className="lg:col-span-3 space-y-1">
               <CustomSelect
-                label="Médico / Atendimento"
+                label="Médico / Especialidade"
                 value={filterMedico}
                 onChange={setFilterMedico}
                 options={profissionaisOptions}
@@ -881,14 +1455,8 @@ export default function AgendaView({
                       const isSel = selectedDay === dateStr;
                       const isTod = getHojeLocal() === dateStr;
 
-                      const hasAgend = agendamentos.some(
-                        (a) =>
-                          a.data_agendamento === dateStr &&
-                          a.status_atendimento !== "cancelado" &&
-                          (filterMedico === "Todos" ||
-                            (a.tipo_servico === "Exame"
-                              ? a.subtipo_exame === filterMedico
-                              : a.medico_profissional === filterMedico))
+                      const hasAgend = listaUnificadaTodosPacientes.some(
+                        (a) => a.data === dateStr && a.statusAtendimento !== "cancelado"
                       );
 
                       return (
@@ -948,11 +1516,20 @@ export default function AgendaView({
                       <p className="text-zinc-600 dark:text-zinc-400 text-sm font-semibold">
                         Nenhum atendimento agendado para esta data.
                       </p>
+                      <button
+                        type="button"
+                        onClick={handleAbrirNovoAgendamento}
+                        className="mt-4 px-4 py-2 bg-zinc-950 dark:bg-white text-white dark:text-black rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-sm cursor-pointer"
+                      >
+                        <Plus size={14} /> Agendar Paciente
+                      </button>
                     </div>
                   ) : viewMode === "cards" ? (
                     <div className="grid gap-3.5">
                       {eventosAgendaMistaDiaria.map((item) => {
                         const isCanceled = item.statusAtendimento === "cancelado";
+                        const isApproving = approvingPaymentId === item.id;
+
                         return (
                           <div
                             key={item.id}
@@ -988,10 +1565,14 @@ export default function AgendaView({
                                       CPF: {item.cpfPaciente}
                                     </span>
                                   )}
+
+                                  {/* BADGE DE ATENDIMENTO */}
                                   <span
                                     className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-md ${
                                       isCanceled
                                         ? "bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-400"
+                                        : item.remarcado
+                                        ? "bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300"
                                         : "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-400"
                                     }`}
                                   >
@@ -1001,57 +1582,102 @@ export default function AgendaView({
                                       ? "Reagendado"
                                       : "Confirmado"}
                                   </span>
-                                </div>
 
-                                <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-zinc-600 dark:text-zinc-400">
-                                  {item.medicoProfissional && item.medicoProfissional !== "Corpo Clínico" && (
-                                    <span>
-                                      <strong>Especialista:</strong> {item.medicoProfissional}
+                                  {/* BADGE DE PAGAMENTO */}
+                                  {item.tipo === "rmclick" && (
+                                    <span
+                                      className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-md flex items-center gap-1 ${
+                                        item.pago
+                                          ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/40"
+                                          : "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200/40"
+                                      }`}
+                                    >
+                                      {item.pago ? (
+                                        <>
+                                          <CheckCircle2 size={11} /> Pago / Aprovado
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Clock3 size={11} /> Pagamento Pendente
+                                        </>
+                                      )}
                                     </span>
                                   )}
+                                </div>
+
+                                {/* ALINHAMENTO SEMÂNTICO PRECISO */}
+                                <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-zinc-600 dark:text-zinc-400">
+                                  <span>
+                                    <strong>Especialista:</strong> {item.medicoProfissional}
+                                  </span>
                                   <span>
                                     <strong>Especialidade:</strong> {item.especialidade}
                                   </span>
-                                  {item.subtipoExame && item.subtipoExame !== item.especialidade && item.subtipoExame !== item.tipoServico && (
+                                  {item.subtipoExame && item.subtipoExame !== item.especialidade && (
                                     <span>
                                       <strong>Procedimento:</strong> {item.subtipoExame}
                                     </span>
                                   )}
-                                  {item.tipoServico && (
-                                    <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-[10px] font-bold uppercase text-zinc-700 dark:text-zinc-300">
-                                      {item.tipoServico}
-                                    </span>
-                                  )}
-                                  {(item.modalidade || item.convenio) && (
+                                  <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-[10px] font-bold uppercase text-zinc-700 dark:text-zinc-300">
+                                    {item.tipoServico}
+                                  </span>
+                                  {item.modalidade && (
                                     <span>
-                                      <strong>Modalidade:</strong> {item.modalidade || item.convenio}
+                                      <strong>Modalidade:</strong> {item.modalidade}
                                     </span>
                                   )}
                                   {item.telefonePaciente && (
-                                    <span className="flex items-center gap-1">
+                                    <a
+                                      href={`https://wa.me/55${item.telefonePaciente.replace(/\D/g, "")}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-bold hover:underline"
+                                    >
                                       <Phone size={12} /> {item.telefonePaciente}
-                                    </span>
+                                    </a>
                                   )}
                                 </div>
 
-                                {/* TAGS DE ENFERMIDADES VINCULADAS (PROTEGIDAS POR SIGILO CLÍNICO) */}
-                                {temPermissaoSigiloClinico && item.enfermidades && item.enfermidades.length > 0 && (
-                                  <div className="flex flex-wrap gap-1 mt-2">
-                                    {item.enfermidades.map((enf, idx) => (
-                                      <span
-                                        key={idx}
-                                        className="text-[9px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 border border-rose-200/50 dark:border-rose-900/40 px-2 py-0.5 rounded-md flex items-center gap-1"
-                                      >
-                                        <HeartPulse size={10} /> {enf}
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
+                                {/* TAGS DE ENFERMIDADES VINCULADAS */}
+                                {temPermissaoSigiloClinico &&
+                                  item.enfermidades &&
+                                  item.enfermidades.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mt-2">
+                                      {item.enfermidades.map((enf, idx) => (
+                                        <span
+                                          key={idx}
+                                          className="text-[9px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 border border-rose-200/50 dark:border-rose-900/40 px-2 py-0.5 rounded-md flex items-center gap-1"
+                                        >
+                                          <HeartPulse size={10} /> {enf}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
                               </div>
                             </div>
 
                             {/* AÇÕES NO CARD */}
-                            <div className="flex items-center gap-2 self-end md:self-center">
+                            <div className="flex items-center gap-2 self-end md:self-center flex-wrap">
+                              {/* BOTÃO APROVAR PAGAMENTO MANUAL */}
+                              {!item.pago &&
+                                item.tipo === "rmclick" &&
+                                !isCanceled && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAprovarPagamento(item)}
+                                    disabled={isApproving}
+                                    className="min-h-[40px] px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 text-xs font-extrabold transition-all shadow-sm cursor-pointer"
+                                    title="Confirmar que o paciente efetuou o pagamento"
+                                  >
+                                    {isApproving ? (
+                                      <Activity size={14} className="animate-spin" />
+                                    ) : (
+                                      <CheckCircle2 size={14} />
+                                    )}
+                                    <span>Aprovar Pagamento</span>
+                                  </button>
+                                )}
+
                               {temPermissaoSigiloClinico ? (
                                 <button
                                   onClick={() => handleOpenSensitiveModal(item)}
@@ -1073,12 +1699,7 @@ export default function AgendaView({
                               {!isCanceled && (
                                 <>
                                   <button
-                                    onClick={() => {
-                                      playDopamineSound("click");
-                                      setRescheduleModalItem(item.rawItem || item);
-                                      setNewDate(item.data || selectedDay);
-                                      setNewTime(item.horario || "09:00");
-                                    }}
+                                    onClick={() => handleAbrirRemarcacao(item)}
                                     className="min-h-[40px] px-3.5 py-2 rounded-xl border border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 flex items-center gap-1.5 text-xs font-bold transition-colors shadow-sm cursor-pointer"
                                   >
                                     <RotateCcw
@@ -1088,11 +1709,7 @@ export default function AgendaView({
                                     Remarcar
                                   </button>
                                   <button
-                                    onClick={() => {
-                                      playDopamineSound("click");
-                                      setCancelModalItem(item.rawItem || item);
-                                      setReason("");
-                                    }}
+                                    onClick={() => handleAbrirModalCancelamento(item)}
                                     className="min-h-[40px] px-3.5 py-2 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 hover:bg-red-500/20 flex items-center gap-1.5 text-xs font-bold transition-colors shadow-sm cursor-pointer"
                                   >
                                     <Trash2 size={14} /> Cancelar
@@ -1117,7 +1734,11 @@ export default function AgendaView({
                               <div className="flex items-center gap-1">
                                 <span>Horário</span>
                                 {sortConfig.key === "horario" ? (
-                                  sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                                  sortConfig.direction === "asc" ? (
+                                    <ArrowUp size={11} />
+                                  ) : (
+                                    <ArrowDown size={11} />
+                                  )
                                 ) : (
                                   <ArrowUpDown size={11} className="opacity-40" />
                                 )}
@@ -1130,20 +1751,11 @@ export default function AgendaView({
                               <div className="flex items-center gap-1">
                                 <span>Paciente</span>
                                 {sortConfig.key === "paciente" ? (
-                                  sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
-                                ) : (
-                                  <ArrowUpDown size={11} className="opacity-40" />
-                                )}
-                              </div>
-                            </th>
-                            <th
-                              onClick={() => handleSort("origem")}
-                              className="p-4 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
-                            >
-                              <div className="flex items-center gap-1">
-                                <span>Origem</span>
-                                {sortConfig.key === "origem" ? (
-                                  sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                                  sortConfig.direction === "asc" ? (
+                                    <ArrowUp size={11} />
+                                  ) : (
+                                    <ArrowDown size={11} />
+                                  )
                                 ) : (
                                   <ArrowUpDown size={11} className="opacity-40" />
                                 )}
@@ -1154,9 +1766,13 @@ export default function AgendaView({
                               className="p-4 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
                             >
                               <div className="flex items-center gap-1">
-                                <span>Especialista</span>
+                                <span>Especialista / Atendimento</span>
                                 {sortConfig.key === "especialista" ? (
-                                  sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                                  sortConfig.direction === "asc" ? (
+                                    <ArrowUp size={11} />
+                                  ) : (
+                                    <ArrowDown size={11} />
+                                  )
                                 ) : (
                                   <ArrowUpDown size={11} className="opacity-40" />
                                 )}
@@ -1169,7 +1785,28 @@ export default function AgendaView({
                               <div className="flex items-center gap-1">
                                 <span>Status</span>
                                 {sortConfig.key === "status" ? (
-                                  sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                                  sortConfig.direction === "asc" ? (
+                                    <ArrowUp size={11} />
+                                  ) : (
+                                    <ArrowDown size={11} />
+                                  )
+                                ) : (
+                                  <ArrowUpDown size={11} className="opacity-40" />
+                                )}
+                              </div>
+                            </th>
+                            <th
+                              onClick={() => handleSort("pagamento")}
+                              className="p-4 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                            >
+                              <div className="flex items-center gap-1">
+                                <span>Pagamento</span>
+                                {sortConfig.key === "pagamento" ? (
+                                  sortConfig.direction === "asc" ? (
+                                    <ArrowUp size={11} />
+                                  ) : (
+                                    <ArrowDown size={11} />
+                                  )
                                 ) : (
                                   <ArrowUpDown size={11} className="opacity-40" />
                                 )}
@@ -1196,43 +1833,14 @@ export default function AgendaView({
                                     CPF: {item.cpfPaciente}
                                   </div>
                                 )}
-                                {temPermissaoSigiloClinico && item.enfermidades && item.enfermidades.length > 0 && (
-                                  <div className="flex flex-wrap gap-1 mt-1">
-                                    {item.enfermidades.map((enf, idx) => (
-                                      <span
-                                        key={idx}
-                                        className="text-[9px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 px-1.5 py-0.2 rounded"
-                                      >
-                                        {enf}
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
                               </td>
                               <td className="p-4">
-                                {item.tipo === "medicalsys" ? (
-                                  <span className="bg-blue-100 dark:bg-blue-950/50 text-blue-800 dark:text-blue-300 px-2 py-0.5 rounded text-[10px] font-bold uppercase">
-                                    Medicalsys
-                                  </span>
-                                ) : (
-                                  <span className="bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 px-2 py-0.5 rounded text-[10px] font-bold uppercase">
-                                    RMAgenda
-                                  </span>
-                                )}
-                              </td>
-                              <td className="p-4">
-                                <div className="text-zinc-800 dark:text-zinc-200 font-bold">
-                                  {item.medicoProfissional && item.medicoProfissional !== "Corpo Clínico" ? item.medicoProfissional : (item.subtipoExame || item.especialidade)}
+                                <div className="text-zinc-900 dark:text-zinc-100 font-bold">
+                                  {item.medicoProfissional}
                                 </div>
                                 <div className="text-[10px] text-zinc-400">
-                                  {item.especialidade}
-                                  {item.medicoProfissional && item.medicoProfissional !== "Corpo Clínico" && item.subtipoExame && item.subtipoExame !== item.especialidade ? ` • ${item.subtipoExame}` : ""}
+                                  {item.especialidade} • {item.tipoServico}
                                 </div>
-                                {item.tipoServico && (
-                                  <span className="inline-block mt-0.5 px-1.5 py-0.2 rounded text-[9px] font-bold uppercase bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400">
-                                    {item.tipoServico}
-                                  </span>
-                                )}
                               </td>
                               <td className="p-4">
                                 <span
@@ -1245,37 +1853,49 @@ export default function AgendaView({
                                   {item.statusAtendimento}
                                 </span>
                               </td>
+                              <td className="p-4">
+                                <span
+                                  className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                                    item.pago
+                                      ? "bg-emerald-100 text-emerald-800"
+                                      : "bg-amber-100 text-amber-800"
+                                  }`}
+                                >
+                                  {item.pago ? "Pago" : "Pendente"}
+                                </span>
+                              </td>
 
-                              {/* COLUNA DE AÇÕES: RIGOROSAMENTE NO MESMO HORIZONTE */}
+                              {/* COLUNA DE AÇÕES */}
                               <td className="p-4 text-right pr-6 whitespace-nowrap">
                                 <div className="inline-flex items-center justify-end gap-2">
-                                  {temPermissaoSigiloClinico ? (
+                                  {!item.pago &&
+                                    item.tipo === "rmclick" &&
+                                    item.statusAtendimento !== "cancelado" && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleAprovarPagamento(item)}
+                                        className="min-h-[34px] px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-extrabold inline-flex items-center gap-1 shadow-sm cursor-pointer"
+                                        title="Aprovar Pagamento Manual"
+                                      >
+                                        <CheckCircle2 size={12} />
+                                        <span>Aprovar</span>
+                                      </button>
+                                    )}
+
+                                  {temPermissaoSigiloClinico && (
                                     <button
                                       onClick={() => handleOpenSensitiveModal(item)}
                                       className="min-h-[34px] px-3 py-1.5 border border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 text-[11px] font-bold inline-flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
-                                      title="Ver Ficha Clínica, Enfermidades & Mensagens"
                                     >
                                       <ShieldCheck size={13} className="text-blue-500" />
                                       <span>Ficha</span>
                                     </button>
-                                  ) : (
-                                    <span
-                                      className="min-h-[34px] px-2.5 py-1.5 rounded-xl bg-zinc-100/50 dark:bg-zinc-800/40 text-zinc-400 text-[10px] font-bold inline-flex items-center gap-1 border border-zinc-200/50 dark:border-zinc-800 opacity-60 cursor-not-allowed"
-                                      title="Acesso Restrito: Requer permissão de Sigilo Clínico"
-                                    >
-                                      <Lock size={11} /> Restrito
-                                    </span>
                                   )}
 
                                   {item.statusAtendimento !== "cancelado" && (
                                     <>
                                       <button
-                                        onClick={() => {
-                                          playDopamineSound("click");
-                                          setRescheduleModalItem(item.rawItem || item);
-                                          setNewDate(item.data || selectedDay);
-                                          setNewTime(item.horario || "09:00");
-                                        }}
+                                        onClick={() => handleAbrirRemarcacao(item)}
                                         className="min-h-[34px] px-3 py-1.5 border border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 text-[11px] font-bold inline-flex items-center gap-1 transition-colors shadow-sm cursor-pointer"
                                       >
                                         <RotateCcw
@@ -1285,11 +1905,7 @@ export default function AgendaView({
                                         <span>Remarcar</span>
                                       </button>
                                       <button
-                                        onClick={() => {
-                                          playDopamineSound("click");
-                                          setCancelModalItem(item.rawItem || item);
-                                          setReason("");
-                                        }}
+                                        onClick={() => handleAbrirModalCancelamento(item)}
                                         className="min-h-[34px] p-2 text-red-600 dark:text-red-400 bg-red-50/60 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/60 border border-red-200/50 dark:border-red-900/40 rounded-xl inline-flex items-center justify-center transition-colors shadow-sm cursor-pointer"
                                         title="Cancelar Atendimento"
                                       >
@@ -1300,8 +1916,7 @@ export default function AgendaView({
                                 </div>
                               </td>
                             </tr>
-                          ))
-                        }
+                          ))}
                         </tbody>
                       </table>
                     </div>
@@ -1322,10 +1937,10 @@ export default function AgendaView({
                 <div className="flex justify-between items-center mb-6">
                   <div>
                     <h3 className="text-lg font-bold text-zinc-950 dark:text-white">
-                      Lista Unificada de Atendimentos
+                      Lista Geral de Atendimentos
                     </h3>
                     <p className="text-xs text-zinc-500 mt-0.5">
-                      Visão consolidada de pacientes locais e importados do ERP Medicalsys.
+                      Visão unificada de todos os pacientes locais e integrados do ERP.
                     </p>
                   </div>
                   <span className="text-xs font-bold px-3.5 py-1 bg-zinc-100 dark:bg-zinc-800 rounded-full text-zinc-700 dark:text-zinc-300 border border-zinc-200/50 dark:border-zinc-700/50">
@@ -1377,6 +1992,8 @@ export default function AgendaView({
                                   className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-md ${
                                     isCanceled
                                       ? "bg-red-100 text-red-700"
+                                      : item.remarcado
+                                      ? "bg-amber-100 text-amber-800"
                                       : "bg-emerald-100 text-emerald-800"
                                   }`}
                                 >
@@ -1389,32 +2006,15 @@ export default function AgendaView({
                               </div>
 
                               <p className="text-xs text-zinc-500 mt-1 flex flex-wrap gap-3">
-                                {item.medicoProfissional && item.medicoProfissional !== "Corpo Clínico" && (
-                                  <span>
-                                    <strong>Especialista:</strong> {item.medicoProfissional}
-                                  </span>
-                                )}
+                                <span>
+                                  <strong>Especialista:</strong> {item.medicoProfissional}
+                                </span>
                                 <span>
                                   <strong>Especialidade:</strong> {item.especialidade}
                                 </span>
-                                {item.subtipoExame && item.subtipoExame !== item.especialidade && item.subtipoExame !== item.tipoServico && (
+                                {item.modalidade && (
                                   <span>
-                                    <strong>Procedimento:</strong> {item.subtipoExame}
-                                  </span>
-                                )}
-                                {item.tipoServico && (
-                                  <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-[10px] font-bold uppercase text-zinc-700 dark:text-zinc-300">
-                                    {item.tipoServico}
-                                  </span>
-                                )}
-                                {(item.modalidade || item.convenio) && (
-                                  <span>
-                                    <strong>Modalidade:</strong> {item.modalidade || item.convenio}
-                                  </span>
-                                )}
-                                {item.telefonePaciente && (
-                                  <span className="flex items-center gap-1">
-                                    <Phone size={12} /> {item.telefonePaciente}
+                                    <strong>Modalidade:</strong> {item.modalidade}
                                   </span>
                                 )}
                               </p>
@@ -1423,50 +2023,37 @@ export default function AgendaView({
                                 Data: <strong>{item.data}</strong> às{" "}
                                 <strong>{item.horario || "--:--"}h</strong>
                               </p>
-
-                              {temPermissaoSigiloClinico && item.enfermidades && item.enfermidades.length > 0 && (
-                                <div className="flex flex-wrap gap-1 mt-2">
-                                  {item.enfermidades.map((enf, idx) => (
-                                    <span
-                                      key={idx}
-                                      className="text-[9px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 border border-rose-200/50 dark:border-rose-900/40 px-2 py-0.5 rounded-md flex items-center gap-1"
-                                    >
-                                      <HeartPulse size={10} /> {enf}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
                             </div>
                           </div>
 
                           <div className="flex items-center gap-2 self-end md:self-center">
-                            {temPermissaoSigiloClinico ? (
+                            {!item.pago &&
+                              item.tipo === "rmclick" &&
+                              !isCanceled && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleAprovarPagamento(item)}
+                                  className="min-h-[40px] px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 text-xs font-extrabold transition-all shadow-sm cursor-pointer"
+                                >
+                                  <CheckCircle2 size={14} />
+                                  <span>Aprovar Pagamento</span>
+                                </button>
+                              )}
+
+                            {temPermissaoSigiloClinico && (
                               <button
                                 onClick={() => handleOpenSensitiveModal(item)}
                                 className="min-h-[40px] px-3.5 py-2 border border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl text-xs font-bold hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
-                                title="Ver Ficha Clínica, Enfermidades & Mensagens"
                               >
                                 <ShieldCheck size={14} className="text-blue-500" />
                                 <span>Ficha</span>
                               </button>
-                            ) : (
-                              <span
-                                className="min-h-[40px] px-3 py-2 rounded-xl bg-zinc-100/50 dark:bg-zinc-800/40 text-zinc-400 text-[11px] font-bold inline-flex items-center gap-1 border border-zinc-200/50 dark:border-zinc-800 opacity-60 cursor-not-allowed"
-                                title="Acesso Restrito: Requer permissão de Sigilo Clínico"
-                              >
-                                <Lock size={12} /> Ficha Restrita
-                              </span>
                             )}
 
                             {!isCanceled && (
                               <>
                                 <button
-                                  onClick={() => {
-                                    playDopamineSound("click");
-                                    setRescheduleModalItem(item.rawItem || item);
-                                    setNewDate(item.data || selectedDay);
-                                    setNewTime(item.horario || "09:00");
-                                  }}
+                                  onClick={() => handleAbrirRemarcacao(item)}
                                   className="min-h-[40px] px-3.5 py-2 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl text-xs font-bold hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
                                 >
                                   <RotateCcw
@@ -1476,11 +2063,7 @@ export default function AgendaView({
                                   Remarcar
                                 </button>
                                 <button
-                                  onClick={() => {
-                                    playDopamineSound("click");
-                                    setCancelModalItem(item.rawItem || item);
-                                    setReason("");
-                                  }}
+                                  onClick={() => handleAbrirModalCancelamento(item)}
                                   className="min-h-[40px] px-3.5 py-2 bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 rounded-xl text-xs font-bold hover:bg-red-500/20 transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
                                 >
                                   <Trash2 size={14} /> Cancelar
@@ -1499,7 +2082,726 @@ export default function AgendaView({
         </div>
       </div>
 
-      {/* MODAL: FICHA CLÍNICA, DADOS SENSÍVEIS & FILA DE MENSAGENS DO WHATSAPP DO EXAME */}
+      {/* MODAL INTELIGENTE: REMARCAÇÃO COM CALENDÁRIO E HORÁRIOS EM TEMPO REAL */}
+      <AnimatePresence>
+        {rescheduleModalItem && (
+          <div
+            className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-md p-4 flex items-center justify-center"
+            onClick={() => setRescheduleModalItem(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white/95 dark:bg-[#121216]/95 backdrop-blur-3xl rounded-[2.5rem] p-6 md:p-8 max-w-2xl w-full shadow-2xl border border-zinc-200/80 dark:border-white/10 space-y-5 max-h-[90vh] overflow-y-auto custom-scrollbar"
+            >
+              <div className="flex justify-between items-start border-b border-zinc-100 dark:border-white/5 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shadow-sm">
+                    <RotateCcw size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl sm:text-2xl font-black text-zinc-950 dark:text-white tracking-tight">
+                      Remarcar Atendimento
+                    </h3>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                      Paciente:{" "}
+                      <strong>
+                        {rescheduleModalItem.pacientes?.nome_completo ||
+                          rescheduleModalItem.nomePaciente ||
+                          rescheduleModalItem.nome_paciente}
+                      </strong>{" "}
+                      •{" "}
+                      {rescheduleModalItem.especialidade ||
+                        rescheduleModalItem.medico_profissional}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setRescheduleModalItem(null)}
+                  className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-full cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* CALENDÁRIO INTERATIVO & SLOTS */}
+              <div className="grid md:grid-cols-2 gap-5">
+                {/* CALENDÁRIO MENSAL */}
+                <div className="p-4 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-900/60">
+                  <div className="flex justify-between items-center mb-4">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        playDopamineSound("click");
+                        setRescheduleMonth(
+                          new Date(
+                            rescheduleMonth.getFullYear(),
+                            rescheduleMonth.getMonth() - 1,
+                            1
+                          )
+                        );
+                      }}
+                      className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <span className="text-xs font-black capitalize text-zinc-900 dark:text-white">
+                      {rescheduleMonth.toLocaleString("pt-BR", {
+                        month: "long",
+                        year: "numeric"
+                      })}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        playDopamineSound("click");
+                        setRescheduleMonth(
+                          new Date(
+                            rescheduleMonth.getFullYear(),
+                            rescheduleMonth.getMonth() + 1,
+                            1
+                          )
+                        );
+                      }}
+                      className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-1 text-center mb-2">
+                    {["D", "S", "T", "Q", "Q", "S", "S"].map((d, idx) => (
+                      <span key={idx} className="text-[10px] font-extrabold text-zinc-400">
+                        {d}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-1">
+                    {Array.from({
+                      length: new Date(
+                        rescheduleMonth.getFullYear(),
+                        rescheduleMonth.getMonth(),
+                        1
+                      ).getDay()
+                    }).map((_, i) => (
+                      <div key={`rem-e-${i}`} className="aspect-square" />
+                    ))}
+                    {Array.from({
+                      length: new Date(
+                        rescheduleMonth.getFullYear(),
+                        rescheduleMonth.getMonth() + 1,
+                        0
+                      ).getDate()
+                    }).map((_, i) => {
+                      const d = i + 1;
+                      const y = rescheduleMonth.getFullYear();
+                      const m = rescheduleMonth.getMonth();
+                      const dateStr = `${y}-${String(m + 1).padStart(2, "0")}-${String(
+                        d
+                      ).padStart(2, "0")}`;
+
+                      const isSelected = rescheduleSelectedDate === dateStr;
+                      const hojeStr = getHojeLocal();
+                      const isPast = dateStr < hojeStr;
+
+                      return (
+                        <button
+                          key={d}
+                          type="button"
+                          disabled={isPast}
+                          onClick={() => {
+                            playDopamineSound("select");
+                            triggerHaptic("light");
+                            setRescheduleSelectedDate(dateStr);
+                            setRescheduleSelectedTime("");
+                          }}
+                          className={`aspect-square rounded-xl text-xs font-bold transition-all flex items-center justify-center cursor-pointer ${
+                            isPast
+                              ? "opacity-20 cursor-not-allowed text-zinc-400"
+                              : isSelected
+                              ? "bg-zinc-950 text-white dark:bg-white dark:text-black shadow-md ring-2 ring-[#9FC131] scale-105"
+                              : "hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200"
+                          }`}
+                        >
+                          {d}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* HORÁRIOS DISPONÍVEIS */}
+                <div className="p-4 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-900/60 flex flex-col">
+                  <div className="flex justify-between items-center border-b border-zinc-200/60 dark:border-zinc-800 pb-2 mb-3">
+                    <span className="text-xs font-extrabold text-zinc-900 dark:text-white flex items-center gap-1.5">
+                      <Clock3 size={14} className="text-[#9FC131]" /> Horários Livres
+                    </span>
+                    <span className="text-[10px] text-zinc-400 font-bold">
+                      {rescheduleSelectedDate
+                        ? rescheduleSelectedDate.split("-").reverse().join("/")
+                        : "Selecione a data"}
+                    </span>
+                  </div>
+
+                  {!rescheduleSelectedDate ? (
+                    <div className="py-12 text-center text-xs text-zinc-400 italic">
+                      Selecione uma data no calendário ao lado para ver os horários.
+                    </div>
+                  ) : slotsRemarcacao.slots.length === 0 ? (
+                    <div className="py-12 text-center text-xs text-zinc-400 border border-dashed rounded-xl border-zinc-200 dark:border-zinc-800 p-4">
+                      Nenhum horário livre nesta data para este profissional.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2 max-h-56 overflow-y-auto custom-scrollbar pr-1">
+                      {slotsRemarcacao.slots.map(({ h, off }) => {
+                        const isSel = rescheduleSelectedTime === h;
+                        return (
+                          <button
+                            key={h}
+                            type="button"
+                            disabled={off}
+                            onClick={() => {
+                              playDopamineSound("select");
+                              triggerHaptic("medium");
+                              setRescheduleSelectedTime(h);
+                            }}
+                            className={`py-2 px-1 rounded-xl text-xs font-bold transition-all flex items-center justify-center cursor-pointer ${
+                              off
+                                ? "opacity-25 cursor-not-allowed bg-zinc-100 dark:bg-zinc-900 line-through text-zinc-400"
+                                : isSel
+                                ? "bg-[#9FC131] text-black shadow-md font-black ring-2 ring-[#9FC131] scale-105"
+                                : "bg-white dark:bg-black border border-zinc-200 dark:border-zinc-800 hover:border-[#9FC131] text-zinc-800 dark:text-zinc-200"
+                            }`}
+                          >
+                            {h}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* BOTÕES DE AÇÃO */}
+              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-zinc-100 dark:border-white/5">
+                <button
+                  type="button"
+                  onClick={() => setRescheduleModalItem(null)}
+                  disabled={isProcessing}
+                  className="min-h-[46px] rounded-2xl border border-zinc-200/80 dark:border-zinc-800 font-bold text-xs uppercase text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmarRemarcacao}
+                  disabled={
+                    isProcessing || !rescheduleSelectedDate || !rescheduleSelectedTime
+                  }
+                  className="min-h-[46px] rounded-2xl bg-zinc-950 hover:bg-black dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-extrabold text-xs uppercase flex items-center justify-center gap-2 shadow-md cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isProcessing ? (
+                    <Activity size={16} className="animate-spin" />
+                  ) : (
+                    "Confirmar Remarcação"
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL INTELIGENTE: NOVO AGENDAMENTO INTERNO (PELO ADMINISTRADOR / ATENDENTE) */}
+      <AnimatePresence>
+        {isNovoAgendamentoOpen && (
+          <div
+            className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-md p-4 flex items-center justify-center"
+            onClick={() => setIsNovoAgendamentoOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white/95 dark:bg-[#121216]/95 backdrop-blur-3xl rounded-[2.5rem] p-6 md:p-8 max-w-3xl w-full shadow-2xl border border-zinc-200/80 dark:border-white/10 space-y-6 max-h-[92vh] overflow-y-auto custom-scrollbar"
+            >
+              <div className="flex justify-between items-start border-b border-zinc-100 dark:border-white/5 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-sm">
+                    <CalendarPlus size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl sm:text-2xl font-black text-zinc-950 dark:text-white tracking-tight">
+                      Novo Agendamento Interno
+                    </h3>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                      Cadastro manual de paciente com cálculo automático de vagas livres.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsNovoAgendamentoOpen(false)}
+                  className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-full cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* SEÇÃO 1: DADOS DO PACIENTE */}
+              <div className="p-4 bg-zinc-50/80 dark:bg-zinc-900/60 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-400 flex items-center gap-1.5">
+                    <User size={13} /> 1. Dados do Paciente
+                  </span>
+                  {cpfAutofillFound && (
+                    <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-emerald-100 text-emerald-800 dark:bg-emerald-950 text-emerald-300 rounded-md">
+                      ✓ Paciente Identificado
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid sm:grid-cols-3 gap-3">
+                  <TextInput
+                    label="CPF (Busca Automática)"
+                    placeholder="000.000.000-00"
+                    value={novoAgendForm.cpf}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setNovoAgendForm({ ...novoAgendForm, cpf: v });
+                      handleLookupCpfInterno(v);
+                    }}
+                  />
+                  <div className="sm:col-span-2">
+                    <TextInput
+                      label="Nome Completo *"
+                      placeholder="Nome do paciente"
+                      value={novoAgendForm.nome}
+                      onChange={(e) => setNovoAgendForm({ ...novoAgendForm, nome: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid sm:grid-cols-3 gap-3">
+                  <TextInput
+                    label="WhatsApp / Celular"
+                    placeholder="(83) 99999-9999"
+                    value={novoAgendForm.telefone}
+                    onChange={(e) =>
+                      setNovoAgendForm({ ...novoAgendForm, telefone: e.target.value })
+                    }
+                  />
+                  <TextInput
+                    label="Data de Nascimento"
+                    type="date"
+                    value={novoAgendForm.data_nascimento}
+                    onChange={(e) =>
+                      setNovoAgendForm({ ...novoAgendForm, data_nascimento: e.target.value })
+                    }
+                  />
+                  <TextInput
+                    label="E-mail (Opcional)"
+                    placeholder="paciente@email.com"
+                    type="email"
+                    value={novoAgendForm.email}
+                    onChange={(e) =>
+                      setNovoAgendForm({ ...novoAgendForm, email: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+
+              {/* SEÇÃO 2: ATENDIMENTO CLÍNICO */}
+              <div className="p-4 bg-zinc-50/80 dark:bg-zinc-900/60 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 space-y-3">
+                <span className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-400 flex items-center gap-1.5">
+                  <Stethoscope size={13} /> 2. Atendimento Clínico & Especialista
+                </span>
+
+                <div className="grid sm:grid-cols-3 gap-3">
+                  <CustomSelect
+                    label="Categoria"
+                    value={novoAgendForm.tipo_servico}
+                    onChange={(v) => setNovoAgendForm({ ...novoAgendForm, tipo_servico: v })}
+                    options={[
+                      { value: "Consulta", label: "Consulta Médica" },
+                      { value: "Exame", label: "Exame / Procedimento" },
+                      { value: "Retorno", label: "Retorno" }
+                    ]}
+                  />
+
+                  <CustomSelect
+                    label="Especialidade"
+                    value={novoAgendForm.especialidade}
+                    onChange={(v) =>
+                      setNovoAgendForm({
+                        ...novoAgendForm,
+                        especialidade: v,
+                        horario_agendamento: ""
+                      })
+                    }
+                    options={especialidadesOptions}
+                  />
+
+                  <CustomSelect
+                    label="Médico / Especialista"
+                    value={novoAgendForm.medico_profissional}
+                    onChange={(v) =>
+                      setNovoAgendForm({
+                        ...novoAgendForm,
+                        medico_profissional: v,
+                        horario_agendamento: ""
+                      })
+                    }
+                    options={[
+                      { value: "", label: "Corpo Clínico / A definir" },
+                      ...servicos
+                        .filter((s) => s.ativo !== false)
+                        .map((s) => ({ value: s.nome, label: s.nome }))
+                    ]}
+                  />
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-3 pt-1">
+                  <CustomSelect
+                    label="Modalidade"
+                    value={novoAgendForm.modalidade}
+                    onChange={(v) => setNovoAgendForm({ ...novoAgendForm, modalidade: v })}
+                    options={[
+                      { value: "Particular", label: "Particular" },
+                      { value: "Convênio", label: "Convênio" },
+                      { value: "Retorno", label: "Retorno" }
+                    ]}
+                  />
+
+                  {novoAgendForm.modalidade === "Convênio" && (
+                    <TextInput
+                      label="Nome do Convênio / Plano"
+                      placeholder="Ex: Unimed, Bradesco..."
+                      value={novoAgendForm.convenio_nome}
+                      onChange={(e) =>
+                        setNovoAgendForm({ ...novoAgendForm, convenio_nome: e.target.value })
+                      }
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* SEÇÃO 3: CALENDÁRIO & HORÁRIOS LIVRES */}
+              <div className="p-4 bg-zinc-50/80 dark:bg-zinc-900/60 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 space-y-3">
+                <span className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-400 flex items-center gap-1.5">
+                  <Calendar size={13} /> 3. Data & Horário Disponível
+                </span>
+
+                <div className="grid md:grid-cols-2 gap-4">
+                  {/* CALENDÁRIO MENSAL */}
+                  <div className="p-3 bg-white dark:bg-black rounded-xl border border-zinc-200 dark:border-zinc-800">
+                    <div className="flex justify-between items-center mb-3">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setNovoAgendMonth(
+                            new Date(
+                              novoAgendMonth.getFullYear(),
+                              novoAgendMonth.getMonth() - 1,
+                              1
+                            )
+                          )
+                        }
+                        className="p-1 text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+                      >
+                        <ChevronLeft size={16} />
+                      </button>
+                      <span className="text-xs font-black capitalize text-zinc-900 dark:text-white">
+                        {novoAgendMonth.toLocaleString("pt-BR", {
+                          month: "long",
+                          year: "numeric"
+                        })}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setNovoAgendMonth(
+                            new Date(
+                              novoAgendMonth.getFullYear(),
+                              novoAgendMonth.getMonth() + 1,
+                              1
+                            )
+                          )
+                        }
+                        className="p-1 text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+                      >
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-7 gap-1">
+                      {Array.from({
+                        length: new Date(
+                          novoAgendMonth.getFullYear(),
+                          novoAgendMonth.getMonth(),
+                          1
+                        ).getDay()
+                      }).map((_, i) => (
+                        <div key={`novo-e-${i}`} className="aspect-square" />
+                      ))}
+                      {Array.from({
+                        length: new Date(
+                          novoAgendMonth.getFullYear(),
+                          novoAgendMonth.getMonth() + 1,
+                          0
+                        ).getDate()
+                      }).map((_, i) => {
+                        const d = i + 1;
+                        const y = novoAgendMonth.getFullYear();
+                        const m = novoAgendMonth.getMonth();
+                        const dateStr = `${y}-${String(m + 1).padStart(2, "0")}-${String(
+                          d
+                        ).padStart(2, "0")}`;
+
+                        const isSel = novoAgendForm.data_agendamento === dateStr;
+                        const isPast = dateStr < getHojeLocal();
+
+                        return (
+                          <button
+                            key={d}
+                            type="button"
+                            disabled={isPast}
+                            onClick={() => {
+                              playDopamineSound("select");
+                              setNovoAgendForm({
+                                ...novoAgendForm,
+                                data_agendamento: dateStr,
+                                horario_agendamento: ""
+                              });
+                            }}
+                            className={`aspect-square rounded-lg text-xs font-bold transition-all flex items-center justify-center cursor-pointer ${
+                              isPast
+                                ? "opacity-20 cursor-not-allowed text-zinc-400"
+                                : isSel
+                                ? "bg-zinc-950 text-white dark:bg-white dark:text-black font-black ring-2 ring-[#9FC131]"
+                                : "hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200"
+                            }`}
+                          >
+                            {d}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* SLOTS LIVRES */}
+                  <div className="p-3 bg-white dark:bg-black rounded-xl border border-zinc-200 dark:border-zinc-800 flex flex-col">
+                    <div className="flex justify-between items-center border-b border-zinc-100 dark:border-zinc-800 pb-2 mb-2">
+                      <span className="text-xs font-extrabold text-zinc-900 dark:text-white flex items-center gap-1">
+                        <Clock3 size={13} className="text-[#9FC131]" /> Horários Livres
+                      </span>
+                      <span className="text-[10px] text-zinc-400 font-bold">
+                        {novoAgendForm.data_agendamento
+                          ? novoAgendForm.data_agendamento.split("-").reverse().join("/")
+                          : ""}
+                      </span>
+                    </div>
+
+                    {slotsNovoAgendamento.slots.length === 0 ? (
+                      <div className="py-10 text-center text-xs text-zinc-400 italic">
+                        Nenhum horário disponível para esta combinação.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-1.5 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                        {slotsNovoAgendamento.slots.map(({ h, off }) => {
+                          const isSel = novoAgendForm.horario_agendamento === h;
+                          return (
+                            <button
+                              key={h}
+                              type="button"
+                              disabled={off}
+                              onClick={() => {
+                                playDopamineSound("select");
+                                setNovoAgendForm({ ...novoAgendForm, horario_agendamento: h });
+                              }}
+                              className={`py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center cursor-pointer ${
+                                off
+                                  ? "opacity-25 cursor-not-allowed bg-zinc-100 dark:bg-zinc-900 line-through text-zinc-400"
+                                  : isSel
+                                  ? "bg-[#9FC131] text-black font-black ring-2 ring-[#9FC131] scale-105"
+                                  : "bg-zinc-50 dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 hover:border-[#9FC131]"
+                              }`}
+                            >
+                              {h}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* BOTÕES SALVAR */}
+              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-zinc-100 dark:border-white/5">
+                <button
+                  type="button"
+                  onClick={() => setIsNovoAgendamentoOpen(false)}
+                  disabled={isProcessing}
+                  className="min-h-[46px] rounded-2xl border border-zinc-200/80 dark:border-zinc-800 font-bold text-xs uppercase text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 cursor-pointer"
+                >
+                  Voltar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSalvarNovoAgendamentoInterno}
+                  disabled={
+                    isProcessing ||
+                    !novoAgendForm.nome?.trim() ||
+                    !novoAgendForm.data_agendamento ||
+                    !novoAgendForm.horario_agendamento
+                  }
+                  className="min-h-[46px] rounded-2xl bg-zinc-950 hover:bg-black dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-extrabold text-xs uppercase flex items-center justify-center gap-2 shadow-md cursor-pointer disabled:opacity-50"
+                >
+                  {isProcessing ? (
+                    <Activity size={16} className="animate-spin" />
+                  ) : (
+                    "Confirmar Agendamento"
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL: CANCELAR AGENDAMENTO COM SEGURANÇA E MOTIVO PADRÃO PROFISSIONAL */}
+      <AnimatePresence>
+        {cancelModalItem && (
+          <div
+            className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-md p-4 flex items-center justify-center"
+            onClick={() => setCancelModalItem(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white/95 dark:bg-[#121216]/95 backdrop-blur-3xl rounded-[2.5rem] p-6 md:p-8 max-w-md w-full shadow-2xl border border-zinc-200/80 dark:border-white/10 space-y-5"
+            >
+              <div className="flex justify-between items-start">
+                <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-600 flex items-center justify-center shadow-sm">
+                  <Trash2 size={22} />
+                </div>
+                <button
+                  onClick={() => setCancelModalItem(null)}
+                  className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-full cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div>
+                <h3 className="text-2xl font-black text-zinc-950 dark:text-white tracking-tight">
+                  {confirmarCancelamentoStep
+                    ? "Confirmar Cancelamento?"
+                    : "Cancelar Agendamento"}
+                </h3>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+                  Paciente:{" "}
+                  <strong>
+                    {cancelModalItem.pacientes?.nome_completo ||
+                      cancelModalItem.nomePaciente ||
+                      cancelModalItem.nome_paciente}
+                  </strong>{" "}
+                  em <strong>{cancelModalItem.data_agendamento || cancelModalItem.data}</strong> às{" "}
+                  <strong>{cancelModalItem.horario_agendamento || cancelModalItem.horario}</strong>
+                </p>
+              </div>
+
+              {!confirmarCancelamentoStep ? (
+                <>
+                  <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-xs text-amber-900 dark:text-amber-300 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <Info size={16} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                      <p>
+                        O horário será liberado imediatamente no sistema e as notificações automáticas
+                        serão desativadas.
+                      </p>
+                    </div>
+                    <p className="text-[11px] opacity-80 pt-1 border-t border-amber-500/20">
+                      💡 <strong>Motivo Padrão de Proteção:</strong> Se você deixar o campo de justificativa em branco, o sistema enviará automaticamente o motivo profissional <em>\"Readequação operacional da grade de atendimentos da clínica\"</em> para evitar conflitos com o paciente.
+                    </p>
+                  </div>
+
+                  <TextInput
+                    label="Justificativa Personalizada (Opcional)"
+                    placeholder="Ex.: Solicitação do paciente, readequação..."
+                    value={cancelReason}
+                    onChange={(e) => setReason(e.target.value)}
+                  />
+
+                  <div className="grid grid-cols-2 gap-3 pt-2">
+                    <button
+                      onClick={() => setCancelModalItem(null)}
+                      disabled={isProcessing}
+                      className="min-h-[48px] rounded-2xl border border-zinc-200/80 dark:border-zinc-800 font-bold text-xs uppercase text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 cursor-pointer"
+                    >
+                      Voltar
+                    </button>
+                    <button
+                      onClick={() => {
+                        playDopamineSound("click");
+                        setConfirmarCancelamentoStep(true);
+                      }}
+                      className="min-h-[48px] rounded-2xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs uppercase flex items-center justify-center gap-2 shadow-md cursor-pointer"
+                    >
+                      Avançar para Cancelar
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-2xl text-xs text-red-900 dark:text-red-300 space-y-2">
+                    <div className="flex items-start gap-2 font-bold">
+                      <AlertTriangle size={17} className="text-red-500 shrink-0 mt-0.5" />
+                      <span>Atenção: Esta ação é definitiva e liberará a vaga para outros pacientes.</span>
+                    </div>
+                    <p className="text-[11px] opacity-90">
+                      Motivo enviado:{" "}
+                      <strong>
+                        {cancelReason.trim() ||
+                          "Readequação operacional da grade de atendimentos da clínica"}
+                      </strong>
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 pt-2">
+                    <button
+                      onClick={() => setConfirmarCancelamentoStep(false)}
+                      disabled={isProcessing}
+                      className="min-h-[48px] rounded-2xl border border-zinc-200/80 dark:border-zinc-800 font-bold text-xs uppercase text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 cursor-pointer"
+                    >
+                      Voltar
+                    </button>
+                    <button
+                      onClick={handleCancelarAdmin}
+                      disabled={isProcessing}
+                      className="min-h-[48px] rounded-2xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs uppercase flex items-center justify-center gap-2 shadow-md cursor-pointer"
+                    >
+                      {isProcessing ? (
+                        <Activity size={16} className="animate-spin" />
+                      ) : (
+                        "Confirmar Cancelamento"
+                      )}
+                    </button>
+                  </div>
+                </>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL: FICHA CLÍNICA, DADOS SENSÍVEIS & FILA DE MENSAGENS DO WHATSAPP */}
       <AnimatePresence>
         {sensitiveModalItem && temPermissaoSigiloClinico && (
           <div
@@ -1513,7 +2815,7 @@ export default function AgendaView({
               onClick={(e) => e.stopPropagation()}
               className="bg-white/95 dark:bg-[#0c0c0e]/95 backdrop-blur-3xl rounded-[2.5rem] p-6 md:p-8 max-w-3xl w-full shadow-2xl border border-zinc-200/80 dark:border-white/10 space-y-6 max-h-[90vh] overflow-y-auto custom-scrollbar flex flex-col"
             >
-              {/* CABEÇALHO DO MODAL COM ABAS DE NAVEGAÇÃO */}
+              {/* CABEÇALHO DO MODAL COM ABAS */}
               <div className="flex flex-col gap-4 border-b border-zinc-100 dark:border-white/5 pb-4">
                 <div className="flex justify-between items-start">
                   <div className="flex items-center gap-3">
@@ -1525,7 +2827,8 @@ export default function AgendaView({
                         <span>Ficha do Paciente & Atendimento</span>
                       </h3>
                       <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                        {sensitiveModalItem.nomePaciente} • {sensitiveModalItem.especialidade} ({sensitiveModalItem.medicoProfissional})
+                        {sensitiveModalItem.nomePaciente} • {sensitiveModalItem.especialidade} (
+                        {sensitiveModalItem.medicoProfissional})
                       </p>
                     </div>
                   </div>
@@ -1537,7 +2840,6 @@ export default function AgendaView({
                   </button>
                 </div>
 
-                {/* SELETOR DE ABAS INTERNO DA FICHA DO PACIENTE */}
                 <div className="flex p-1.5 bg-zinc-100/80 dark:bg-zinc-900/80 rounded-2xl border border-zinc-200/70 dark:border-zinc-800 gap-1.5">
                   <button
                     type="button"
@@ -1581,7 +2883,6 @@ export default function AgendaView({
               {/* CONTEÚDO DA ABA 1: FICHA CLÍNICA & ENFERMIDADES */}
               {fichaSubTab === "dados" && (
                 <div className="space-y-6">
-                  {/* CARD DE DADOS CADASTRAIS */}
                   <div className="p-5 bg-zinc-50/80 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl space-y-3 text-xs">
                     <div className="grid sm:grid-cols-2 gap-3">
                       <div>
@@ -1610,7 +2911,10 @@ export default function AgendaView({
                         </span>
                         <span className="font-bold text-zinc-800 dark:text-zinc-200 block mt-0.5">
                           {sensitiveModalItem.dataNascimento
-                            ? `${sensitiveModalItem.dataNascimento.split("-").reverse().join("/")} (${
+                            ? `${sensitiveModalItem.dataNascimento
+                                .split("-")
+                                .reverse()
+                                .join("/")} (${
                                 calcularIdadeDataNasc(sensitiveModalItem.dataNascimento) || "--"
                               } anos)`
                             : "Não informado"}
@@ -1639,20 +2943,9 @@ export default function AgendaView({
                         )}
                       </div>
                     </div>
-
-                    {sensitiveModalItem.emailPaciente && (
-                      <div className="pt-2 border-t border-zinc-200/60 dark:border-zinc-800">
-                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
-                          E-mail
-                        </span>
-                        <span className="font-bold text-zinc-800 dark:text-zinc-200 block mt-0.5">
-                          {sensitiveModalItem.emailPaciente}
-                        </span>
-                      </div>
-                    )}
                   </div>
 
-                  {/* SEÇÃO: ENFERMIDADES DIAGNOSTICADAS / ASSOCIADAS */}
+                  {/* SEÇÃO ENFERMIDADES */}
                   <div className="space-y-3.5">
                     <div className="flex items-center justify-between">
                       <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-900 dark:text-white flex items-center gap-1.5">
@@ -1663,7 +2956,6 @@ export default function AgendaView({
                       </span>
                     </div>
 
-                    {/* TAGS ATUAIS */}
                     <div className="flex flex-wrap gap-2 min-h-[38px] p-3 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl">
                       {enfermidadesPaciente.length === 0 ? (
                         <p className="text-xs text-zinc-400 italic py-0.5">
@@ -1681,7 +2973,6 @@ export default function AgendaView({
                               type="button"
                               onClick={() => handleRemoveEnfermidadeFromPatient(enf)}
                               className="text-rose-400 hover:text-red-600 transition-colors p-0.5 cursor-pointer"
-                              title={`Desvincular "${enf}"`}
                             >
                               <X size={12} />
                             </button>
@@ -1690,11 +2981,7 @@ export default function AgendaView({
                       )}
                     </div>
 
-                    {/* BARRA DE BUSCA E AUTOCOMPLETE DE ENFERMIDADES */}
                     <div className="relative space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block ml-1">
-                        Buscar ou Cadastrar Enfermidade
-                      </label>
                       <div className="relative">
                         <Search
                           size={15}
@@ -1704,12 +2991,11 @@ export default function AgendaView({
                           type="text"
                           value={searchEnfermidade}
                           onChange={(e) => setSearchEnfermidade(e.target.value)}
-                          placeholder="Digite para buscar (ex: Refluxo, Gastrite, Hipertensão...)"
+                          placeholder="Buscar ou cadastrar enfermidade..."
                           className="w-full pl-9 pr-4 py-2.5 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none focus:border-[#9FC131]"
                         />
                       </div>
 
-                      {/* SUGESTÕES DE AUTOCOMPLETE */}
                       {searchEnfermidade.trim() && (
                         <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white dark:bg-[#15151a] border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xl p-2 space-y-1 max-h-48 overflow-y-auto custom-scrollbar">
                           {sugestoesEnfermidades.map((sug) => (
@@ -1742,13 +3028,8 @@ export default function AgendaView({
                         </div>
                       )}
                     </div>
-
-                    <p className="text-[11px] text-zinc-400 leading-relaxed">
-                      As enfermidades vinculadas permitem que a clínica envie orientações, lembretes de exames e mensagens personalizadas de WhatsApp automaticamente para esse grupo de pacientes.
-                    </p>
                   </div>
 
-                  {/* BOTÕES DE AÇÃO DA ABA DADOS */}
                   <div className="grid grid-cols-2 gap-3 pt-3 border-t border-zinc-100 dark:border-white/5">
                     <button
                       type="button"
@@ -1770,10 +3051,9 @@ export default function AgendaView({
                 </div>
               )}
 
-              {/* CONTEÚDO DA ABA 2: MENSAGENS DO WHATSAPP DO EXAME / ATENDIMENTO */}
+              {/* CONTEÚDO DA ABA 2: MENSAGENS DO WHATSAPP */}
               {fichaSubTab === "mensagens" && (
                 <div className="space-y-5">
-                  {/* SUMÁRIO E BOTÃO DE CRIAR NOVA MENSAGEM */}
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/70 dark:border-zinc-800 rounded-2xl">
                     <div className="flex flex-wrap items-center gap-2 text-xs">
                       <span className="font-bold text-zinc-700 dark:text-zinc-300">
@@ -1785,11 +3065,6 @@ export default function AgendaView({
                       <span className="px-2.5 py-0.5 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-extrabold text-[11px]">
                         {statsMensagensAgendamento.enviadas} Enviada(s)
                       </span>
-                      {statsMensagensAgendamento.canceladas > 0 && (
-                        <span className="px-2.5 py-0.5 rounded-lg bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300 font-extrabold text-[11px]">
-                          {statsMensagensAgendamento.canceladas} Cancelada(s)
-                        </span>
-                      )}
                     </div>
 
                     <button
@@ -1805,7 +3080,7 @@ export default function AgendaView({
                     </button>
                   </div>
 
-                  {/* FORMULÁRIO DE NOVA MENSAGEM AVULSA / PROGRAMADA */}
+                  {/* FORMULÁRIO DE NOVA MENSAGEM AVULSA */}
                   <AnimatePresence>
                     {isCriandoMensagem && (
                       <motion.div
@@ -1819,85 +3094,34 @@ export default function AgendaView({
                             <h4 className="text-xs font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
                               <Sparkles size={15} /> Agendar Mensagem Personalizada
                             </h4>
-                            <span className="text-[10px] text-zinc-400">
-                              Destino: {sensitiveModalItem.telefonePaciente || "Não informado"}
-                            </span>
                           </div>
 
-                          {/* TEXTAREA DO CONTEÚDO */}
                           <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest block">
-                              Texto da Mensagem
-                            </label>
                             <textarea
                               rows={4}
                               value={novaMsgTexto}
                               onChange={(e) => setNovaMsgTexto(e.target.value)}
-                              placeholder="Ex: Olá {nome}, segue em anexo a guia de preparo para o seu exame de {servico}..."
+                              placeholder="Digite a mensagem personalizada..."
                               className="w-full p-3 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none focus:border-[#9FC131] leading-relaxed custom-scrollbar"
                             />
-                            <div className="flex flex-wrap gap-1.5 pt-1">
-                              <span className="text-[10px] text-zinc-400 font-bold mr-1">
-                                Variáveis rápidas:
-                              </span>
-                              {Object.entries({
-                                "{nome}": "Primeiro Nome",
-                                "{servico}": "Exame / Procedimento",
-                                "{especialista}": "Especialista",
-                                "{data}": "Data Agendada",
-                                "{hora}": "Horário Agendado",
-                                "{clinica}": "Nome da Clínica"
-                              }).map(([tag, desc]) => (
-                                <button
-                                  key={tag}
-                                  type="button"
-                                  onClick={() => setNovaMsgTexto((prev) => `${prev} ${tag}`)}
-                                  className="text-[10px] font-bold px-2 py-0.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-[#9FC131]/20 hover:text-black dark:hover:text-white rounded-md border border-zinc-200/50 dark:border-zinc-700 transition-colors cursor-pointer"
-                                  title={desc}
-                                >
-                                  {tag}
-                                </button>
-                              ))}
-                            </div>
                           </div>
 
-                          {/* DATA/HORA PROGRAMADA E ANEXO */}
                           <div className="grid sm:grid-cols-2 gap-3">
-                            <div className="space-y-1">
-                              <label className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest block">
-                                Data e Horário de Envio
-                              </label>
-                              <input
-                                type="datetime-local"
-                                value={novaMsgDataHora}
-                                onChange={(e) => setNovaMsgDataHora(e.target.value)}
-                                className="w-full min-h-[42px] px-3 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none focus:border-[#9FC131]"
-                              />
-                            </div>
-
-                            <div className="space-y-1">
-                              <label className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest block flex items-center gap-1">
-                                <Paperclip size={11} /> Link do Anexo / Documento (PDF / Foto)
-                              </label>
-                              <input
-                                type="url"
-                                value={novaMsgAnexoUrl}
-                                onChange={(e) => setNovaMsgAnexoUrl(e.target.value)}
-                                placeholder="https://clinica.com/preparo.pdf"
-                                className="w-full min-h-[42px] px-3 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none focus:border-[#9FC131]"
-                              />
-                            </div>
+                            <TextInput
+                              type="datetime-local"
+                              label="Data e Horário de Envio"
+                              value={novaMsgDataHora}
+                              onChange={(e) => setNovaMsgDataHora(e.target.value)}
+                            />
+                            <TextInput
+                              type="url"
+                              label="Link do Anexo (PDF/Foto)"
+                              placeholder="https://clinica.com/preparo.pdf"
+                              value={novaMsgAnexoUrl}
+                              onChange={(e) => setNovaMsgAnexoUrl(e.target.value)}
+                            />
                           </div>
 
-                          {/* NOTA SOBRE ARMAZENAMENTO DE ARQUIVOS */}
-                          <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-[11px] text-blue-800 dark:text-blue-300 flex items-start gap-2">
-                            <Info size={14} className="text-blue-500 shrink-0 mt-0.5" />
-                            <p>
-                              <strong>Armazenamento Leve:</strong> O sistema guarda apenas o link do documento ou foto. No envio para o WhatsApp, o arquivo é transmitido diretamente pelo RM Chat sem sobrecarregar o banco de dados da clínica.
-                            </p>
-                          </div>
-
-                          {/* BOTÕES DO FORMULÁRIO */}
                           <div className="flex justify-end gap-2 pt-1">
                             <button
                               type="button"
@@ -1925,7 +3149,7 @@ export default function AgendaView({
                     )}
                   </AnimatePresence>
 
-                  {/* LISTA DE MENSAGENS DO AGENDAMENTO */}
+                  {/* LISTA DE MENSAGENS */}
                   {loadingMensagens ? (
                     <div className="py-12 flex flex-col items-center justify-center text-zinc-400 gap-2">
                       <Activity size={24} className="animate-spin text-[#9FC131]" />
@@ -1939,9 +3163,6 @@ export default function AgendaView({
                       <h5 className="text-sm font-bold text-zinc-800 dark:text-zinc-200">
                         Nenhuma mensagem encontrada na fila
                       </h5>
-                      <p className="text-xs text-zinc-400 max-w-md mx-auto">
-                        As mensagens de confirmação e lembrete são geradas automaticamente de acordo com as regras cadastradas em Personalização. Você também pode agendar uma mensagem avulsa acima.
-                      </p>
                     </div>
                   ) : (
                     <div className="space-y-3.5">
@@ -1963,361 +3184,65 @@ export default function AgendaView({
                                 : "bg-white dark:bg-[#111116] border-zinc-200/80 dark:border-white/10 shadow-sm"
                             }`}
                           >
-                            {/* CABEÇALHO DO CARD DA MENSAGEM */}
                             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 dark:border-white/5 pb-3">
                               <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 border border-zinc-200/60 dark:border-zinc-700/60 flex items-center gap-1">
-                                  <Tag size={10} />
-                                  {msg.gatilho === "imediato"
-                                    ? "Confirmação Imediata"
-                                    : msg.gatilho === "agendado"
-                                    ? "Lembrete Programado"
-                                    : msg.gatilho === "remarcado"
-                                    ? "Notificação Remarcação"
-                                    : msg.gatilho === "cancelado"
-                                    ? "Notificação Cancelamento"
-                                    : msg.gatilho === "pos_atendimento"
-                                    ? "Pós-Atendimento"
-                                    : msg.gatilho || "Mensagem Automática"}
+                                <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200">
+                                  {msg.gatilho || "Mensagem"}
                                 </span>
-
-                                <span className="text-[11px] text-zinc-400 font-medium flex items-center gap-1">
-                                  <Clock3 size={11} /> Programada:{" "}
-                                  <strong>{formatarDataHoraAmigavel(msg.data_hora_programada)}</strong>
+                                <span className="text-[11px] text-zinc-400 font-medium">
+                                  {formatarDataHoraAmigavel(msg.data_hora_programada)}
                                 </span>
                               </div>
 
-                              {/* BADGE DE STATUS */}
-                              <div>
-                                <span
-                                  className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-md flex items-center gap-1 ${
-                                    isSent
-                                      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
-                                      : isCanceled
-                                      ? "bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-400"
-                                      : "bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300"
-                                  }`}
-                                >
-                                  {isSent ? (
-                                    <><CheckCircle2 size={11} /> Enviada</>
-                                  ) : isCanceled ? (
-                                    <><X size={11} /> Cancelada</>
-                                  ) : (
-                                    <><Clock3 size={11} /> Pendente na Fila</>
-                                  )}
-                                </span>
-                              </div>
+                              <span
+                                className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-md ${
+                                  isSent
+                                    ? "bg-emerald-100 text-emerald-800"
+                                    : isCanceled
+                                    ? "bg-red-100 text-red-700"
+                                    : "bg-blue-100 text-blue-800"
+                                }`}
+                              >
+                                {isSent ? "Enviada" : isCanceled ? "Cancelada" : "Pendente"}
+                              </span>
                             </div>
 
-                            {/* CONTEÚDO DA MENSAGEM OU EDITOR INLINE */}
-                            {isEditing ? (
-                              <div className="mt-4 space-y-3">
-                                <div className="space-y-1">
-                                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
-                                    Editar Texto da Mensagem
-                                  </label>
-                                  <textarea
-                                    rows={4}
-                                    value={editMsgTexto}
-                                    onChange={(e) => setEditMsgTexto(e.target.value)}
-                                    className="w-full p-3 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none focus:border-[#9FC131] leading-relaxed custom-scrollbar font-sans"
-                                  />
-                                </div>
+                            <div className="mt-3 text-xs text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap leading-relaxed">
+                              {msg.mensagem}
+                            </div>
 
-                                <div className="grid sm:grid-cols-2 gap-3">
-                                  <div className="space-y-1">
-                                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
-                                      Reagendar Data/Hora de Envio
-                                    </label>
-                                    <input
-                                      type="datetime-local"
-                                      value={editMsgDataHora}
-                                      onChange={(e) => setEditMsgDataHora(e.target.value)}
-                                      className="w-full min-h-[40px] px-3 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none focus:border-[#9FC131]"
-                                    />
-                                  </div>
-
-                                  <div className="space-y-1">
-                                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block flex items-center gap-1">
-                                      <Paperclip size={11} /> Anexo / Link de Documento (PDF/Foto)
-                                    </label>
-                                    <input
-                                      type="url"
-                                      value={editMsgAnexoUrl}
-                                      onChange={(e) => setEditMsgAnexoUrl(e.target.value)}
-                                      placeholder="https://clinica.com/preparo.pdf"
-                                      className="w-full min-h-[40px] px-3 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none focus:border-[#9FC131]"
-                                    />
-                                  </div>
-                                </div>
-
-                                <div className="flex justify-end gap-2 pt-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => setEditingMsgId(null)}
-                                    className="min-h-[36px] px-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800 text-xs font-bold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 cursor-pointer"
-                                  >
-                                    Cancelar
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleSalvarEdicaoMensagem(msg.id)}
-                                    disabled={isProcessing}
-                                    className="min-h-[36px] px-4 bg-zinc-950 dark:bg-white text-white dark:text-black font-extrabold text-xs rounded-xl shadow-sm flex items-center gap-1.5 cursor-pointer"
-                                  >
-                                    {isProcessing ? (
-                                      <Activity size={14} className="animate-spin" />
-                                    ) : (
-                                      <Check size={14} />
-                                    )}
-                                    <span>Salvar Edição</span>
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
-                              /* BALÃO DE MENSAGEM ESTILO WHATSAPP */
-                              <div className="mt-3 space-y-2.5">
-                                <div className="p-3.5 bg-emerald-50/50 dark:bg-[#081f14]/40 border border-emerald-500/20 rounded-2xl text-xs text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap leading-relaxed font-sans shadow-inner">
-                                  {msg.mensagem || "(Mensagem sem texto)"}
-                                </div>
-
-                                {/* SE HOUVER ANEXO VINCULADO */}
-                                {msg.anexo_url && (
-                                  <div className="flex items-center gap-2 p-2.5 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/70 dark:border-zinc-800 rounded-xl text-xs">
-                                    <Paperclip size={14} className="text-blue-500 shrink-0" />
-                                    <span className="font-bold text-zinc-600 dark:text-zinc-300 truncate flex-1">
-                                      Anexo: {msg.anexo_url}
-                                    </span>
-                                    <a
-                                      href={msg.anexo_url}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="text-blue-600 dark:text-blue-400 hover:underline font-extrabold text-[11px] flex items-center gap-1 shrink-0"
-                                    >
-                                      <span>Abrir</span>
-                                      <ExternalLink size={10} />
-                                    </a>
-                                  </div>
+                            <div className="flex justify-end gap-2 pt-2">
+                              <button
+                                type="button"
+                                onClick={() => handleDispararAgora(msg.id)}
+                                disabled={isDisparando || isProcessing}
+                                className="min-h-[34px] px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                              >
+                                {isDisparando ? (
+                                  <Activity size={13} className="animate-spin" />
+                                ) : (
+                                  <Send size={13} />
                                 )}
-
-                                {/* LINHA DE AÇÕES DA MENSAGEM: RIGOROSAMENTE ALINHADA */}
-                                <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
-                                  {/* BOTÃO DE EDITAR */}
-                                  {!isCanceled && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleStartEditMensagem(msg)}
-                                      className="min-h-[34px] px-3 py-1.5 rounded-xl border border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
-                                      title="Editar texto ou horário de disparo desta mensagem"
-                                    >
-                                      <Edit3 size={13} className="text-blue-500" />
-                                      <span>Editar</span>
-                                    </button>
-                                  )}
-
-                                  {/* BOTÃO DE DISPARAR MANUALMENTE PELO WHATSAPP */}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDispararAgora(msg.id)}
-                                    disabled={isDisparando || isProcessing}
-                                    className="min-h-[34px] px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
-                                    title="Enviar imediatamente pelo WhatsApp do paciente"
-                                  >
-                                    {isDisparando ? (
-                                      <Activity size={13} className="animate-spin" />
-                                    ) : (
-                                      <Send size={13} />
-                                    )}
-                                    <span>{isSent ? "Reenviar WhatsApp" : "Disparar Agora"}</span>
-                                  </button>
-
-                                  {/* BOTÃO DE CANCELAR DISPARO DA FILA */}
-                                  {isPending && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleCancelarMensagemFila(msg.id)}
-                                      disabled={isProcessing}
-                                      className="min-h-[34px] px-3 py-1.5 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 hover:bg-red-500/20 text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
-                                      title="Cancelar o envio desta mensagem na fila"
-                                    >
-                                      <X size={13} />
-                                      <span>Cancelar Envio</span>
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            )}
+                                <span>{isSent ? "Reenviar WhatsApp" : "Disparar Agora"}</span>
+                              </button>
+                            </div>
                           </div>
                         );
                       })}
                     </div>
                   )}
 
-                  {/* BOTÃO FECHAR */}
                   <div className="pt-3 border-t border-zinc-100 dark:border-white/5 flex justify-end">
                     <button
                       type="button"
                       onClick={() => setSensitiveModalItem(null)}
-                      className="min-h-[44px] px-6 rounded-xl border border-zinc-200/80 dark:border-zinc-800 font-bold text-xs uppercase text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 transition-colors cursor-pointer"
+                      className="min-h-[44px] px-6 rounded-xl border border-zinc-200/80 dark:border-zinc-800 font-bold text-xs uppercase text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 cursor-pointer"
                     >
                       Fechar
                     </button>
                   </div>
                 </div>
               )}
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* MODAL: CANCELAR AGENDAMENTO */}
-      <AnimatePresence>
-        {cancelModalItem && (
-          <div
-            className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-md p-4 flex items-center justify-center"
-            onClick={() => setCancelModalItem(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white/95 dark:bg-[#121216]/95 backdrop-blur-3xl rounded-[2.5rem] p-6 md:p-8 max-w-md w-full shadow-2xl border border-zinc-200/80 dark:border-white/10 space-y-6"
-            >
-              <div className="flex justify-between items-start">
-                <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-600 flex items-center justify-center shadow-sm">
-                  <Trash2 size={22} />
-                </div>
-                <button
-                  onClick={() => setCancelModalItem(null)}
-                  className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-full cursor-pointer"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-
-              <div>
-                <h3 className="text-2xl font-black text-zinc-950 dark:text-white tracking-tight">
-                  Cancelar Agendamento?
-                </h3>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-                  Paciente:{" "}
-                  <strong>
-                    {cancelModalItem.pacientes?.nome_completo || cancelModalItem.nome_paciente}
-                  </strong>
-                </p>
-              </div>
-
-              <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2.5">
-                <Info size={16} className="text-amber-500 flex-shrink-0 mt-0.5" />
-                <p>
-                  O horário será liberado imediatamente no sistema e os lembretes automáticos serão
-                  desativados.
-                </p>
-              </div>
-
-              <TextInput
-                label="Motivo do Cancelamento"
-                placeholder="Ex.: Solicitado pelo paciente..."
-                value={cancelReason}
-                onChange={(e) => setReason(e.target.value)}
-              />
-
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <button
-                  onClick={() => setCancelModalItem(null)}
-                  disabled={isProcessing}
-                  className="min-h-[48px] rounded-2xl border border-zinc-200/80 dark:border-zinc-800 font-bold text-xs uppercase text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 cursor-pointer"
-                >
-                  Voltar
-                </button>
-                <button
-                  onClick={handleCancelarAdmin}
-                  disabled={isProcessing}
-                  className="min-h-[48px] rounded-2xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs uppercase flex items-center justify-center gap-2 shadow-md cursor-pointer"
-                >
-                  {isProcessing ? <Activity size={16} className="animate-spin" /> : "Confirmar"}
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* MODAL: REMARCAR AGENDAMENTO */}
-      <AnimatePresence>
-        {rescheduleModalItem && (
-          <div
-            className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-md p-4 flex items-center justify-center"
-            onClick={() => setRescheduleModalItem(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white/95 dark:bg-[#121216]/95 backdrop-blur-3xl rounded-[2.5rem] p-6 md:p-8 max-w-md w-full shadow-2xl border border-zinc-200/80 dark:border-white/10 space-y-6"
-            >
-              <div className="flex justify-between items-start">
-                <div className="w-12 h-12 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-600 flex items-center justify-center shadow-sm">
-                  <RotateCcw size={22} />
-                </div>
-                <button
-                  onClick={() => setRescheduleModalItem(null)}
-                  className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-full cursor-pointer"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-
-              <div>
-                <h3 className="text-2xl font-black text-zinc-950 dark:text-white tracking-tight">
-                  Remarcar Agendamento
-                </h3>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-                  Paciente:{" "}
-                  <strong>
-                    {rescheduleModalItem.pacientes?.nome_completo ||
-                      rescheduleModalItem.nome_paciente}
-                  </strong>
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <TextInput
-                  type="date"
-                  label="Nova Data"
-                  value={newDate}
-                  onChange={(e) => setNewDate(e.target.value)}
-                />
-                <TextInput
-                  type="time"
-                  label="Novo Horário"
-                  value={newTime}
-                  onChange={(e) => setNewTime(e.target.value)}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <button
-                  onClick={() => setRescheduleModalItem(null)}
-                  disabled={isProcessing}
-                  className="min-h-[48px] rounded-2xl border border-zinc-200/80 dark:border-zinc-800 font-bold text-xs uppercase text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 cursor-pointer"
-                >
-                  Voltar
-                </button>
-                <button
-                  onClick={handleRemarcarAdmin}
-                  disabled={isProcessing || !newDate || !newTime}
-                  className="min-h-[48px] rounded-2xl bg-zinc-950 hover:bg-black dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-bold text-xs uppercase flex items-center justify-center gap-2 shadow-md cursor-pointer"
-                >
-                  {isProcessing ? (
-                    <Activity size={16} className="animate-spin" />
-                  ) : (
-                    "Salvar"
-                  )}
-                </button>
-              </div>
             </motion.div>
           </div>
         )}

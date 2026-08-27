@@ -119,6 +119,76 @@ export const formatarMensagemWhatsAppRedirect = (
   return `Olá! Gostaria de agendar um atendimento com ${nomeEspecialista} para ${especialidadeEfetiva}${modalidadeInfo}${clinicaInfo}.${pacienteInfo}`;
 };
 
+// FORMATAÇÃO INTELIGENTE DE MENSAGEM PARA PAGAMENTO MANUAL VIA WHATSAPP COM ATENDENTE
+export const formatarMensagemPagamentoWhatsApp = (
+  templateCustom,
+  { formData, empresaDados, valorEntrada }
+) => {
+  const nomeEspecialista = formData?.medico_profissional || "Especialista";
+  const especialidadeEfetiva =
+    formData?.especialidade || formData?.subtipo_exame || "Atendimento Clínico";
+  const tipoServico = formData?.tipo_servico || "Consulta";
+  const modalidade = (formData?.modalidade || "Particular").trim();
+  const nomePaciente = (formData?.nome || "").trim();
+  const sobrenomePaciente = (formData?.sobrenome || "").trim();
+  const nomeCompleto = `${nomePaciente} ${sobrenomePaciente}`.trim() || nomePaciente || "Paciente";
+  const telefone = (formData?.telefone_whatsapp || "").trim();
+  const cpf = (formData?.cpf || "").trim();
+  const nomeClinica = (empresaDados?.nome || "").trim() || "Clínica";
+  const dataFormatada = formData?.data_agendamento
+    ? formData.data_agendamento.split("-").reverse().join("/")
+    : "";
+  const horaFormatada = (formData?.horario_agendamento || "").substring(0, 5);
+  const valorFormatado = valorEntrada
+    ? `R$ ${Number(valorEntrada).toFixed(2).replace(".", ",")}`
+    : "";
+
+  if (templateCustom && String(templateCustom).trim()) {
+    const mapaVars = {
+      nome: nomePaciente,
+      sobrenome: sobrenomePaciente,
+      nome_completo: nomeCompleto,
+      paciente: nomeCompleto,
+      cpf: cpf,
+      telefone: telefone,
+      whatsapp: telefone,
+      servico:
+        formData?.tipo_servico === "Exame"
+          ? formData?.subtipo_exame || especialidadeEfetiva
+          : especialidadeEfetiva,
+      especialista: nomeEspecialista,
+      medico: nomeEspecialista,
+      profissional: nomeEspecialista,
+      especialidade: especialidadeEfetiva,
+      subtipo_exame: formData?.subtipo_exame || "",
+      modalidade: modalidade,
+      cobertura: modalidade,
+      data: dataFormatada,
+      hora: horaFormatada,
+      valor: valorFormatado,
+      clinica: nomeClinica,
+      nome_clinica: nomeClinica
+    };
+
+    return String(templateCustom).replace(/{(\w+)}/g, (_, k) =>
+      mapaVars[k] !== undefined ? mapaVars[k] : `{${k}}`
+    );
+  }
+
+  // Template padrão completo
+  return `Olá! Gostaria de confirmar meu agendamento na *${nomeClinica}*:
+
+👤 *Paciente:* ${nomeCompleto}
+📄 *CPF:* ${cpf || "Não informado"}
+📱 *WhatsApp:* ${telefone || "Não informado"}
+🩺 *Atendimento:* ${especialidadeEfetiva} (${modalidade})
+👨‍⚕️ *Especialista:* ${nomeEspecialista}
+📅 *Data:* ${dataFormatada} às ${horaFormatada}h
+💰 *Taxa de Entrada / Garantia:* ${valorFormatado}
+
+Por favor, me envie a chave Pix ou dados para eu efetuar o pagamento e confirmar meu horário!`;
+};
+
 // DISPARO DE PUSH PARA O SERVIDOR RM CHAT / WHATSAPP (VIA ROTA SEGURA NO BACKEND)
 export const dispararPushRmChat = async (telefone, nome, mensagem, urlWebhook, contextData = {}) => {
   try {
@@ -341,6 +411,9 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
   // {servico} representa o médico quando houver profissional ou a especialidade quando não houver
   const servicoValor = nomeProfissionalOficial || especialidadeEfetiva;
 
+  const motivoPadrao = "Readequação operacional da grade de atendimentos da clínica";
+  const motivoFinal = (extraData?.motivo && String(extraData.motivo).trim()) ? String(extraData.motivo).trim() : motivoPadrao;
+
   const vars = {
     nome: (nome || "").trim(),
     sobrenome: (formData?.sobrenome || "").trim(),
@@ -367,6 +440,15 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
     idade: idadePaciente !== null ? String(idadePaciente) : "",
     data: dataFormatada,
     hora: horario_agendamento || "",
+    nova_data: dataFormatada,
+    novo_horario: horario_agendamento || "",
+    data_anterior: extraData?.data_anterior || "",
+    hora_anterior: extraData?.hora_anterior || "",
+    data_antiga: extraData?.data_anterior || "",
+    hora_antiga: extraData?.hora_anterior || "",
+    motivo: motivoFinal,
+    motivo_cancelamento: motivoFinal,
+    justificativa: motivoFinal,
     valor: extraData?.valor ? `R$ ${Number(extraData.valor).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "",
     chave_pix: extraData?.chave_pix || extraData?.qr_code || "",
     pix_copia_cola: extraData?.chave_pix || extraData?.qr_code || "",
