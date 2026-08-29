@@ -23,7 +23,7 @@ export function validateReturnEligibility(previousAppointments, requestedDate, o
 
 /**
  * Calcula a data e hora de envio programado da mensagem.
- * Suporta configuração flexível e granular pós-atendimento (início, término, minutos, horas, segundos ou dias).
+ * Suporta configuração flexível e granular pós-atendimento e dias úteis / corridos antes.
  */
 export function getMessageSchedule(rule, appointmentDate, appointmentTime, serviceDurationMinutes = 30, appointmentEndTime = null) {
   const horaInicio = appointmentTime ? appointmentTime.slice(0, 5) : "12:00";
@@ -68,7 +68,28 @@ export function getMessageSchedule(rule, appointmentDate, appointmentTime, servi
     return base.toISOString();
   }
 
-  // Gatilho agendado (dias antes)
+  // Gatilho agendado (dias antes - corridos ou úteis)
+  const isUteis = rule.tipo_dias_antes === "uteis" || rule.unidade_antes === "dias_uteis";
+  if (isUteis) {
+    const qtd = Number(rule.dias_antes || 1);
+    const [y, m, d] = appointmentDate.split("-").map(Number);
+    let date = new Date(y, m - 1, d);
+    let diasRestantes = qtd;
+    while (diasRestantes > 0) {
+      date.setDate(date.getDate() - 1);
+      const dow = date.getDay();
+      if (dow !== 0 && dow !== 6) diasRestantes--;
+    }
+    const [hours, minutes] = (rule.hora_envio || "08:00").split(":").map(Number);
+    date.setHours(hours, minutes, 0, 0);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hStr = String(hours).padStart(2, "0");
+    const mStr = String(minutes).padStart(2, "0");
+    return new Date(`${year}-${month}-${day}T${hStr}:${mStr}:00-03:00`).toISOString();
+  }
+
   base.setDate(base.getDate() - Number(rule.dias_antes || 0));
   if (rule.hora_envio) {
     const [hours, minutes] = rule.hora_envio.split(":").map(Number);

@@ -230,12 +230,19 @@ export const formatarTempoRegra = (regra) => {
   }
   if (gat === "agendado") {
     const qtd = regra.dias_antes ?? 1;
-    const unid = regra.unidade_antes === "horas" ? "h" : qtd === 1 ? "dia" : "dias";
+    const isUteis = regra.tipo_dias_antes === "uteis" || regra.unidade_antes === "dias_uteis";
+    const unid = regra.unidade_antes === "horas"
+      ? "h"
+      : isUteis
+      ? (qtd === 1 ? "dia útil anterior" : "dias úteis antes")
+      : (qtd === 1 ? "dia anterior" : "dias antes");
     const hora = regra.hora_envio ? ` às ${regra.hora_envio}` : "";
     return {
-      texto: `${qtd} ${unid} antes do atendimento${hora}`,
-      resumo: `${qtd} ${unid} antes`,
-      badgeClass: "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border-blue-200/50"
+      texto: `${qtd === 1 && isUteis ? "1 dia útil anterior" : `${qtd} ${unid}`} ao atendimento${hora}`,
+      resumo: isUteis ? (qtd === 1 ? "1 dia útil ant." : `${qtd} dias úteis`) : (qtd === 1 ? "1 dia ant." : `${qtd} dias antes`),
+      badgeClass: isUteis
+        ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border-indigo-200/50"
+        : "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border-blue-200/50"
     };
   }
   if (gat === "pos_atendimento") {
@@ -306,6 +313,8 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
     ocultar_triagem: false,
     ocultar_modalidade: false,
     ocultar_checkout: false,
+    ocultar_valor_particular: false,
+    ocultar_valor_consulta: false,
     logo_url: "",
     formato_logo: "arredondada",
     enviar_mensagens_importados_erp: true,
@@ -1491,6 +1500,36 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                     </div>
                   </div>
                 )}
+
+                {/* OCULTAR VALOR DA CONSULTA NO AGENDAMENTO */}
+                <div className="pt-4 border-t border-zinc-100 dark:border-white/5 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-zinc-50/80 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 shadow-sm">
+                    <div className="space-y-0.5">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-900 dark:text-white flex items-center gap-2">
+                        <CreditCard size={15} className="text-[#9FC131]" />
+                        Ocultar Valor da Consulta no Agendamento
+                      </h4>
+                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed max-w-xl">
+                        Não exibe o valor da consulta ao paciente na última etapa de agendamento (checkout / confirmação), mantendo o valor salvo internamente no banco de dados para relatórios de faturamento e métricas financeiras.
+                      </p>
+                    </div>
+                    <ToggleSwitch
+                      checked={Boolean(campos.ocultar_valor_particular || campos.ocultar_valor_consulta)}
+                      onChange={(v) =>
+                        setCampos((prev) => ({
+                          ...prev,
+                          ocultar_valor_particular: v,
+                          ocultar_valor_consulta: v
+                        }))
+                      }
+                      label={
+                        campos.ocultar_valor_particular || campos.ocultar_valor_consulta
+                          ? "Valor Oculto"
+                          : "Valor Visível"
+                      }
+                    />
+                  </div>
+                </div>
               </section>
             </motion.div>
           )}
@@ -2204,17 +2243,42 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                                             {/* CONFIGURAÇÃO DE TEMPO PARA LEMBRETE ANTES DO ATENDIMENTO */}
                                             {regra.gatilho === "agendado" && (
                                               <div className="p-3.5 bg-blue-500/5 dark:bg-blue-950/20 border border-blue-500/30 rounded-2xl space-y-3">
-                                                <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 dark:text-blue-300 flex items-center gap-1.5">
-                                                  <Clock3 size={13} /> Tempo de Disparo do Lembrete
-                                                </span>
+                                                <div className="flex items-center justify-between">
+                                                  <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 dark:text-blue-300 flex items-center gap-1.5">
+                                                    <Clock3 size={13} /> Tempo de Disparo do Lembrete
+                                                  </span>
+                                                  <span className="text-[10px] text-zinc-500 font-medium">
+                                                    {(regra.unidade_antes === "dias_uteis" || regra.tipo_dias_antes === "uteis")
+                                                      ? "Exclui fins de semana (Segunda → envia na Sexta)"
+                                                      : "Dias corridos normais"}
+                                                  </span>
+                                                </div>
 
                                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                                                   <CustomSelect
-                                                    label="Unidade"
-                                                    value={regra.unidade_antes || "dias"}
-                                                    onChange={(v) => atualizarRegra(regra.id, "unidade_antes", v)}
+                                                    label="Opção de Envio"
+                                                    value={
+                                                      regra.unidade_antes === "horas"
+                                                        ? "horas"
+                                                        : (regra.unidade_antes === "dias_uteis" || regra.tipo_dias_antes === "uteis")
+                                                        ? "dias_uteis"
+                                                        : "dias"
+                                                    }
+                                                    onChange={(v) => {
+                                                      if (v === "dias_uteis") {
+                                                        atualizarRegra(regra.id, "unidade_antes", "dias_uteis");
+                                                        atualizarRegra(regra.id, "tipo_dias_antes", "uteis");
+                                                      } else if (v === "dias") {
+                                                        atualizarRegra(regra.id, "unidade_antes", "dias");
+                                                        atualizarRegra(regra.id, "tipo_dias_antes", "corridos");
+                                                      } else {
+                                                        atualizarRegra(regra.id, "unidade_antes", "horas");
+                                                        atualizarRegra(regra.id, "tipo_dias_antes", "corridos");
+                                                      }
+                                                    }}
                                                     options={[
-                                                      { value: "dias", label: "Dias Antes" },
+                                                      { value: "dias_uteis", label: "Dia(s) Útil(eis) Anterior(es) (Recomendado)" },
+                                                      { value: "dias", label: "Dia(s) Anterior(es) (Dias Corridos)" },
                                                       { value: "horas", label: "Horas Antes" }
                                                     ]}
                                                   />
@@ -2237,6 +2301,12 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                                                     }
                                                   />
                                                 </div>
+
+                                                {(regra.unidade_antes === "dias_uteis" || regra.tipo_dias_antes === "uteis") && (
+                                                  <div className="p-2.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200/50 dark:border-indigo-900/40 text-[11px] text-indigo-900 dark:text-indigo-300">
+                                                    📅 <strong>Exemplo de 1 dia útil anterior:</strong> Se o paciente agendar para <strong>Segunda-feira</strong>, a mensagem será enviada na <strong>Sexta-feira anterior às {regra.hora_envio || "08:00"}h</strong>.
+                                                  </div>
+                                                )}
                                               </div>
                                             )}
 
@@ -2475,17 +2545,42 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                             {/* LEMBRETE NO CARD */}
                             {regra.gatilho === "agendado" && (
                               <div className="p-3.5 bg-blue-500/5 dark:bg-blue-950/20 border border-blue-500/30 rounded-2xl space-y-3">
-                                <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 dark:text-blue-300 flex items-center gap-1.5">
-                                  <Clock3 size={13} /> Tempo do Lembrete
-                                </span>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 dark:text-blue-300 flex items-center gap-1.5">
+                                    <Clock3 size={13} /> Tempo do Lembrete
+                                  </span>
+                                  <span className="text-[10px] text-zinc-500 font-medium">
+                                    {(regra.unidade_antes === "dias_uteis" || regra.tipo_dias_antes === "uteis")
+                                      ? "Exclui fins de semana (Segunda → envia na Sexta)"
+                                      : "Dias corridos normais"}
+                                  </span>
+                                </div>
 
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                                   <CustomSelect
-                                    label="Unidade"
-                                    value={regra.unidade_antes || "dias"}
-                                    onChange={(v) => atualizarRegra(regra.id, "unidade_antes", v)}
+                                    label="Opção de Envio"
+                                    value={
+                                      regra.unidade_antes === "horas"
+                                        ? "horas"
+                                        : (regra.unidade_antes === "dias_uteis" || regra.tipo_dias_antes === "uteis")
+                                        ? "dias_uteis"
+                                        : "dias"
+                                    }
+                                    onChange={(v) => {
+                                      if (v === "dias_uteis") {
+                                        atualizarRegra(regra.id, "unidade_antes", "dias_uteis");
+                                        atualizarRegra(regra.id, "tipo_dias_antes", "uteis");
+                                      } else if (v === "dias") {
+                                        atualizarRegra(regra.id, "unidade_antes", "dias");
+                                        atualizarRegra(regra.id, "tipo_dias_antes", "corridos");
+                                      } else {
+                                        atualizarRegra(regra.id, "unidade_antes", "horas");
+                                        atualizarRegra(regra.id, "tipo_dias_antes", "corridos");
+                                      }
+                                    }}
                                     options={[
-                                      { value: "dias", label: "Dias Antes" },
+                                      { value: "dias_uteis", label: "Dia(s) Útil(eis) Anterior(es) (Recomendado)" },
+                                      { value: "dias", label: "Dia(s) Anterior(es) (Dias Corridos)" },
                                       { value: "horas", label: "Horas Antes" }
                                     ]}
                                   />
@@ -2508,6 +2603,12 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                                     }
                                   />
                                 </div>
+
+                                {(regra.unidade_antes === "dias_uteis" || regra.tipo_dias_antes === "uteis") && (
+                                  <div className="p-2.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200/50 dark:border-indigo-900/40 text-[11px] text-indigo-900 dark:text-indigo-300">
+                                    📅 <strong>Exemplo de 1 dia útil anterior:</strong> Se o paciente agendar para <strong>Segunda-feira</strong>, a mensagem será enviada na <strong>Sexta-feira anterior às {regra.hora_envio || "08:00"}h</strong>.
+                                  </div>
+                                )}
                               </div>
                             )}
 

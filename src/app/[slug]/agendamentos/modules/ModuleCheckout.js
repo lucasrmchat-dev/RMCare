@@ -33,9 +33,26 @@ export default function ModuleCheckout() {
   } = useAgendamento();
 
   const mpKey = empresaDados?.config_chaves?.mp_public_key;
-  const tipoCheckout = empresaDados?.config_campos?.tipo_checkout_pagamento || "online"; // "online" | "whatsapp" | "ambos"
+  const configCampos = empresaDados?.config_campos || {};
+  const tipoCheckout = configCampos?.tipo_checkout_pagamento || "online"; // "online" | "whatsapp" | "ambos"
   const [selectedMethod, setSelectedMethod] = useState(tipoCheckout === "whatsapp" ? "whatsapp" : "online");
   const [isProcessingWpp, setIsProcessingWpp] = useState(false);
+
+  const modalidadesOpcoes = configCampos?.modalidades_opcoes || [];
+  const modSelecionada = modalidadesOpcoes.find(
+    (m) => m.nome?.toLowerCase() === formData?.modalidade?.toLowerCase()
+  );
+  const isParticular =
+    formData?.modalidade === "Particular" ||
+    formData?.modalidade?.toLowerCase().includes("partic") ||
+    !formData?.modalidade?.toLowerCase().includes("conv");
+
+  const ocultarValorConsulta = Boolean(
+    configCampos.ocultar_valor_particular ||
+    configCampos.ocultar_valor_consulta ||
+    (isParticular && configCampos.ocultar_valor_particular) ||
+    modSelecionada?.ocultar_valor
+  );
 
   useEffect(() => {
     if (mpKey && (selectedMethod === "online" || tipoCheckout === "online" || tipoCheckout === "ambos")) {
@@ -190,17 +207,31 @@ export default function ModuleCheckout() {
           </span>
         </div>
 
-        <div className="flex justify-between items-baseline border-t border-zinc-200/60 dark:border-white/5 pt-3.5">
-          <div>
-            <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider block">
-              Valor da Entrada
+        {!ocultarValorConsulta ? (
+          <div className="flex justify-between items-baseline border-t border-zinc-200/60 dark:border-white/5 pt-3.5">
+            <div>
+              <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider block">
+                Valor da Entrada
+              </span>
+              <span className="text-[11px] text-zinc-400">(Garantia do horário)</span>
+            </div>
+            <div className="text-3xl font-black text-[#86a621] dark:text-[#9FC131] tracking-tight">
+              R$ {Number(valorEntrada).toFixed(2).replace(".", ",")}
+            </div>
+          </div>
+        ) : (
+          <div className="flex justify-between items-center border-t border-zinc-200/60 dark:border-white/5 pt-3.5">
+            <div>
+              <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider block">
+                Modalidade de Atendimento
+              </span>
+              <span className="text-[11px] text-zinc-400">Atendimento Particular</span>
+            </div>
+            <span className="px-3 py-1 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-bold text-xs border border-emerald-200/50">
+              {formData?.modalidade || "Particular"}
             </span>
-            <span className="text-[11px] text-zinc-400">(Garantia do horário)</span>
           </div>
-          <div className="text-3xl font-black text-[#86a621] dark:text-[#9FC131] tracking-tight">
-            R$ {Number(valorEntrada).toFixed(2).replace(".", ",")}
-          </div>
-        </div>
+        )}
 
         <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center gap-2.5 text-xs text-emerald-800 dark:text-emerald-300 font-semibold">
           <ShieldCheck size={16} className="text-emerald-500 shrink-0" />

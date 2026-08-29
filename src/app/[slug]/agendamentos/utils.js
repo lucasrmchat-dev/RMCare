@@ -139,7 +139,11 @@ export const formatarMensagemPagamentoWhatsApp = (
     ? formData.data_agendamento.split("-").reverse().join("/")
     : "";
   const horaFormatada = (formData?.horario_agendamento || "").substring(0, 5);
-  const valorFormatado = valorEntrada
+  const ocultarValor = Boolean(
+    empresaDados?.config_campos?.ocultar_valor_particular ||
+    empresaDados?.config_campos?.ocultar_valor_consulta
+  );
+  const valorFormatado = (!ocultarValor && valorEntrada)
     ? `R$ ${Number(valorEntrada).toFixed(2).replace(".", ",")}`
     : "";
 
@@ -176,6 +180,7 @@ export const formatarMensagemPagamentoWhatsApp = (
   }
 
   // Template padrão completo
+  const linhaValor = valorFormatado ? `\n💰 *Taxa de Entrada / Garantia:* ${valorFormatado}` : "";
   return `Olá! Gostaria de confirmar meu agendamento na *${nomeClinica}*:
 
 👤 *Paciente:* ${nomeCompleto}
@@ -183,10 +188,9 @@ export const formatarMensagemPagamentoWhatsApp = (
 📱 *WhatsApp:* ${telefone || "Não informado"}
 🩺 *Atendimento:* ${especialidadeEfetiva} (${modalidade})
 👨‍⚕️ *Especialista:* ${nomeEspecialista}
-📅 *Data:* ${dataFormatada} às ${horaFormatada}h
-💰 *Taxa de Entrada / Garantia:* ${valorFormatado}
+📅 *Data:* ${dataFormatada} às ${horaFormatada}h${linhaValor}
 
-Por favor, me envie a chave Pix ou dados para eu efetuar o pagamento e confirmar meu horário!`;
+Por favor, me envie as orientações para confirmação do meu horário!`;
 };
 
 // DISPARO DE PUSH PARA O SERVIDOR RM CHAT / WHATSAPP (VIA ROTA SEGURA NO BACKEND)
@@ -230,9 +234,40 @@ export const dispararPushRmChat = async (telefone, nome, mensagem, urlWebhook, c
   }
 };
 
-export const gerarData = (dataBase, dias, hora) => {
+export const subtrairDiasUteis = (dataBase, diasUteis, hora) => {
+  if (!dataBase) return new Date().toISOString();
+  const [y, m, d] = dataBase.split("-").map(Number);
+  let date = new Date(y, m - 1, d);
+  let diasRestantes = Math.max(1, Number(diasUteis) || 1);
+
+  while (diasRestantes > 0) {
+    date.setDate(date.getDate() - 1);
+    const dayOfWeek = date.getDay();
+    // 0 = Domingo, 6 = Sábado
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+      diasRestantes--;
+    }
+  }
+
+  const horaStr = hora || "08:00";
+  const [h, min] = horaStr.split(":").map(Number);
+  date.setHours(h, min, 0, 0);
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(h).padStart(2, "0");
+  const minutes = String(min).padStart(2, "0");
+
+  return new Date(`${year}-${month}-${day}T${hours}:${minutes}:00-03:00`).toISOString();
+};
+
+export const gerarData = (dataBase, dias, hora, tipoContagem = "corridos") => {
+  if (tipoContagem === "uteis") {
+    return subtrairDiasUteis(dataBase, dias, hora);
+  }
   const d = new Date(`${dataBase}T${hora || "08:00"}:00-03:00`);
-  d.setDate(d.getDate() - dias);
+  d.setDate(d.getDate() - Number(dias || 1));
   return d.toISOString();
 };
 
@@ -647,7 +682,9 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
             : gerarDataPosAtendimento(data_agendamento, parseInt(regra.pos_tempo || regra.dias_depois || 1, 10), regra.hora_envio))
         : (regra.unidade_antes === "horas"
             ? new Date(new Date(`${data_agendamento}T${horario_agendamento || "08:00"}:00-03:00`).getTime() - (parseInt(regra.dias_antes || 1, 10) * 3600000)).toISOString()
-            : gerarData(data_agendamento, parseInt(regra.dias_antes || 1, 10), regra.hora_envio));
+            : (regra.unidade_antes === "dias_uteis" || regra.tipo_dias_antes === "uteis")
+            ? gerarData(data_agendamento, parseInt(regra.dias_antes || 1, 10), regra.hora_envio, "uteis")
+            : gerarData(data_agendamento, parseInt(regra.dias_antes || 1, 10), regra.hora_envio, "corridos"));
 
       mensagensParaFila.push({
         empresa_id: empresaDados.id,

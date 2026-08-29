@@ -509,6 +509,7 @@ export default function EquipeView({
     { id: "2", codigo_uri: "2", nome: "Convênio", exige_senha: false, senha: "" }
   ]);
   const [modalidadePadrao, setModalidadePadrao] = useState("Particular");
+  const [ocultarValorParticular, setOcultarValorParticular] = useState(false);
 
   const [especialidadesCategorizadas, setEspecialidadesCategorizadas] = useState([]);
   const [novaEspecialidadeNome, setNovaEspecialidadeNome] = useState("");
@@ -534,6 +535,11 @@ export default function EquipeView({
           }
           if (conf.modalidade_padrao) {
             setModalidadePadrao(conf.modalidade_padrao);
+          }
+          if (conf.ocultar_valor_particular !== undefined) {
+            setOcultarValorParticular(Boolean(conf.ocultar_valor_particular));
+          } else if (conf.ocultar_valor_consulta !== undefined) {
+            setOcultarValorParticular(Boolean(conf.ocultar_valor_consulta));
           }
 
           const mapCategorias = new Map();
@@ -701,7 +707,7 @@ export default function EquipeView({
   };
 
   // Persistir Modalidades
-  const persistirModalidades = async (novasMods, padrao) => {
+  const persistirModalidades = async (novasMods, padrao, ocultarVal) => {
     if (!empresaId) return;
     try {
       const { data: emp } = await supabase
@@ -710,10 +716,14 @@ export default function EquipeView({
         .eq("id", empresaId)
         .single();
 
+      const valOcultar = ocultarVal !== undefined ? ocultarVal : ocultarValorParticular;
+
       const updatedConfig = {
         ...(emp?.config_campos || {}),
         modalidades_opcoes: novasMods,
-        modalidade_padrao: padrao || modalidadePadrao
+        modalidade_padrao: padrao || modalidadePadrao,
+        ocultar_valor_particular: valOcultar,
+        ocultar_valor_consulta: valOcultar
       };
 
       await supabase
@@ -723,6 +733,12 @@ export default function EquipeView({
     } catch (err) {
       console.error("Erro ao persistir modalidades:", err);
     }
+  };
+
+  const handleToggleOcultarValorGlobal = async (v) => {
+    setOcultarValorParticular(v);
+    await persistirModalidades(modalidadesOpcoes, modalidadePadrao, v);
+    showToast(v ? "Valor da consulta ocultado no agendamento (mantido para métricas)." : "Valor da consulta visível no agendamento.");
   };
 
   const handleAddModalidade = async () => {
@@ -1805,6 +1821,23 @@ export default function EquipeView({
                   </button>
                 </div>
 
+                {/* CONFIGURAÇÃO DE EXIBIÇÃO DE VALOR NO AGENDAMENTO */}
+                <div className="mb-6 p-5 bg-zinc-50/80 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+                  <div className="space-y-1">
+                    <h4 className="text-xs font-black uppercase tracking-wider text-zinc-900 dark:text-white flex items-center gap-2">
+                      <DollarSign size={15} className="text-[#9FC131]" /> Exibição de Valores na Última Etapa de Agendamento
+                    </h4>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed max-w-2xl">
+                      Habilite ou desabilite a visualização do valor da consulta para o paciente no checkout / confirmação final. O valor é preservado internamente no banco de dados para cálculos de faturamento e métricas da clínica.
+                    </p>
+                  </div>
+                  <ToggleSwitch
+                    checked={ocultarValorParticular}
+                    onChange={handleToggleOcultarValorGlobal}
+                    label={ocultarValorParticular ? "Valor Ocultado" : "Valor Visível"}
+                  />
+                </div>
+
                 <div className="mb-6 p-4 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div className="flex-1">
                     <CustomSelect
@@ -1866,7 +1899,12 @@ export default function EquipeView({
                           )}
                         </div>
 
-                        <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
+                        <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end flex-wrap">
+                          <ToggleSwitch
+                            checked={Boolean(mod.ocultar_valor)}
+                            onChange={(v) => handleUpdateModalidade(mod.id, "ocultar_valor", v)}
+                            label="Ocultar Valor"
+                          />
                           <ToggleSwitch
                             checked={mod.exige_senha}
                             onChange={(v) => handleUpdateModalidade(mod.id, "exige_senha", v)}
