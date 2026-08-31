@@ -1,4 +1,5 @@
 import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import CommandPalette from "@/components/CommandPalette";
 
@@ -36,7 +37,9 @@ export default function RootLayout({ children }) {
       suppressHydrationWarning
     >
       <head>
-        <script
+        <Script
+          id="rmagenda-theme-init"
+          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{
             __html: `
               try {

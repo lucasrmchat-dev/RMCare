@@ -156,7 +156,13 @@ export default function AgendaView({
 }) {
   const [viewMode, setViewMode] = useState("cards");
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [lastSyncedAt, setLastSyncedAt] = useState(new Date());
+  const [lastSyncedAt, setLastSyncedAt] = useState(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    setLastSyncedAt(new Date());
+  }, []);
 
   useEffect(() => {
     try {
@@ -505,7 +511,7 @@ export default function AgendaView({
         matchesSearch(item.nomePaciente, item.cpfPaciente, item.telefonePaciente)
       );
 
-    if (sortConfig.key) {
+        if (sortConfig.key) {
       result.sort((a, b) => {
         let valA = "";
         let valB = "";
@@ -513,19 +519,19 @@ export default function AgendaView({
         if (sortConfig.key === "horario") {
           valA = a.horario || "";
           valB = b.horario || "";
-          const cmp = (valA || "").localeCompare(valB || "");
+          const cmp = valA.localeCompare(valB);
           if (cmp !== 0) return sortConfig.direction === "asc" ? cmp : -cmp;
           return normalizeText(a.nomePaciente).localeCompare(normalizeText(b.nomePaciente), "pt-BR");
         } else if (sortConfig.key === "paciente") {
           valA = a.nomePaciente || "";
           valB = b.nomePaciente || "";
-          const cmp = normalizeText(valA).localeCompare(normalizeText(b.nomePaciente), "pt-BR");
+          const cmp = normalizeText(valA).localeCompare(normalizeText(valB), "pt-BR");
           if (cmp !== 0) return sortConfig.direction === "asc" ? cmp : -cmp;
           return (a.horario || "").localeCompare(b.horario || "");
         } else if (sortConfig.key === "data") {
           valA = a.data || "";
           valB = b.data || "";
-          const cmp = (valA || "").localeCompare(valB || "");
+          const cmp = valA.localeCompare(valB);
           if (cmp !== 0) return sortConfig.direction === "asc" ? cmp : -cmp;
           return (a.horario || "").localeCompare(b.horario || "");
         } else if (sortConfig.key === "origem") {
@@ -583,10 +589,32 @@ export default function AgendaView({
   // Respeita fielmente a ordenação escolhida pelo usuário em "Pacientes do Dia" (ou padrão horário)
   const eventosAgendaMistaDiaria = useMemo(() => {
     const doDia = listaUnificadaTodosPacientes.filter((item) => item.data === selectedDay);
-    if (!sortConfig.key) {
-      return [...doDia].sort((a, b) => (a.horario || "").localeCompare(b.horario || ""));
-    }
-    return doDia;
+    return [...doDia].sort((a, b) => {
+      if (sortConfig.key === "paciente") {
+        const cmp = normalizeText(a.nomePaciente).localeCompare(normalizeText(b.nomePaciente), "pt-BR");
+        if (cmp !== 0) return sortConfig.direction === "asc" ? cmp : -cmp;
+        return (a.horario || "").localeCompare(b.horario || "");
+      } else if (sortConfig.key === "horario") {
+        const cmp = (a.horario || "").localeCompare(b.horario || "");
+        if (cmp !== 0) return sortConfig.direction === "asc" ? cmp : -cmp;
+        return normalizeText(a.nomePaciente).localeCompare(normalizeText(b.nomePaciente), "pt-BR");
+      } else if (sortConfig.key === "especialista") {
+        const cmp = normalizeText(a.medicoProfissional).localeCompare(normalizeText(b.medicoProfissional), "pt-BR");
+        if (cmp !== 0) return sortConfig.direction === "asc" ? cmp : -cmp;
+        return (a.horario || "").localeCompare(b.horario || "");
+      } else if (sortConfig.key === "status") {
+        const cmp = String(a.statusAtendimento || "").localeCompare(String(b.statusAtendimento || ""), "pt-BR");
+        if (cmp !== 0) return sortConfig.direction === "asc" ? cmp : -cmp;
+        return (a.horario || "").localeCompare(b.horario || "");
+      } else if (sortConfig.key === "pagamento") {
+        const valA = isItemParticular(a) ? (a.pago ? "pago" : "pendente") : (a.modalidade || "convenio");
+        const valB = isItemParticular(b) ? (b.pago ? "pago" : "pendente") : (b.modalidade || "convenio");
+        const cmp = String(valA).localeCompare(String(valB), "pt-BR");
+        if (cmp !== 0) return sortConfig.direction === "asc" ? cmp : -cmp;
+        return (a.horario || "").localeCompare(b.horario || "");
+      }
+      return (a.horario || "").localeCompare(b.horario || "");
+    });
   }, [listaUnificadaTodosPacientes, selectedDay, sortConfig]);
 
   // MOTOR UNIVERSAL DE CÁLCULO DE VAGAS E HORÁRIOS DISPONÍVEIS
@@ -1333,49 +1361,22 @@ export default function AgendaView({
                 <CalendarDays size={24} strokeWidth={2} />
               </div>
               <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h2 className="text-2xl md:text-3xl font-black text-zinc-950 dark:text-white tracking-tight">
-                    Agenda de Atendimentos
-                  </h2>
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/50">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    Auto-sync ativo (60s)
-                  </span>
-                </div>
+                <h2 className="text-2xl md:text-3xl font-black text-zinc-950 dark:text-white tracking-tight">
+                  Agenda de Atendimentos
+                </h2>
                 <p className="text-xs md:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5 font-medium">
                   Visão consolidada de consultas e exames com proteção contra conflitos de horários.
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3 flex-wrap">
-              {/* BOTÃO ATUALIZAR DADOS DO BANCO */}
-              <button
-                type="button"
-                onClick={handleManualRefresh}
-                disabled={isRefreshing}
-                className="min-h-[40px] px-3.5 py-2 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 font-extrabold text-xs rounded-2xl flex items-center gap-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-50"
-                title="Puxar novos dados do banco agora"
-              >
-                <RefreshCw size={14} className={isRefreshing ? "animate-spin text-[#9FC131]" : ""} />
-                <span>{isRefreshing ? "Atualizando..." : "Atualizar"}</span>
-              </button>
-
-              {/* BOTÃO NOVO AGENDAMENTO INTERNO */}
-              <button
-                type="button"
-                onClick={handleAbrirNovoAgendamento}
-                className="min-h-[40px] px-4 py-2 bg-zinc-950 hover:bg-black dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-extrabold text-xs rounded-2xl flex items-center gap-2 shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
-              >
-                <CalendarPlus size={16} strokeWidth={2.2} />
-                <span>Novo Agendamento</span>
-              </button>
-
+            <div className="flex items-center justify-end gap-3 flex-wrap w-full lg:w-auto">
+              {/* ALTERNADOR DE VISUALIZAÇÃO UNIFICADO NO CANTO DIREITO */}
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mr-1 hidden sm:inline">
                   Visualização:
                 </span>
-                <div className="flex p-1 bg-zinc-100/80 dark:bg-zinc-800/80 rounded-xl border border-zinc-200/60 dark:border-zinc-700/60 gap-1">
+                <div className="flex p-1 bg-zinc-100/80 dark:bg-zinc-800/80 rounded-xl border border-zinc-200/60 dark:border-zinc-700/60 gap-1 shadow-inner">
                   <button
                     type="button"
                     onClick={() => {
@@ -1387,7 +1388,7 @@ export default function AgendaView({
                         localStorage.setItem("rmcare_view_mode", "cards");
                       } catch (e) {}
                     }}
-                    className={`px-2.5 py-1.5 rounded-lg transition-all min-h-[34px] flex items-center gap-1.5 cursor-pointer text-xs font-bold ${
+                    className={`px-3 py-1.5 rounded-lg transition-all min-h-[34px] flex items-center gap-1.5 cursor-pointer text-xs font-bold ${
                       viewMode === "cards"
                         ? "bg-white dark:bg-zinc-900 text-zinc-950 dark:text-white shadow-sm font-black"
                         : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
@@ -1408,7 +1409,7 @@ export default function AgendaView({
                         localStorage.setItem("rmcare_view_mode", "tabela");
                       } catch (e) {}
                     }}
-                    className={`px-2.5 py-1.5 rounded-lg transition-all min-h-[34px] flex items-center gap-1.5 cursor-pointer text-xs font-bold ${
+                    className={`px-3 py-1.5 rounded-lg transition-all min-h-[34px] flex items-center gap-1.5 cursor-pointer text-xs font-bold ${
                       viewMode === "tabela"
                         ? "bg-white dark:bg-zinc-900 text-zinc-950 dark:text-white shadow-sm font-black"
                         : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
@@ -1420,6 +1421,28 @@ export default function AgendaView({
                   </button>
                 </div>
               </div>
+
+              {/* BOTÃO ATUALIZAR DADOS DO BANCO */}
+              <button
+                type="button"
+                onClick={handleManualRefresh}
+                disabled={isRefreshing}
+                className="min-h-[40px] px-3.5 py-2 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 font-extrabold text-xs rounded-2xl flex items-center gap-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                title="Puxar novos dados do banco agora"
+              >
+                <RefreshCw size={14} className={isRefreshing ? "animate-spin text-[#9FC131]" : ""} />
+                <span>{isRefreshing ? "Atualizando..." : "Atualizar"}</span>
+              </button>
+
+              {/* BOTÃO NOVO AGENDAMENTO INTERNO */}
+              <button
+                type="button"
+                onClick={handleAbrirNovoAgendamento}
+                className="min-h-[40px] px-4 py-2 bg-zinc-950 hover:bg-black dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-extrabold text-xs rounded-2xl flex items-center gap-2 shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer shrink-0"
+              >
+                <CalendarPlus size={16} strokeWidth={2.2} />
+                <span>Novo Agendamento</span>
+              </button>
             </div>
           </div>
 
@@ -1592,8 +1615,10 @@ export default function AgendaView({
               )}
             </div>
 
-            <div className="text-[10px] text-zinc-400 font-mono">
-              Última atualização: {lastSyncedAt.toLocaleTimeString("pt-BR")}
+            <div className="text-[10px] text-zinc-400 font-mono" suppressHydrationWarning>
+              {mounted && lastSyncedAt
+                ? `Última atualização: ${lastSyncedAt.toLocaleTimeString("pt-BR")}`
+                : "Sincronizado em tempo real"}
             </div>
           </div>
         </div>
@@ -1689,19 +1714,103 @@ export default function AgendaView({
 
                 {/* LISTA DO DIA SELECIONADO */}
                 <div className="flex-1 p-6 md:p-8 overflow-y-auto custom-scrollbar bg-zinc-50/40 dark:bg-black/20">
-                  <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-base sm:text-lg font-bold text-zinc-950 dark:text-white flex items-center gap-2">
-                      <CalendarDays size={18} className="text-[#9FC131]" />
-                      {new Date(selectedDay + "T12:00:00").toLocaleDateString("pt-BR", {
-                        weekday: "long",
-                        day: "numeric",
-                        month: "long",
-                        year: "numeric"
-                      })}
-                    </h3>
-                    <span className="text-xs font-bold px-3.5 py-1 bg-zinc-100 dark:bg-zinc-800 rounded-full text-zinc-600 dark:text-zinc-400 border border-zinc-200/50 dark:border-zinc-700/50">
+                  <div className="flex justify-between items-center mb-6 pb-4 border-b border-zinc-200/60 dark:border-white/5">
+                    <div>
+                      <h3 className="text-base sm:text-lg font-bold text-zinc-950 dark:text-white flex items-center gap-2">
+                        <CalendarDays size={18} className="text-[#9FC131]" />
+                        {new Date(selectedDay + "T12:00:00").toLocaleDateString("pt-BR", {
+                          weekday: "long",
+                          day: "numeric",
+                          month: "long",
+                          year: "numeric"
+                        })}
+                      </h3>
+                      <p className="text-xs text-zinc-500 mt-0.5">
+                        Mostrando atendimentos agendados para a data selecionada no calendário.
+                      </p>
+                    </div>
+
+                    <span className="text-xs font-bold px-3.5 py-1 bg-zinc-100 dark:bg-zinc-800 rounded-full text-zinc-700 dark:text-zinc-300 border border-zinc-200/50 dark:border-zinc-700/50">
                       {eventosAgendaMistaDiaria.length} paciente(s)
                     </span>
+                  </div>
+
+                  {/* BARRA DE ORDENAÇÃO RÁPIDA DE PACIENTES DO DIA */}
+                  <div className="flex items-center justify-between gap-2 mb-4 p-2.5 bg-white/70 dark:bg-zinc-900/60 backdrop-blur-xl rounded-2xl border border-zinc-200/70 dark:border-white/5 flex-wrap">
+                    <div className="flex items-center gap-1.5 text-xs text-zinc-500 font-semibold flex-wrap">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-400 flex items-center gap-1">
+                        <ArrowUpDown size={11} /> Ordenar Dia:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleSort("horario")}
+                        className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                          sortConfig.key === "horario"
+                            ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
+                            : "bg-white/90 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"
+                        }`}
+                      >
+                        <span>Horário</span>
+                        {sortConfig.key === "horario" && (
+                          sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleSort("paciente")}
+                        className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                          sortConfig.key === "paciente"
+                            ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
+                            : "bg-white/90 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"
+                        }`}
+                      >
+                        <span>Nome Paciente</span>
+                        {sortConfig.key === "paciente" && (
+                          sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleSort("especialista")}
+                        className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                          sortConfig.key === "especialista"
+                            ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
+                            : "bg-white/90 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"
+                        }`}
+                      >
+                        <span>Especialista</span>
+                        {sortConfig.key === "especialista" && (
+                          sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleSort("status")}
+                        className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                          sortConfig.key === "status"
+                            ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
+                            : "bg-white/90 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"
+                        }`}
+                      >
+                        <span>Status</span>
+                        {sortConfig.key === "status" && (
+                          sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                        )}
+                      </button>
+
+                      {sortConfig.key && (
+                        <button
+                          type="button"
+                          onClick={() => setSortConfig({ key: null, direction: "asc" })}
+                          className="text-[10.5px] text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 underline font-bold ml-1 cursor-pointer"
+                        >
+                          Limpar Ordenação
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {eventosAgendaMistaDiaria.length === 0 ? (
@@ -2145,18 +2254,127 @@ export default function AgendaView({
                 transition={spring}
                 className="p-6 md:p-8 h-full overflow-y-auto custom-scrollbar"
               >
-                <div className="flex justify-between items-center mb-6">
+                <div className="flex justify-between items-center mb-6 pb-4 border-b border-zinc-200/60 dark:border-white/5">
                   <div>
                     <h3 className="text-lg font-bold text-zinc-950 dark:text-white">
                       Lista Geral de Todos os Atendimentos
                     </h3>
                     <p className="text-xs text-zinc-500 mt-0.5">
-                      Visão unificada de todos os pacientes locais e integrados do ERP com filtros avançados.
+                      Visão unificada de todos os pacientes locais e integrados do ERP com filtros avançados e ordenação dinâmica.
                     </p>
                   </div>
+
                   <span className="text-xs font-bold px-3.5 py-1 bg-zinc-100 dark:bg-zinc-800 rounded-full text-zinc-700 dark:text-zinc-300 border border-zinc-200/50 dark:border-zinc-700/50">
                     {listaUnificadaTodosPacientes.length} paciente(s)
                   </span>
+                </div>
+
+                {/* BARRA DE ORDENAÇÃO RÁPIDA DE TODOS OS PACIENTES */}
+                <div className="flex items-center justify-between gap-2 mb-4 p-2.5 bg-white/70 dark:bg-zinc-900/60 backdrop-blur-xl rounded-2xl border border-zinc-200/70 dark:border-white/5 flex-wrap">
+                  <div className="flex items-center gap-1.5 text-xs text-zinc-500 font-semibold flex-wrap">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-400 flex items-center gap-1">
+                      <ArrowUpDown size={11} /> Ordenar Geral:
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleSort("data")}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                        sortConfig.key === "data"
+                          ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
+                          : "bg-white/90 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"
+                      }`}
+                    >
+                      <span>Data</span>
+                      {sortConfig.key === "data" && (
+                        sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleSort("horario")}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                        sortConfig.key === "horario"
+                          ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
+                          : "bg-white/90 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"
+                      }`}
+                    >
+                      <span>Horário</span>
+                      {sortConfig.key === "horario" && (
+                        sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleSort("paciente")}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                        sortConfig.key === "paciente"
+                          ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
+                          : "bg-white/90 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"
+                      }`}
+                    >
+                      <span>Nome Paciente</span>
+                      {sortConfig.key === "paciente" && (
+                        sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleSort("especialista")}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                        sortConfig.key === "especialista"
+                          ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
+                          : "bg-white/90 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"
+                      }`}
+                    >
+                      <span>Especialista</span>
+                      {sortConfig.key === "especialista" && (
+                        sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleSort("status")}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                        sortConfig.key === "status"
+                          ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
+                          : "bg-white/90 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"
+                      }`}
+                    >
+                      <span>Status</span>
+                      {sortConfig.key === "status" && (
+                        sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleSort("pagamento")}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                        sortConfig.key === "pagamento"
+                          ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
+                          : "bg-white/90 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"
+                      }`}
+                    >
+                      <span>Pagamento</span>
+                      {sortConfig.key === "pagamento" && (
+                        sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                      )}
+                    </button>
+
+                    {sortConfig.key && (
+                      <button
+                        type="button"
+                        onClick={() => setSortConfig({ key: null, direction: "asc" })}
+                        className="text-[10.5px] text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 underline font-bold ml-1 cursor-pointer"
+                      >
+                        Limpar Ordenação
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {listaUnificadaTodosPacientes.length === 0 ? (

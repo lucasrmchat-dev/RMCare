@@ -1523,6 +1523,7 @@ function AgendamentoOrquestrador() {
       timeSlotsRef,
       renderLockedOrInput,
       onSubmitMP,
+      salvarNoBanco,
       loading,
       regrasGlobais,
       handleNovoAgendamento,

@@ -1063,20 +1063,8 @@ export default function EquipeView({
                 </div>
 
                 <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
-                  {/* ALTERNADOR DE VISUALIZAÇÃO: LISTA VS CARDS */}
+                  {/* ALTERNADOR DE VISUALIZAÇÃO PADRONIZADO: CARDS VS LISTA */}
                   <div className="flex items-center bg-zinc-100 dark:bg-zinc-800/80 p-1 rounded-xl border border-zinc-200/70 dark:border-zinc-700/60 shadow-inner">
-                    <button
-                      type="button"
-                      onClick={() => handleToggleViewMode("lista")}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        viewMode === "lista"
-                          ? "bg-white dark:bg-black text-zinc-950 dark:text-white shadow-sm"
-                          : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
-                      }`}
-                      title="Visualizar em formato de Lista"
-                    >
-                      <List size={14} /> Lista
-                    </button>
                     <button
                       type="button"
                       onClick={() => handleToggleViewMode("cards")}
@@ -1088,6 +1076,18 @@ export default function EquipeView({
                       title="Visualizar em formato de Cards"
                     >
                       <LayoutGrid size={14} /> Cards
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleViewMode("lista")}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        viewMode === "lista"
+                          ? "bg-white dark:bg-black text-zinc-950 dark:text-white shadow-sm"
+                          : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+                      }`}
+                      title="Visualizar em formato de Lista"
+                    >
+                      <List size={14} /> Lista
                     </button>
                   </div>
 
@@ -1320,20 +1320,8 @@ export default function EquipeView({
                   </div>
 
                   <div className="flex items-center gap-2.5 flex-wrap">
-                    {/* ALTERNADOR DE VISUALIZAÇÃO EM ESPECIALIDADES: LISTA VS CARDS */}
+                    {/* ALTERNADOR DE VISUALIZAÇÃO EM ESPECIALIDADES: CARDS VS LISTA */}
                     <div className="flex items-center bg-zinc-100 dark:bg-zinc-800/80 p-1 rounded-xl border border-zinc-200/70 dark:border-zinc-700/60 shadow-inner">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleViewModeEspecialidades("lista")}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                          viewModeEspecialidades === "lista"
-                            ? "bg-white dark:bg-black text-zinc-950 dark:text-white shadow-sm"
-                            : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
-                        }`}
-                        title="Visualizar Especialidades em Lista"
-                      >
-                        <List size={14} /> Lista
-                      </button>
                       <button
                         type="button"
                         onClick={() => handleToggleViewModeEspecialidades("cards")}
@@ -1345,6 +1333,18 @@ export default function EquipeView({
                         title="Visualizar Especialidades em Cards"
                       >
                         <LayoutGrid size={14} /> Cards
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleViewModeEspecialidades("lista")}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          viewModeEspecialidades === "lista"
+                            ? "bg-white dark:bg-black text-zinc-950 dark:text-white shadow-sm"
+                            : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+                        }`}
+                        title="Visualizar Especialidades em Lista"
+                      >
+                        <List size={14} /> Lista
                       </button>
                     </div>
 

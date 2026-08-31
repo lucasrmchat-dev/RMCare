@@ -1907,21 +1907,8 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {/* ALTERNADOR LISTA VS CARDS */}
+                    {/* ALTERNADOR PADRONIZADO: CARDS VS LISTA */}
                     <div className="flex items-center bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl border border-zinc-200/60 dark:border-zinc-700">
-                      <button
-                        type="button"
-                        onClick={() => setVisualizacaoMensagens("lista")}
-                        className={`p-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                          visualizacaoMensagens === "lista"
-                            ? "bg-white dark:bg-black text-zinc-950 dark:text-white shadow-sm"
-                            : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
-                        }`}
-                        title="Visualização em Lista"
-                      >
-                        <List size={14} />
-                        <span className="hidden sm:inline">Lista</span>
-                      </button>
                       <button
                         type="button"
                         onClick={() => setVisualizacaoMensagens("cards")}
@@ -1934,6 +1921,19 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                       >
                         <LayoutGrid size={14} />
                         <span className="hidden sm:inline">Cards</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setVisualizacaoMensagens("lista")}
+                        className={`p-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                          visualizacaoMensagens === "lista"
+                            ? "bg-white dark:bg-black text-zinc-950 dark:text-white shadow-sm"
+                            : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+                        }`}
+                        title="Visualização em Lista"
+                      >
+                        <List size={14} />
+                        <span className="hidden sm:inline">Lista</span>
                       </button>
                     </div>
 
