@@ -664,58 +664,125 @@ export default function RestricoesView({
                     </div>
                   </div>
 
-                  <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800">
-                    <div className="flex items-center justify-between mb-2">
+                  <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 space-y-3">
+                    <div className="flex items-center justify-between">
                       <label className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-wider block">
-                        Ocorrência no Mês (Semanas Específicas)
+                        Ocorrência no Mês (Semanas do Mês Generalistas)
                       </label>
                       <span className="text-[11px] text-zinc-500">
-                        Ex: 3 primeiras sextas, últimas sextas do mês
+                        Configure exatamente quais semanas se aplicam
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      {[
-                        { id: "todas", label: "Todas as Semanas" },
-                        { id: "primeiras_3", label: "3 Primeiras Semanas" },
-                        { id: "ultimas_3", label: "3 Últimas Semanas" },
-                        { id: "1", label: "1ª Semana do Mês" },
-                        { id: "2", label: "2ª Semana do Mês" },
-                        { id: "3", label: "3ª Semana do Mês" },
-                        { id: "4", label: "4ª Semana do Mês" },
-                        { id: "ultimas", label: "Última Semana do Mês" }
-                      ].map((sem) => {
-                        const isSelected = (formData.semanas_mes || ["todas"]).includes(sem.id);
-                        return (
-                          <button
-                            key={sem.id}
-                            type="button"
-                            onClick={() => {
-                              let current = formData.semanas_mes || ["todas"];
-                              if (sem.id === "todas") {
-                                current = ["todas"];
-                              } else {
-                                current = current.filter((x) => x !== "todas");
-                                if (isSelected) {
-                                  current = current.filter((x) => x !== sem.id);
-                                  if (current.length === 0) current = ["todas"];
-                                } else {
-                                  current = [...current, sem.id];
-                                }
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* N PRIMEIRAS SEMANAS */}
+                      <div className="p-3.5 bg-zinc-50/80 dark:bg-zinc-900/60 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 space-y-1.5">
+                        <label className="text-xs font-bold text-zinc-900 dark:text-white block">
+                          Primeiras Semanas do Mês
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="1"
+                            max="5"
+                            placeholder="Ex: 3 (3 primeiras semanas)"
+                            value={
+                              (formData.semanas_mes || []).find((s) => s.startsWith("primeiras_"))
+                                ? (formData.semanas_mes || []).find((s) => s.startsWith("primeiras_")).replace("primeiras_", "")
+                                : ""
+                            }
+                            onChange={(e) => {
+                              const num = e.target.value;
+                              let current = (formData.semanas_mes || ["todas"]).filter((s) => !s.startsWith("primeiras_") && s !== "todas");
+                              if (num && Number(num) > 0) {
+                                current.push(`primeiras_${num}`);
                               }
+                              if (current.length === 0) current = ["todas"];
                               setFormData((prev) => ({ ...prev, semanas_mes: current }));
                             }}
-                            className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all text-left flex items-center justify-between cursor-pointer ${
-                              isSelected
-                                ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs"
-                                : "bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300"
-                            }`}
-                          >
-                            <span>{sem.label}</span>
-                            {isSelected && <CheckCircle2 size={12} />}
-                          </button>
-                        );
-                      })}
+                            className="w-full px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs font-bold text-zinc-900 dark:text-white outline-none focus:border-[#9FC131]"
+                          />
+                        </div>
+                      </div>
+
+                      {/* N ÚLTIMAS SEMANAS */}
+                      <div className="p-3.5 bg-zinc-50/80 dark:bg-zinc-900/60 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 space-y-1.5">
+                        <label className="text-xs font-bold text-zinc-900 dark:text-white block">
+                          Últimas Semanas do Mês
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="1"
+                            max="5"
+                            placeholder="Ex: 3 (3 últimas semanas)"
+                            value={
+                              (formData.semanas_mes || []).find((s) => s.startsWith("ultimas_"))
+                                ? (formData.semanas_mes || []).find((s) => s.startsWith("ultimas_")).replace("ultimas_", "")
+                                : (formData.semanas_mes || []).includes("ultimas") ? "1" : ""
+                            }
+                            onChange={(e) => {
+                              const num = e.target.value;
+                              let current = (formData.semanas_mes || ["todas"]).filter((s) => !s.startsWith("ultimas_") && s !== "ultimas" && s !== "todas");
+                              if (num && Number(num) > 0) {
+                                current.push(`ultimas_${num}`);
+                              }
+                              if (current.length === 0) current = ["todas"];
+                              setFormData((prev) => ({ ...prev, semanas_mes: current }));
+                            }}
+                            className="w-full px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs font-bold text-zinc-900 dark:text-white outline-none focus:border-[#9FC131]"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* SELEÇÃO PONTUAL OU COMBINADA */}
+                    <div>
+                      <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block mb-1.5">
+                        Ou selecione semanas pontuais do mês:
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { id: "todas", label: "Todas as Semanas" },
+                          { id: "1", label: "1ª Semana" },
+                          { id: "2", label: "2ª Semana" },
+                          { id: "3", label: "3ª Semana" },
+                          { id: "4", label: "4ª Semana" },
+                          { id: "5", label: "5ª Semana" },
+                          { id: "meio", label: "Semanas do Meio (2ª e 3ª)" }
+                        ].map((sem) => {
+                          const isSelected = (formData.semanas_mes || ["todas"]).includes(sem.id);
+                          return (
+                            <button
+                              key={sem.id}
+                              type="button"
+                              onClick={() => {
+                                let current = formData.semanas_mes || ["todas"];
+                                if (sem.id === "todas") {
+                                  current = ["todas"];
+                                } else {
+                                  current = current.filter((x) => x !== "todas");
+                                  if (isSelected) {
+                                    current = current.filter((x) => x !== sem.id);
+                                    if (current.length === 0) current = ["todas"];
+                                  } else {
+                                    current = [...current, sem.id];
+                                  }
+                                }
+                                setFormData((prev) => ({ ...prev, semanas_mes: current }));
+                              }}
+                              className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all text-left flex items-center justify-between cursor-pointer ${
+                                isSelected
+                                  ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs"
+                                  : "bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300"
+                              }`}
+                            >
+                              <span>{sem.label}</span>
+                              {isSelected && <CheckCircle2 size={12} className="ml-1.5" />}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 </section>

@@ -1,843 +1,817 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  KeyRound,
-  ShieldCheck,
-  User,
-  Activity,
-  Save,
-  Check,
-  Plus,
   Users,
-  ShieldAlert,
+  Shield,
+  Key,
+  Plus,
   Trash2,
-  X,
-  FileSpreadsheet,
-  Link2,
-  ClipboardCheck,
-  Zap,
-  CalendarDays,
-  Clock3,
+  Lock,
+  Mail,
+  User,
   CheckCircle2,
-  XCircle,
-  Lock
+  AlertCircle,
+  Eye,
+  EyeOff,
+  Search,
+  Filter,
+  Calendar,
+  History,
+  Activity,
+  Layers,
+  ChevronLeft,
+  ChevronRight,
+  ShieldCheck,
+  Building,
+  Sparkles,
+  Info,
+  KeyRound,
+  Check
 } from "lucide-react";
-import { fadeUp, ButtonPrimary, TextInput, spring } from "../components/SharedUI";
-import { updateAdminCredentials } from "@/actions/auth";
 import {
-  checkIdentifier,
+  fadeUp,
+  spring,
+  ButtonPrimary,
+  TextInput,
+  ToggleSwitch,
+  CapsuleSpinner
+} from "../components/SharedUI";
+import {
   actionListarUsuariosEmpresa,
   actionCriarUsuarioEmpresa,
   actionAtualizarUsuarioEmpresa,
   actionDeletarUsuarioEmpresa,
-  fetchAdminAuditoriaLogs
+  fetchAdminAuditoriaLogs as fetchAdminAuditoria
 } from "@/actions/adminData";
-import { History, Search, Filter, RefreshCw, Calendar, Tag, ChevronDown, Eye, FileText, Database } from "lucide-react";
-import { CustomSelect } from "../components/SharedUI";
+import { updateAdminCredentials } from "@/actions/auth";
+import { playDopamineSound, triggerHaptic } from "@/lib/dopamine";
 
-const LISTA_PERMISSOES = [
-  { id: "agenda", label: "Agenda & Pacientes", desc: "Visualizar e gerenciar agendamentos e calendário.", icon: CalendarDays, color: "text-blue-500" },
-  { id: "sigilo_clinico", label: "Sigilo Clínico & Enfermidades", desc: "Acesso crítico a respostas de formulários clínicos e histórico de saúde dos pacientes.", icon: ShieldAlert, color: "text-red-500", superCritico: true },
-  { id: "bloqueios", label: "Horários & Duração", desc: "Configurar turnos, pausas e regras de ocupação da agenda.", icon: Clock3, color: "text-amber-500" },
-  { id: "politicas", label: "Políticas de Atendimento", desc: "Regras de retorno de consultas e prazos de antecedência.", icon: FileSpreadsheet, color: "text-indigo-500" },
-  { id: "triagem", label: "Formulários Clínicos", desc: "Criar e editar questionários de triagem por especialidade.", icon: ClipboardCheck, color: "text-emerald-500" },
-  { id: "personalizacao", label: "Aparência & Mensagens", desc: "Gerenciar templates automáticos e jornadas do paciente.", icon: Zap, color: "text-purple-500" },
-  { id: "equipe", label: "Corpo Clínico & Especialistas", desc: "Cadastrar novos especialistas, códigos URI e pausas.", icon: Users, color: "text-cyan-500" },
-  { id: "integracoes", label: "Sincronização & ERP", desc: "Configurar credenciais da API Medicalsys e Webhooks.", icon: Link2, color: "text-orange-500" },
-  { id: "usuarios", label: "Gerenciar Usuários & Permissões", desc: "Criar e editar colaboradores e acessos da clínica.", icon: ShieldCheck, color: "text-rose-500", superCritico: true }
+const PERMISSOES_DISPONIVEIS = [
+  { id: "agenda", label: "Agenda & Atendimentos", desc: "Visualizar, confirmar, aprovar pagamentos e desreservar" },
+  { id: "horarios", label: "Horários & Duração", desc: "Configurar turnos, duração e agendas compartilhadas" },
+  { id: "equipe", label: "Corpo Clínico & Especialistas", desc: "Cadastrar e gerenciar médicos e profissionais" },
+  { id: "politicas", label: "Políticas & Retorno", desc: "Regras de retorno, prazos e cancelamento" },
+  { id: "triagem", label: "Perguntas de Triagem", desc: "Formulários clínicos prévios ao agendamento" },
+  { id: "personalizacao", label: "Configurações Gerais", desc: "Identificação, modo de exibição e mensagens" },
+  { id: "integracoes", label: "Integrações & ERP MedicalSYS", desc: "Sincronização de agenda e credenciais de API" },
+  { id: "auditoria", label: "Auditoria do Sistema", desc: "Consulta a logs e histórico de operações" }
 ];
 
-export default function AccountView({
-  subTab = "credenciais",
-  showToast,
-  loggedAdmin,
-  permissoes = [],
-  isOwner = false
-}) {
-  // ==========================================
-  // ESTADOS: ALTERAÇÃO DE CREDENCIAIS PRÓPRIAS
-  // ==========================================
-  const [usernameForm, setUsernameForm] = useState({
-    currentPassword: "",
-    newUsername: ""
-  });
-  const [checkingUsername, setCheckingUsername] = useState(false);
-  const [usernameAvailable, setUsernameAvailable] = useState(null);
-  const [loadingUser, setLoadingUser] = useState(false);
+export default function AccountView({ subTab = "usuarios", setSubTab, showToast, loggedAdmin, isOwner }) {
+  // A aba ativa é controlada diretamente pela Sidebar (credenciais | usuarios | auditoria)
+  const currentView = subTab === "credenciais" ? "credenciais" : subTab === "auditoria" ? "auditoria" : "usuarios";
 
-  const [passwordForm, setPasswordForm] = useState({
-    currentPassword: "",
-    newPassword: "",
-    confirmPassword: ""
-  });
-  const [loadingPass, setLoadingPass] = useState(false);
-
-  // ==========================================
-  // ESTADOS: AUDITORIA DO SISTEMA
-  // ==========================================
-  const [logsAuditoria, setLogsAuditoria] = useState([]);
-  const [loadingLogs, setLoadingLogs] = useState(false);
-  const [filtroResponsavel, setFiltroResponsavel] = useState("todos");
-  const [filtroModulo, setFiltroModulo] = useState("todos");
-  const [filtroDataInicio, setFiltroDataInicio] = useState("");
-  const [filtroDataFim, setFiltroDataFim] = useState("");
-  const [filtroSearchLog, setFiltroSearchLog] = useState("");
-  const [expandedLogId, setExpandedLogId] = useState(null);
-
-  const carregarLogsAuditoria = async () => {
-    setLoadingLogs(true);
-    try {
-      const logs = await fetchAdminAuditoriaLogs({
-        responsavel: filtroResponsavel,
-        modulo: filtroModulo,
-        dataInicio: filtroDataInicio,
-        dataFim: filtroDataFim,
-        search: filtroSearchLog
-      });
-      setLogsAuditoria(logs || []);
-    } catch (err) {
-      console.error("Erro ao carregar auditoria:", err);
-    } finally {
-      setLoadingLogs(false);
-    }
-  };
-
-  useEffect(() => {
-    if (subTab === "auditoria") {
-      carregarLogsAuditoria();
-    }
-  }, [subTab, filtroResponsavel, filtroModulo, filtroDataInicio, filtroDataFim]);
-
-  const passwordRules = useMemo(() => {
-    const pwd = passwordForm.newPassword;
-    return {
-      minLength: pwd.length >= 8,
-      hasDigit: /\d/.test(pwd),
-      hasUpper: /[A-Z]/.test(pwd),
-      hasLower: /[a-z]/.test(pwd),
-      hasSpecial: /[!@#$%^&*()_+\-=\[\]{};':"\|,.<>\/?]/.test(pwd),
-      match: pwd.length > 0 && pwd === passwordForm.confirmPassword
-    };
-  }, [passwordForm.newPassword, passwordForm.confirmPassword]);
-
-  const isPasswordValid = Object.values(passwordRules).every(Boolean);
-
-  const handleCheckUsername = async (val) => {
-    const clean = val.trim().toLowerCase();
-    setUsernameForm((prev) => ({ ...prev, newUsername: val }));
-    if (clean.length < 3) {
-      setUsernameAvailable(null);
-      return;
-    }
-    setCheckingUsername(true);
-    try {
-      const res = await checkIdentifier(clean);
-      if (res.success && res.type === "admin") {
-        setUsernameAvailable(false);
-      } else {
-        setUsernameAvailable(true);
-      }
-    } catch (err) {
-      setUsernameAvailable(null);
-    } finally {
-      setCheckingUsername(false);
-    }
-  };
-
-  const handleSaveUsername = async (e) => {
-    e.preventDefault();
-    if (!usernameForm.currentPassword || !usernameForm.newUsername) {
-      if (showToast) showToast("Preencha a senha atual e o novo nome de usuário.", "error");
-      return;
-    }
-    if (usernameAvailable === false) {
-      if (showToast) showToast("Este nome de usuário já está em uso por outro administrador.", "error");
-      return;
-    }
-
-    setLoadingUser(true);
-    try {
-      const res = await updateAdminCredentials({
-        currentPassword: usernameForm.currentPassword,
-        newUsername: usernameForm.newUsername,
-        newPassword: usernameForm.currentPassword
-      });
-
-      if (!res.success) throw new Error(res.error);
-
-      if (showToast) showToast("Nome de usuário atualizado com sucesso!");
-      setUsernameForm({ currentPassword: "", newUsername: "" });
-      setUsernameAvailable(null);
-    } catch (err) {
-      if (showToast) showToast(`Erro ao alterar login: ${err.message}`, "error");
-    } finally {
-      setLoadingUser(false);
-    }
-  };
-
-  const handleSavePassword = async (e) => {
-    e.preventDefault();
-    if (!passwordForm.currentPassword) {
-      if (showToast) showToast("Informe sua senha atual.", "error");
-      return;
-    }
-    if (!isPasswordValid) {
-      if (showToast) showToast("A nova senha precisa atender a todos os requisitos de segurança.", "error");
-      return;
-    }
-
-    setLoadingPass(true);
-    try {
-      const res = await updateAdminCredentials({
-        currentPassword: passwordForm.currentPassword,
-        newUsername: loggedAdmin?.usuario || "admin",
-        newPassword: passwordForm.newPassword
-      });
-
-      if (!res.success) throw new Error(res.error);
-
-      if (showToast) showToast("Senha de acesso atualizada com segurança!");
-      setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
-    } catch (err) {
-      if (showToast) showToast(`Erro ao alterar senha: ${err.message}`, "error");
-    } finally {
-      setLoadingPass(false);
-    }
-  };
-
-  // ==========================================
-  // ESTADOS: GESTÃO DE USUÁRIOS E PERMISSÕES
-  // ==========================================
+  // USUÁRIOS & PERMISSÕES
   const [usuarios, setUsuarios] = useState([]);
-  const [loadingUsuarios, setLoadingUsuarios] = useState(false);
-  const [isAddingUser, setIsAddingUser] = useState(false);
+  const [loadingUsuarios, setLoadingUsuarios] = useState(true);
+  const [modalNovoUsuario, setModalNovoUsuario] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+  const [userSearch, setUserSearch] = useState("");
 
-  const temPermissaoUsuarios = useMemo(() => {
-    if (!loggedAdmin) return false;
-    if (isOwner || loggedAdmin.is_owner || loggedAdmin.role === "sistema") return true;
-    const perms = Array.isArray(permissoes) && permissoes.length > 0 ? permissoes : (loggedAdmin.permissoes || []);
-    return perms.includes("usuarios");
-  }, [loggedAdmin, isOwner, permissoes]);
-
-  const [newUserForm, setNewUserForm] = useState({
-    usuario: "",
+  const [formUser, setFormUser] = useState({
+    email: "",
     nome: "",
     senha: "",
-    permissoes: ["agenda", "bloqueios", "politicas", "triagem", "personalizacao", "equipe", "integracoes"]
+    permissoes: ["agenda", "horarios", "equipe", "politicas", "triagem", "personalizacao", "integracoes", "auditoria"]
   });
-  const [savingUser, setSavingUser] = useState(false);
+  const [isSavingUser, setIsSavingUser] = useState(false);
 
-  const fetchUsuarios = async () => {
-    if (!temPermissaoUsuarios) return;
+  // MINHAS CREDENCIAIS
+  const [credForm, setCredForm] = useState({
+    novoLogin: loggedAdmin?.email || loggedAdmin?.usuario || "",
+    senhaAtual: "",
+    novaSenha: "",
+    confirmaNovaSenha: ""
+  });
+  const [isSavingCred, setIsSavingCred] = useState(false);
+
+  // AUDITORIA DO SISTEMA
+  const [auditorias, setAuditorias] = useState([]);
+  const [loadingAuditoria, setLoadingAuditoria] = useState(false);
+  const [filtroDataInicio, setFiltroDataInicio] = useState("");
+  const [filtroDataFim, setFiltroDataFim] = useState("");
+  const [filtroModulo, setFiltroModulo] = useState("todos");
+  const [filtroUsuario, setFiltroUsuario] = useState("");
+  const [filtroAcao, setFiltroAcao] = useState("");
+  const [itensPorPagina, setItensPorPagina] = useState(10);
+  const [paginaAtual, setPaginaAtual] = useState(1);
+
+  // Carrega Usuários
+  const carregarUsuarios = async () => {
     setLoadingUsuarios(true);
     try {
       const data = await actionListarUsuariosEmpresa();
-      setUsuarios(data);
-    } catch (err) {
-      console.error("Erro ao listar usuários:", err);
+      setUsuarios(data || []);
+    } catch (e) {
+      if (showToast) showToast("Erro ao listar usuários da clínica.", "error");
     } finally {
       setLoadingUsuarios(false);
     }
   };
 
-  useEffect(() => {
-    if (subTab === "usuarios" && temPermissaoUsuarios) {
-      fetchUsuarios();
+  // Carrega Auditoria
+  const carregarAuditoria = async () => {
+    setLoadingAuditoria(true);
+    try {
+      const logs = await fetchAdminAuditoria({
+        dataInicio: filtroDataInicio || null,
+        dataFim: filtroDataFim || null,
+        modulo: filtroModulo || null,
+        usuario: filtroUsuario || null
+      });
+      setAuditorias(logs || []);
+      setPaginaAtual(1);
+    } catch (e) {
+      console.warn("Erro ao buscar auditoria:", e);
+    } finally {
+      setLoadingAuditoria(false);
     }
-  }, [subTab, temPermissaoUsuarios]);
+  };
 
-  const togglePermissaoNovoUsuario = (permId) => {
-    setNewUserForm((prev) => {
-      if (prev.permissoes.includes(permId)) {
-        return { ...prev, permissoes: prev.permissoes.filter((p) => p !== permId) };
-      } else {
-        return { ...prev, permissoes: [...prev.permissoes, permId] };
-      }
+  useEffect(() => {
+    if (currentView === "usuarios") {
+      carregarUsuarios();
+    } else if (currentView === "auditoria") {
+      carregarAuditoria();
+    }
+  }, [currentView, filtroDataInicio, filtroDataFim, filtroModulo]);
+
+  // FILTRAGEM DE USUÁRIOS
+  const usuariosFiltrados = useMemo(() => {
+    if (!userSearch.trim()) return usuarios;
+    const q = userSearch.toLowerCase().trim();
+    return usuarios.filter(
+      (u) =>
+        (u.nome && u.nome.toLowerCase().includes(q)) ||
+        (u.email && u.email.toLowerCase().includes(q)) ||
+        (u.usuario && u.usuario.toLowerCase().includes(q))
+    );
+  }, [usuarios, userSearch]);
+
+  // FILTRAGEM E PAGINAÇÃO DE AUDITORIA
+  const auditoriasFiltradas = useMemo(() => {
+    return auditorias.filter((item) => {
+      if (filtroAcao && !item.acao?.toLowerCase().includes(filtroAcao.toLowerCase())) return false;
+      if (filtroUsuario && !item.usuario?.toLowerCase().includes(filtroUsuario.toLowerCase())) return false;
+      return true;
     });
-  };
+  }, [auditorias, filtroAcao, filtroUsuario]);
 
-  const togglePermissaoEditUser = (permId) => {
-    if (!editingUser) return;
-    const current = editingUser.permissoes || [];
-    const updated = current.includes(permId)
-      ? current.filter((p) => p !== permId)
-      : [...current, permId];
-    setEditingUser({ ...editingUser, permissoes: updated });
-  };
+  const totalPaginas = Math.ceil(auditoriasFiltradas.length / itensPorPagina) || 1;
+  const auditoriasPaginadas = useMemo(() => {
+    const start = (paginaAtual - 1) * itensPorPagina;
+    return auditoriasFiltradas.slice(start, start + itensPorPagina);
+  }, [auditoriasFiltradas, paginaAtual, itensPorPagina]);
 
-  const handleCriarUsuario = async (e) => {
+  // Salvar Minhas Credenciais
+  const handleSalvarMinhasCredenciais = async (e) => {
     e.preventDefault();
-    if (!newUserForm.usuario.trim() || !newUserForm.senha.trim()) {
-      if (showToast) showToast("Preencha o login e a senha do novo usuário.", "error");
+    if (!credForm.senhaAtual) {
+      if (showToast) showToast("Digite sua senha atual para autorizar a alteração.", "error");
       return;
     }
-    setSavingUser(true);
+    if (credForm.novaSenha && credForm.novaSenha.length < 8) {
+      if (showToast) showToast("A nova senha deve ter no mínimo 8 caracteres.", "error");
+      return;
+    }
+    if (credForm.novaSenha && credForm.novaSenha !== credForm.confirmaNovaSenha) {
+      if (showToast) showToast("A confirmação da nova senha não confere.", "error");
+      return;
+    }
+
+    setIsSavingCred(true);
     try {
-      await actionCriarUsuarioEmpresa(newUserForm);
-      if (showToast) showToast("Usuário criado com sucesso!");
-      setIsAddingUser(false);
-      setNewUserForm({
-        usuario: "",
-        nome: "",
-        senha: "",
-        permissoes: ["agenda", "bloqueios", "politicas", "triagem", "personalizacao", "equipe", "integracoes"]
+      const res = await updateAdminCredentials({
+        currentPassword: credForm.senhaAtual,
+        newUsername: credForm.novoLogin || loggedAdmin?.usuario,
+        newPassword: credForm.novaSenha || credForm.senhaAtual
       });
-      fetchUsuarios();
+
+      if (res && res.success === false) {
+        throw new Error(res.error || "Falha ao atualizar credenciais.");
+      }
+
+      if (showToast) showToast("Credenciais atualizadas com sucesso!");
+      setCredForm((prev) => ({
+        ...prev,
+        senhaAtual: "",
+        novaSenha: "",
+        confirmaNovaSenha: ""
+      }));
     } catch (err) {
-      if (showToast) showToast(`Erro ao criar usuário: ${err.message}`, "error");
+      if (showToast) showToast(err.message || "Erro ao salvar credenciais.", "error");
     } finally {
-      setSavingUser(false);
+      setIsSavingCred(false);
     }
   };
 
-  const handleAtualizarUsuario = async (e) => {
-    e.preventDefault();
-    if (!editingUser) return;
-    setSavingUser(true);
-    try {
-      await actionAtualizarUsuarioEmpresa(editingUser.id, {
-        nome: editingUser.nome,
-        permissoes: editingUser.permissoes,
-        senha: editingUser.novaSenha || undefined
-      });
-      if (showToast) showToast("Permissões do usuário atualizadas!");
-      setEditingUser(null);
-      fetchUsuarios();
-    } catch (err) {
-      if (showToast) showToast(`Erro ao atualizar: ${err.message}`, "error");
-    } finally {
-      setSavingUser(false);
+  // Salvar Usuário (Criar ou Editar)
+  const handleSalvarUsuario = async () => {
+    if (!formUser.email || !formUser.email.includes("@")) {
+      if (showToast) showToast("Digite um endereço de e-mail válido.", "error");
+      return;
     }
+    if (!editingUser && (!formUser.senha || formUser.senha.length < 6)) {
+      if (showToast) showToast("A senha de acesso deve ter pelo menos 6 caracteres.", "error");
+      return;
+    }
+
+    setIsSavingUser(true);
+    try {
+      if (editingUser) {
+        await actionAtualizarUsuarioEmpresa(editingUser.id, {
+          nome: formUser.nome,
+          email: formUser.email,
+          permissoes: formUser.permissoes,
+          senha: formUser.senha || undefined
+        });
+        if (showToast) showToast("Usuário e permissões atualizados com sucesso!");
+      } else {
+        await actionCriarUsuarioEmpresa({
+          usuario: formUser.email,
+          email: formUser.email,
+          senha: formUser.senha,
+          nome: formUser.nome,
+          permissoes: formUser.permissoes
+        });
+        if (showToast) showToast("Novo usuário cadastrado com sucesso!");
+      }
+      setModalNovoUsuario(false);
+      setEditingUser(null);
+      setFormUser({
+        email: "",
+        nome: "",
+        senha: "",
+        permissoes: ["agenda", "horarios", "equipe", "politicas", "triagem", "personalizacao", "integracoes", "auditoria"]
+      });
+      await carregarUsuarios();
+    } catch (err) {
+      if (showToast) showToast(err.message || "Erro ao salvar usuário.", "error");
+    } finally {
+      setIsSavingUser(false);
+    }
+  };
+
+  const handleAbrirEdicao = (u) => {
+    setEditingUser(u);
+    setFormUser({
+      email: u.email || u.usuario || "",
+      nome: u.nome || "",
+      senha: "",
+      permissoes: Array.isArray(u.permissoes) ? [...u.permissoes] : PERMISSOES_DISPONIVEIS.map((p) => p.id)
+    });
+    setModalNovoUsuario(true);
   };
 
   const handleExcluirUsuario = async (u) => {
-    if (u.is_owner) {
-      if (showToast) showToast("O usuário proprietário da clínica não pode ser excluído.", "error");
-      return;
-    }
-    if (!window.confirm(`Deseja realmente remover o acesso de "${u.usuario}"?`)) return;
+    if (!confirm(`Deseja realmente remover o acesso de ${u.nome || u.email || u.usuario}?`)) return;
     try {
       await actionDeletarUsuarioEmpresa(u.id);
-      if (showToast) showToast("Usuário excluído.");
-      fetchUsuarios();
-    } catch (err) {
-      if (showToast) showToast(`Erro ao excluir: ${err.message}`, "error");
+      if (showToast) showToast("Usuário removido com sucesso!");
+      await carregarUsuarios();
+    } catch (e) {
+      if (showToast) showToast(e.message || "Erro ao excluir usuário.", "error");
     }
   };
 
+  // Toggle de permissão individual seguro e responsivo
+  const togglePermissao = (permId) => {
+    playDopamineSound("click");
+    triggerHaptic("light");
+    setFormUser((prev) => {
+      const current = prev.permissoes || [];
+      const exists = current.includes(permId);
+      const updated = exists ? current.filter((id) => id !== permId) : [...current, permId];
+      return { ...prev, permissoes: updated };
+    });
+  };
+
   return (
-    <motion.div key="account" {...fadeUp} className="flex-1 flex flex-col h-full overflow-hidden w-full max-w-6xl mx-auto p-4 md:p-6 lg:p-8">
-      
+    <motion.div
+      key="account-view"
+      {...fadeUp}
+      className="flex-1 flex flex-col h-full overflow-hidden w-full max-w-7xl mx-auto p-4 md:p-6 lg:p-8 space-y-6"
+    >
       {/* CABEÇALHO */}
-      <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-200/80 dark:border-white/10 pb-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0 shadow-sm">
-            <KeyRound size={20} strokeWidth={1.5} />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-zinc-950 dark:text-white tracking-tight">
-              {subTab === "usuarios" ? "Usuários & Permissões de Acesso" : "Minhas Credenciais de Administrador"}
-            </h2>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">
-              {subTab === "usuarios" 
-                ? "Controle permissões granulares por abas e sigilo clínico para colaboradores."
-                : "Atualize com segurança seu nome de usuário e senha de acesso."}
-            </p>
-          </div>
-        </div>
+      <div className="border-b border-zinc-200/80 dark:border-white/10 pb-4 text-left">
+        <h2 className="text-xl font-bold text-zinc-950 dark:text-white tracking-tight flex items-center gap-2.5">
+          {currentView === "credenciais" ? (
+            <>
+              <KeyRound size={22} className="text-[#86a621] dark:text-[#9FC131]" />
+              Minhas Credenciais de Acesso
+            </>
+          ) : currentView === "auditoria" ? (
+            <>
+              <History size={22} className="text-[#86a621] dark:text-[#9FC131]" />
+              Auditoria do Sistema & Logs de Atividade
+            </>
+          ) : (
+            <>
+              <ShieldCheck size={22} className="text-[#86a621] dark:text-[#9FC131]" />
+              Usuários & Permissões da Clínica
+            </>
+          )}
+        </h2>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400 font-medium mt-0.5">
+          {currentView === "credenciais"
+            ? "Atualize seu e-mail de login e altere sua senha de acesso ao painel."
+            : currentView === "auditoria"
+            ? "Histórico imutável de todas as ações, alterações de regras e aprovações executadas."
+            : "Gerencie o acesso da sua equipe, crie novos atendentes e configure permissões por aba."}
+        </p>
       </div>
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar space-y-6 pb-24 pr-1">
-        <AnimatePresence mode="wait">
-          {/* SUB-ABA 1: MINHAS CREDENCIAIS */}
-          {subTab === "credenciais" && (
-            <motion.div
-              key="credenciais"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={spring}
-              className="space-y-6"
-            >
-              {/* ALTERAÇÃO DE LOGIN */}
-              <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm">
-                <div className="flex items-center gap-3 mb-6 border-b border-zinc-100 dark:border-white/5 pb-4">
-                  <div className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 flex items-center justify-center">
-                    <User size={18} strokeWidth={1.5} />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-zinc-950 dark:text-white">Alterar Nome de Usuário (Login)</h3>
-                    <p className="text-xs text-zinc-500">
-                      Altere o identificador usado para entrar no painel administrativo desta clínica.
-                    </p>
-                  </div>
-                </div>
-
-                <form onSubmit={handleSaveUsername} className="space-y-5">
-                  <div className="grid md:grid-cols-2 gap-5">
-                    <TextInput
-                      type="password"
-                      label="Senha Atual Obrigatória *"
-                      placeholder="Digite sua senha atual..."
-                      value={usernameForm.currentPassword}
-                      onChange={(e) => setUsernameForm({ ...usernameForm, currentPassword: e.target.value })}
-                      required
-                    />
-
-                    <div className="space-y-2 relative">
-                      <TextInput
-                        type="text"
-                        label="Novo Usuário (Login) *"
-                        placeholder="Ex.: admin.rmagenda"
-                        value={usernameForm.newUsername}
-                        onChange={(e) => handleCheckUsername(e.target.value)}
-                        required
-                      />
-
-                      {checkingUsername && (
-                        <div className="flex items-center gap-1.5 text-xs text-zinc-400 mt-2 font-medium">
-                          <Activity size={14} className="animate-spin text-blue-500" />
-                          Verificando disponibilidade do login...
-                        </div>
-                      )}
-                      {!checkingUsername && usernameAvailable === true && (
-                        <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 mt-2 font-bold">
-                          <CheckCircle2 size={15} />
-                          Nome de usuário disponível!
-                        </div>
-                      )}
-                      {!checkingUsername && usernameAvailable === false && (
-                        <div className="flex items-center gap-1.5 text-xs text-red-600 dark:text-red-400 mt-2 font-bold">
-                          <XCircle size={15} />
-                          Este login já está em uso. Escolha outro nome.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end pt-1">
-                    <ButtonPrimary
-                      type="submit"
-                      disabled={loadingUser || usernameAvailable === false || !usernameForm.currentPassword || !usernameForm.newUsername}
-                      icon={Save}
-                      className="px-6 py-2 text-xs min-h-[38px] rounded-xl cursor-pointer"
-                    >
-                      {loadingUser ? "Atualizando Login..." : "Salvar Novo Usuário"}
-                    </ButtonPrimary>
-                  </div>
-                </form>
-              </section>
-
-              {/* ALTERAÇÃO DE SENHA */}
-              <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm">
-                <div className="flex items-center gap-3 mb-6 border-b border-zinc-100 dark:border-white/5 pb-4">
-                  <div className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 flex items-center justify-center">
-                    <ShieldCheck size={18} strokeWidth={1.5} />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-zinc-950 dark:text-white">Alterar Senha de Segurança</h3>
-                    <p className="text-xs text-zinc-500">
-                      Defina uma nova senha forte com validação de complexidade em tempo real.
-                    </p>
-                  </div>
-                </div>
-
-                <form onSubmit={handleSavePassword} className="space-y-5">
-                  <div className="grid md:grid-cols-3 gap-5">
-                    <TextInput
-                      type="password"
-                      label="Senha Atual *"
-                      placeholder="Digite sua senha atual..."
-                      value={passwordForm.currentPassword}
-                      onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
-                      required
-                    />
-
-                    <TextInput
-                      type="password"
-                      label="Nova Senha Forte *"
-                      placeholder="Digite a nova senha..."
-                      value={passwordForm.newPassword}
-                      onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
-                      required
-                    />
-
-                    <TextInput
-                      type="password"
-                      label="Confirmar Nova Senha *"
-                      placeholder="Repita a nova senha..."
-                      value={passwordForm.confirmPassword}
-                      onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
-                      required
-                    />
-                  </div>
-
-                  {/* CHECKLIST DE REQUISITOS */}
-                  <div className="p-4 rounded-2xl bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/60 dark:border-zinc-800 grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
-                    <div className={`flex items-center gap-2 font-medium ${passwordRules.minLength ? "text-emerald-600 dark:text-emerald-400" : "text-zinc-400"}`}>
-                      {passwordRules.minLength ? <Check size={14} /> : <div className="w-1.5 h-1.5 rounded-full bg-zinc-300 dark:bg-zinc-700" />}
-                      8+ caracteres
-                    </div>
-                    <div className={`flex items-center gap-2 font-medium ${passwordRules.hasDigit ? "text-emerald-600 dark:text-emerald-400" : "text-zinc-400"}`}>
-                      {passwordRules.hasDigit ? <Check size={14} /> : <div className="w-1.5 h-1.5 rounded-full bg-zinc-300 dark:bg-zinc-700" />}
-                      Pelo menos 1 número
-                    </div>
-                    <div className={`flex items-center gap-2 font-medium ${passwordRules.hasUpper ? "text-emerald-600 dark:text-emerald-400" : "text-zinc-400"}`}>
-                      {passwordRules.hasUpper ? <Check size={14} /> : <div className="w-1.5 h-1.5 rounded-full bg-zinc-300 dark:bg-zinc-700" />}
-                      Letra maiúscula (A-Z)
-                    </div>
-                    <div className={`flex items-center gap-2 font-medium ${passwordRules.hasLower ? "text-emerald-600 dark:text-emerald-400" : "text-zinc-400"}`}>
-                      {passwordRules.hasLower ? <Check size={14} /> : <div className="w-1.5 h-1.5 rounded-full bg-zinc-300 dark:bg-zinc-700" />}
-                      Letra minúscula (a-z)
-                    </div>
-                    <div className={`flex items-center gap-2 font-medium ${passwordRules.hasSpecial ? "text-emerald-600 dark:text-emerald-400" : "text-zinc-400"}`}>
-                      {passwordRules.hasSpecial ? <Check size={14} /> : <div className="w-1.5 h-1.5 rounded-full bg-zinc-300 dark:bg-zinc-700" />}
-                      Caractere especial (!@#$)
-                    </div>
-                    <div className={`flex items-center gap-2 font-medium ${passwordRules.match ? "text-emerald-600 dark:text-emerald-400" : "text-zinc-400"}`}>
-                      {passwordRules.match ? <Check size={14} /> : <div className="w-1.5 h-1.5 rounded-full bg-zinc-300 dark:bg-zinc-700" />}
-                      Senhas conferem
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end pt-1">
-                    <ButtonPrimary
-                      type="submit"
-                      disabled={loadingPass || !isPasswordValid || !passwordForm.currentPassword}
-                      icon={Save}
-                      className="px-6 py-2 text-xs min-h-[38px] rounded-xl cursor-pointer"
-                    >
-                      {loadingPass ? "Atualizando Senha..." : "Salvar Nova Senha"}
-                    </ButtonPrimary>
-                  </div>
-                </form>
-              </section>
-            </motion.div>
-          )}
-
-          {/* SUB-ABA 2: GESTÃO DE USUÁRIOS & PERMISSÕES */}
-          {subTab === "usuarios" && (
-            !temPermissaoUsuarios ? (
-              <div className="p-16 text-center rounded-[2rem] bg-white/80 dark:bg-[#0c0c0e]/80 border border-zinc-200/80 dark:border-white/10 shadow-sm space-y-3">
-                <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto">
-                  <Lock size={22} />
-                </div>
-                <h3 className="text-base font-bold text-zinc-950 dark:text-white">
-                  Acesso Restrito: Gerenciamento de Usuários
+      {/* CONTEÚDO PRINCIPAL CONTROLADO PELA SIDEBAR */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar pb-24 space-y-6 pr-1 text-left">
+        {/* SUB-VIEW 1: MINHAS CREDENCIAIS */}
+        {currentView === "credenciais" && (
+          <div className="max-w-xl bg-white/80 dark:bg-[#0f0f13]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
+            <div className="flex items-center gap-3 pb-4 border-b border-zinc-100 dark:border-white/5">
+              <div className="w-12 h-12 rounded-2xl bg-[#9FC131]/15 text-[#86a621] dark:text-[#9FC131] flex items-center justify-center">
+                <KeyRound size={24} strokeWidth={2.2} />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-zinc-950 dark:text-white">
+                  Alterar E-mail e Senha
                 </h3>
-                <p className="text-xs text-zinc-500 max-w-md mx-auto">
-                  Sua conta de colaborador não possui a permissão <strong>"Gerenciar Usuários & Permissões"</strong>. Solicite liberação ao administrador proprietário da clínica.
-                </p>
+                <span className="text-xs text-zinc-400">
+                  Usuário conectado: <strong>{loggedAdmin?.email || loggedAdmin?.usuario}</strong>
+                </span>
+              </div>
+            </div>
+
+            <form onSubmit={handleSalvarMinhasCredenciais} className="space-y-4">
+              <TextInput
+                label="E-mail de Acesso (Login)"
+                type="email"
+                value={credForm.novoLogin}
+                onChange={(e) => setCredForm({ ...credForm, novoLogin: e.target.value })}
+                placeholder="seu.email@clinica.com.br"
+              />
+
+              <TextInput
+                label="Senha Atual (Obrigatória)"
+                type="password"
+                value={credForm.senhaAtual}
+                onChange={(e) => setCredForm({ ...credForm, senhaAtual: e.target.value })}
+                placeholder="Digite sua senha atual"
+              />
+
+              <div className="grid sm:grid-cols-2 gap-3 pt-2 border-t border-zinc-100 dark:border-white/5">
+                <TextInput
+                  label="Nova Senha (Opcional)"
+                  type="password"
+                  value={credForm.novaSenha}
+                  onChange={(e) => setCredForm({ ...credForm, novaSenha: e.target.value })}
+                  placeholder="Mínimo 8 caracteres"
+                />
+                <TextInput
+                  label="Confirmar Nova Senha"
+                  type="password"
+                  value={credForm.confirmaNovaSenha}
+                  onChange={(e) => setCredForm({ ...credForm, confirmaNovaSenha: e.target.value })}
+                  placeholder="Repita a nova senha"
+                />
+              </div>
+
+              <div className="pt-3">
+                <ButtonPrimary
+                  disabled={isSavingCred}
+                  type="submit"
+                  className="w-full sm:w-auto px-6 py-3 text-xs min-h-[44px] rounded-2xl cursor-pointer"
+                >
+                  <span>{isSavingCred ? "Salvando..." : "Salvar Novas Credenciais"}</span>
+                </ButtonPrimary>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* SUB-VIEW 2: USUÁRIOS & PERMISSÕES */}
+        {currentView === "usuarios" && (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              <div className="relative flex-1 max-w-md">
+                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar usuário por nome ou e-mail..."
+                  value={userSearch}
+                  onChange={(e) => setUserSearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 bg-white/80 dark:bg-zinc-900/80 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl text-xs font-semibold text-zinc-900 dark:text-white outline-none focus:border-[#9FC131]"
+                />
+              </div>
+
+              <ButtonPrimary
+                onClick={() => {
+                  setEditingUser(null);
+                  setFormUser({
+                    email: "",
+                    nome: "",
+                    senha: "",
+                    permissoes: PERMISSOES_DISPONIVEIS.map((p) => p.id)
+                  });
+                  setModalNovoUsuario(true);
+                }}
+                icon={Plus}
+                className="px-4 py-2.5 text-xs min-h-[42px] rounded-2xl cursor-pointer"
+              >
+                Cadastrar Usuário
+              </ButtonPrimary>
+            </div>
+
+            {loadingUsuarios ? (
+              <div className="p-12 text-center">
+                <CapsuleSpinner size="lg" className="mx-auto text-zinc-400" />
+                <p className="text-xs text-zinc-500 mt-2 font-medium">Carregando usuários da clínica...</p>
+              </div>
+            ) : usuariosFiltrados.length === 0 ? (
+              <div className="p-12 text-center bg-white/60 dark:bg-zinc-900/40 rounded-3xl border border-dashed border-zinc-200 dark:border-zinc-800 space-y-2">
+                <Users size={32} className="mx-auto text-zinc-400 opacity-50" />
+                <h4 className="text-sm font-bold text-zinc-900 dark:text-white">Nenhum usuário encontrado</h4>
+                <p className="text-xs text-zinc-500">Cadastre atendentes, recepcionistas ou gestores para acesso.</p>
               </div>
             ) : (
-              <motion.div
-                key="usuarios"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={spring}
-                className="space-y-6"
-              >
-                {/* TOPO COM BOTÃO DE NOVO USUÁRIO */}
-                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl p-6 rounded-[2rem] border border-zinc-200/80 dark:border-white/10 shadow-sm">
-                  <div>
-                    <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">
-                      <Users size={18} strokeWidth={1.5} className="text-blue-500" /> Colaboradores & Perfis de Acesso
-                    </h3>
-                    <p className="text-xs text-zinc-500 mt-0.5">
-                      Cadastre outros administradores para esta clínica com controle estrito de abas e dados sigilosos.
-                    </p>
-                  </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {usuariosFiltrados.map((u) => {
+                  const perms = Array.isArray(u.permissoes) ? u.permissoes : [];
+                  const isOwnerUser = Boolean(u.is_owner);
 
-                  {!isAddingUser && (
-                    <ButtonPrimary onClick={() => { setIsAddingUser(true); setEditingUser(null); }} icon={Plus} className="px-5 py-2 text-xs min-h-[38px] rounded-xl cursor-pointer">
-                      Cadastrar Novo Usuário
-                    </ButtonPrimary>
-                  )}
-                </div>
-
-                {/* FORMULÁRIO DE CADASTRO DE NOVO USUÁRIO */}
-                <AnimatePresence>
-                  {isAddingUser && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0, y: -10 }}
-                      animate={{ opacity: 1, height: "auto", y: 0 }}
-                      exit={{ opacity: 0, height: 0, y: -10 }}
-                      className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-xl space-y-6"
+                  return (
+                    <div
+                      key={u.id}
+                      className="p-5 rounded-3xl bg-white/80 dark:bg-[#0f0f13]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 shadow-sm flex flex-col justify-between space-y-4 hover:border-zinc-300 dark:hover:border-white/20 transition-all"
                     >
-                      <div className="flex justify-between items-center border-b border-zinc-100 dark:border-white/5 pb-4">
-                        <div>
-                          <h4 className="text-base font-bold text-zinc-950 dark:text-white">Criar Novo Acesso Administrativo</h4>
-                          <p className="text-xs text-zinc-500 mt-0.5">Defina as credenciais e selecione as permissões específicas deste colaborador.</p>
-                        </div>
-                        <button
-                          onClick={() => setIsAddingUser(false)}
-                          className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400 hover:text-red-500 transition-colors cursor-pointer"
-                        >
-                          <X size={16} />
-                        </button>
-                      </div>
-
-                      <form onSubmit={handleCriarUsuario} className="space-y-5">
-                        <div className="grid md:grid-cols-3 gap-4">
-                          <TextInput
-                            label="Nome Completo / Cargo"
-                            placeholder="Ex.: Dra. Ana Paula (Atendimento)"
-                            value={newUserForm.nome}
-                            onChange={(e) => setNewUserForm({ ...newUserForm, nome: e.target.value })}
-                          />
-                          <TextInput
-                            label="Usuário (Login de Entrada) *"
-                            placeholder="Ex.: ana.recepcao"
-                            value={newUserForm.usuario}
-                            onChange={(e) => setNewUserForm({ ...newUserForm, usuario: e.target.value.toLowerCase().trim() })}
-                            required
-                          />
-                          <TextInput
-                            type="password"
-                            label="Senha Provisória *"
-                            placeholder="Mínimo 6 caracteres"
-                            value={newUserForm.senha}
-                            onChange={(e) => setNewUserForm({ ...newUserForm, senha: e.target.value })}
-                            required
-                          />
-                        </div>
-
-                        {/* SELETOR GRANULAR DE PERMISSÕES */}
-                        <div className="space-y-2.5 pt-1">
-                          <label className="text-xs font-bold uppercase tracking-widest text-zinc-400 block ml-1">
-                            Níveis de Acesso e Permissões de Abas:
-                          </label>
-                          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                            {LISTA_PERMISSOES.map((perm) => {
-                              const isSelected = newUserForm.permissoes.includes(perm.id);
-                              const Icon = perm.icon;
-                              return (
-                                <button
-                                  key={perm.id}
-                                  type="button"
-                                  onClick={() => togglePermissaoNovoUsuario(perm.id)}
-                                  className={`p-3.5 rounded-2xl border text-left transition-all flex items-start gap-3 cursor-pointer ${
-                                    isSelected
-                                      ? perm.superCritico
-                                        ? "bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-800 ring-2 ring-red-500/30"
-                                        : "bg-blue-50/50 dark:bg-blue-950/30 border-blue-300 dark:border-blue-800 ring-2 ring-blue-500/30"
-                                      : "bg-zinc-50/50 dark:bg-zinc-900/40 border-zinc-200/80 dark:border-zinc-800 opacity-60 hover:opacity-100"
-                                  }`}
-                                >
-                                  <div className={`p-2 rounded-xl bg-white dark:bg-black border border-zinc-200/60 dark:border-zinc-800 ${perm.color}`}>
-                                    <Icon size={15} strokeWidth={1.5} />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center justify-between">
-                                      <span className="font-bold text-xs text-zinc-950 dark:text-white truncate">{perm.label}</span>
-                                      <div className={`w-3.5 h-3.5 rounded flex items-center justify-center text-[9px] ${isSelected ? "bg-zinc-900 dark:bg-white text-white dark:text-black font-bold" : "border border-zinc-300 dark:border-zinc-700"}`}>
-                                        {isSelected && <Check size={10} />}
-                                      </div>
-                                    </div>
-                                    <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5 leading-tight">{perm.desc}</p>
-                                  </div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        <div className="flex justify-end gap-2.5 pt-3 border-t border-zinc-100 dark:border-white/5">
-                          <button
-                            type="button"
-                            onClick={() => setIsAddingUser(false)}
-                            className="px-5 py-2 rounded-xl text-xs font-bold text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
-                          >
-                            Cancelar
-                          </button>
-                          <ButtonPrimary type="submit" disabled={savingUser} icon={Plus} className="px-6 py-2 text-xs min-h-[38px] rounded-xl cursor-pointer">
-                            {savingUser ? "Criando Usuário..." : "Criar Usuário"}
-                          </ButtonPrimary>
-                        </div>
-                      </form>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* FORMULÁRIO DE EDIÇÃO DE PERMISSÕES DO USUÁRIO */}
-                <AnimatePresence>
-                  {editingUser && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0, y: -10 }}
-                      animate={{ opacity: 1, height: "auto", y: 0 }}
-                      exit={{ opacity: 0, height: 0, y: -10 }}
-                      className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-blue-200 dark:border-blue-900/60 p-6 md:p-8 rounded-[2rem] shadow-xl space-y-6"
-                    >
-                      <div className="flex justify-between items-center border-b border-zinc-100 dark:border-white/5 pb-4">
-                        <div>
-                          <h4 className="text-base font-bold text-zinc-950 dark:text-white">
-                            Editar Acesso de @{editingUser.usuario}
-                          </h4>
-                          <p className="text-xs text-zinc-500 mt-0.5">Atualize as permissões de abas ou redefina a senha deste colaborador.</p>
-                        </div>
-                        <button
-                          onClick={() => setEditingUser(null)}
-                          className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400 hover:text-red-500 transition-colors cursor-pointer"
-                        >
-                          <X size={16} />
-                        </button>
-                      </div>
-
-                      <form onSubmit={handleAtualizarUsuario} className="space-y-5">
-                        <div className="grid md:grid-cols-2 gap-4">
-                          <TextInput
-                            label="Nome / Identificação"
-                            value={editingUser.nome || ""}
-                            onChange={(e) => setEditingUser({ ...editingUser, nome: e.target.value })}
-                          />
-                          <TextInput
-                            type="password"
-                            label="Redefinir Senha (Deixe em branco para manter)"
-                            placeholder="Nova senha..."
-                            value={editingUser.novaSenha || ""}
-                            onChange={(e) => setEditingUser({ ...editingUser, novaSenha: e.target.value })}
-                          />
-                        </div>
-
-                        <div className="space-y-2.5 pt-1">
-                          <label className="text-xs font-bold uppercase tracking-widest text-zinc-400 block ml-1">
-                            Permissões e Sigilo do Colaborador:
-                          </label>
-                          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                            {LISTA_PERMISSOES.map((perm) => {
-                              const isSelected = (editingUser.permissoes || []).includes(perm.id);
-                              const Icon = perm.icon;
-                              return (
-                                <button
-                                  key={perm.id}
-                                  type="button"
-                                  onClick={() => togglePermissaoEditUser(perm.id)}
-                                  className={`p-3.5 rounded-2xl border text-left transition-all flex items-start gap-3 cursor-pointer ${
-                                    isSelected
-                                      ? perm.superCritico
-                                        ? "bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-800 ring-2 ring-red-500/30"
-                                        : "bg-blue-50/50 dark:bg-blue-950/30 border-blue-300 dark:border-blue-800 ring-2 ring-blue-500/30"
-                                      : "bg-zinc-50/50 dark:bg-zinc-900/40 border-zinc-200/80 dark:border-zinc-800 opacity-60 hover:opacity-100"
-                                  }`}
-                                >
-                                  <div className={`p-2 rounded-xl bg-white dark:bg-black border border-zinc-200/60 dark:border-zinc-800 ${perm.color}`}>
-                                    <Icon size={15} strokeWidth={1.5} />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center justify-between">
-                                      <span className="font-bold text-xs text-zinc-950 dark:text-white truncate">{perm.label}</span>
-                                      <div className={`w-3.5 h-3.5 rounded flex items-center justify-center text-[9px] ${isSelected ? "bg-zinc-900 dark:bg-white text-white dark:text-black font-bold" : "border border-zinc-300 dark:border-zinc-700"}`}>
-                                        {isSelected && <Check size={10} />}
-                                      </div>
-                                    </div>
-                                    <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5 leading-tight">{perm.desc}</p>
-                                  </div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        <div className="flex justify-end gap-2.5 pt-3 border-t border-zinc-100 dark:border-white/5">
-                          <button
-                            type="button"
-                            onClick={() => setEditingUser(null)}
-                            className="px-5 py-2 rounded-xl text-xs font-bold text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
-                          >
-                            Cancelar
-                          </button>
-                          <ButtonPrimary type="submit" disabled={savingUser} icon={Save} className="px-6 py-2 text-xs min-h-[38px] rounded-xl cursor-pointer">
-                            {savingUser ? "Salvando..." : "Salvar Alterações"}
-                          </ButtonPrimary>
-                        </div>
-                      </form>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* LISTA DE USUÁRIOS CADASTRADOS */}
-                <div className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 rounded-[2rem] overflow-hidden shadow-sm">
-                  <div className="p-5 border-b border-zinc-100 dark:border-white/5 flex justify-between items-center">
-                    <span className="text-xs font-bold uppercase tracking-widest text-zinc-400">Usuários Ativos na Clínica</span>
-                    <span className="text-xs font-bold text-zinc-500">{usuarios.length} cadastrado(s)</span>
-                  </div>
-
-                  {loadingUsuarios ? (
-                    <div className="p-12 text-center text-xs text-zinc-400">Carregando usuários...</div>
-                  ) : usuarios.length === 0 ? (
-                    <div className="p-12 text-center text-xs text-zinc-500">Nenhum usuário secundário cadastrado.</div>
-                  ) : (
-                    <div className="divide-y divide-zinc-100 dark:divide-white/5">
-                      {usuarios.map((u) => (
-                        <div key={u.id} className="p-5 flex flex-col md:flex-row justify-between md:items-center gap-4 hover:bg-zinc-50/50 dark:hover:bg-zinc-900/30 transition-colors">
-                          <div>
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="font-bold text-zinc-950 dark:text-white text-sm">@{u.usuario}</span>
-                              {u.is_owner ? (
-                                <span className="px-2 py-0.5 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 text-[9px] font-bold uppercase tracking-widest rounded-md">
-                                  Proprietário
-                                </span>
-                              ) : (
-                                <span className="px-2 py-0.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 text-[9px] font-bold uppercase tracking-widest rounded-md">
-                                  Colaborador
-                                </span>
-                              )}
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-zinc-100 to-zinc-200 dark:from-zinc-800 dark:to-zinc-900 flex items-center justify-center font-black text-sm text-zinc-800 dark:text-zinc-200 border border-zinc-200/50 dark:border-white/5 shadow-xs">
+                              {(u.nome || u.email || u.usuario || "U")[0]?.toUpperCase()}
                             </div>
-                            {u.nome && <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{u.nome}</p>}
-
-                            {/* Badges de permissões ativas */}
-                            <div className="flex flex-wrap gap-1 mt-2.5">
-                              {(u.permissoes || []).map((pId) => {
-                                const pObj = LISTA_PERMISSOES.find((item) => item.id === pId);
-                                if (!pObj) return null;
-                                return (
-                                  <span
-                                    key={pId}
-                                    className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-md ${
-                                      pObj.superCritico
-                                        ? "bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-200/50"
-                                        : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
-                                    }`}
-                                  >
-                                    {pObj.label}
-                                  </span>
-                                );
-                              })}
+                            <div>
+                              <h4 className="font-extrabold text-sm text-zinc-950 dark:text-white truncate max-w-[180px]">
+                                {u.nome || "Usuário sem nome"}
+                              </h4>
+                              <span className="text-[11px] text-zinc-500 flex items-center gap-1 font-mono">
+                                <Mail size={11} className="text-zinc-400" />
+                                {u.email || u.usuario}
+                              </span>
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => { setEditingUser({ ...u, novaSenha: "" }); setIsAddingUser(false); }}
-                              className="px-3.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-900 dark:text-white rounded-xl text-xs font-bold transition-colors min-h-[34px] cursor-pointer"
-                            >
-                              Gerenciar
-                            </button>
-                            {!u.is_owner && (
-                              <button
-                                onClick={() => handleExcluirUsuario(u)}
-                                className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl transition-colors cursor-pointer"
-                                title="Excluir Usuário"
+                          {isOwnerUser ? (
+                            <span className="px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-[10px] font-black uppercase tracking-wider">
+                              Proprietário
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-full bg-blue-500/15 border border-blue-500/30 text-blue-700 dark:text-blue-300 text-[10px] font-bold uppercase tracking-wider">
+                              Operador
+                            </span>
+                          )}
+                        </div>
+
+                        {/* TAGS DE PERMISSÃO */}
+                        <div className="pt-2 border-t border-zinc-100 dark:border-white/5">
+                          <span className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-400 block mb-1.5">
+                            Permissões Ativas ({perms.length})
+                          </span>
+                          <div className="flex flex-wrap gap-1">
+                            {perms.slice(0, 4).map((pId) => (
+                              <span
+                                key={pId}
+                                className="px-2 py-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-[10px] font-bold"
                               >
-                                <Trash2 size={15} />
-                              </button>
+                                {PERMISSOES_DISPONIVEIS.find((p) => p.id === pId)?.label.split("&")[0] || pId}
+                              </span>
+                            ))}
+                            {perms.length > 4 && (
+                              <span className="px-1.5 py-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-500 text-[10px] font-bold">
+                                +{perms.length - 4}
+                              </span>
                             )}
                           </div>
                         </div>
-                      ))}
+                      </div>
+
+                      {/* AÇÕES */}
+                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-white/5">
+                        <button
+                          type="button"
+                          onClick={() => handleAbrirEdicao(u)}
+                          className="px-3 py-1.5 rounded-xl text-xs font-bold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                        >
+                          Editar Permissões
+                        </button>
+                        {!isOwnerUser && (
+                          <button
+                            type="button"
+                            onClick={() => handleExcluirUsuario(u)}
+                            className="p-2 rounded-xl text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors cursor-pointer"
+                            title="Excluir Usuário"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  )}
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* SUB-VIEW 3: AUDITORIA DO SISTEMA */}
+        {currentView === "auditoria" && (
+          <div className="space-y-4">
+            <div className="p-5 rounded-3xl bg-white/80 dark:bg-[#0f0f13]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-extrabold uppercase tracking-widest text-zinc-400 flex items-center gap-1.5">
+                  <Filter size={13} /> Filtros de Auditoria
+                </span>
+                <span className="text-[11px] text-zinc-500 font-medium">
+                  {auditoriasFiltradas.length} eventos registrados
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block mb-1">
+                    Data Início
+                  </label>
+                  <input
+                    type="date"
+                    value={filtroDataInicio}
+                    onChange={(e) => setFiltroDataInicio(e.target.value)}
+                    className="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-semibold text-zinc-900 dark:text-white outline-none focus:border-[#9FC131]"
+                  />
                 </div>
-              </motion.div>
-            )
-          )}
-        </AnimatePresence>
+
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block mb-1">
+                    Data Fim
+                  </label>
+                  <input
+                    type="date"
+                    value={filtroDataFim}
+                    onChange={(e) => setFiltroDataFim(e.target.value)}
+                    className="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-semibold text-zinc-900 dark:text-white outline-none focus:border-[#9FC131]"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block mb-1">
+                    Módulo / Aba
+                  </label>
+                  <select
+                    value={filtroModulo}
+                    onChange={(e) => setFiltroModulo(e.target.value)}
+                    className="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-semibold text-zinc-900 dark:text-white outline-none focus:border-[#9FC131]"
+                  >
+                    <option value="todos">Todos os Módulos</option>
+                    <option value="agenda">Agenda & Atendimentos</option>
+                    <option value="horarios">Horários & Duração</option>
+                    <option value="equipe">Corpo Clínico</option>
+                    <option value="configuracoes">Configurações Gerais</option>
+                    <option value="politicas">Políticas</option>
+                    <option value="triagem">Triagem</option>
+                    <option value="usuarios">Usuários & Acesso</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block mb-1">
+                    Itens por Página
+                  </label>
+                  <select
+                    value={itensPorPagina}
+                    onChange={(e) => {
+                      setItensPorPagina(Number(e.target.value));
+                      setPaginaAtual(1);
+                    }}
+                    className="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-semibold text-zinc-900 dark:text-white outline-none focus:border-[#9FC131]"
+                  >
+                    <option value={5}>5 linhas por página</option>
+                    <option value={10}>10 linhas por página</option>
+                    <option value={15}>15 linhas por página</option>
+                    <option value={20}>20 linhas por página</option>
+                    <option value={50}>50 linhas por página</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {loadingAuditoria ? (
+              <div className="p-12 text-center bg-white/80 dark:bg-[#0f0f13]/80 rounded-3xl border border-zinc-200/80 dark:border-white/10">
+                <CapsuleSpinner size="lg" className="mx-auto text-zinc-400" />
+                <p className="text-xs text-zinc-500 mt-2 font-medium">Buscando registros de auditoria...</p>
+              </div>
+            ) : auditoriasPaginadas.length === 0 ? (
+              <div className="p-12 text-center bg-white/80 dark:bg-[#0f0f13]/80 rounded-3xl border border-dashed border-zinc-200 dark:border-zinc-800 space-y-2">
+                <History size={32} className="mx-auto text-zinc-400 opacity-50" />
+                <h4 className="text-sm font-bold text-zinc-900 dark:text-white">Nenhum registro encontrado</h4>
+                <p className="text-xs text-zinc-500">Nenhuma ação corresponde aos filtros aplicados.</p>
+              </div>
+            ) : (
+              <div className="bg-white/80 dark:bg-[#0f0f13]/80 border border-zinc-200/80 dark:border-white/10 rounded-3xl overflow-hidden shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/60 font-black uppercase text-zinc-400 text-[10px] tracking-wider">
+                        <th className="p-4">Data & Horário</th>
+                        <th className="p-4">Usuário</th>
+                        <th className="p-4">Módulo</th>
+                        <th className="p-4">Operação</th>
+                        <th className="p-4">Detalhes das Alterações</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+                      {auditoriasPaginadas.map((log) => (
+                        <tr key={log.id} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-900/40 transition-colors">
+                          <td className="p-4 font-mono text-[11px] text-zinc-500 whitespace-nowrap">
+                            {new Date(log.created_at).toLocaleString("pt-BR")}
+                          </td>
+                          <td className="p-4 font-extrabold text-zinc-950 dark:text-white whitespace-nowrap">
+                            {log.usuario}
+                          </td>
+                          <td className="p-4 whitespace-nowrap">
+                            <span className="px-2.5 py-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-[10px] font-black uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
+                              {log.modulo}
+                            </span>
+                          </td>
+                          <td className="p-4 font-bold text-zinc-900 dark:text-zinc-200 whitespace-nowrap">
+                            {log.acao}
+                          </td>
+                          <td className="p-4 text-zinc-600 dark:text-zinc-400 text-[11px] leading-relaxed max-w-md">
+                            {log.detalhes}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="flex items-center justify-between p-4 border-t border-zinc-100 dark:border-zinc-800 text-xs">
+                  <span className="text-zinc-500 font-medium">
+                    Página <strong className="text-zinc-900 dark:text-white">{paginaAtual}</strong> de{" "}
+                    <strong className="text-zinc-900 dark:text-white">{totalPaginas}</strong> ({auditoriasFiltradas.length} total)
+                  </span>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={paginaAtual <= 1}
+                      onClick={() => setPaginaAtual((p) => Math.max(1, p - 1))}
+                      className="p-2 rounded-xl border border-zinc-200 dark:border-zinc-800 disabled:opacity-30 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={paginaAtual >= totalPaginas}
+                      onClick={() => setPaginaAtual((p) => Math.min(totalPaginas, p + 1))}
+                      className="p-2 rounded-xl border border-zinc-200 dark:border-zinc-800 disabled:opacity-30 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
+      {/* MODAL DE CRIAÇÃO / EDIÇÃO DE USUÁRIO COM SELEÇÃO MODERNA E LIMPA DE PERMISSÕES */}
+      <AnimatePresence>
+        {modalNovoUsuario && (
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-md z-[9999] flex items-center justify-center p-4"
+            onClick={() => setModalNovoUsuario(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-[#111116] border border-zinc-200/90 dark:border-zinc-800 rounded-3xl p-6 sm:p-7 max-w-lg w-full shadow-2xl space-y-5 text-left"
+            >
+              <div className="flex items-center justify-between border-b border-zinc-100 dark:border-white/5 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                    <User size={20} strokeWidth={2.2} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-zinc-950 dark:text-white">
+                      {editingUser ? "Editar Conta de Usuário" : "Novo Usuário da Clínica"}
+                    </h3>
+                    <p className="text-[11px] text-zinc-400">
+                      Defina e-mail de acesso, credenciais e permissões
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3.5">
+                <TextInput
+                  label="Endereço de E-mail (Login Oficial)"
+                  type="email"
+                  placeholder="ex: atendente@suaclinica.com.br"
+                  value={formUser.email}
+                  onChange={(e) => setFormUser({ ...formUser, email: e.target.value })}
+                />
+
+                <TextInput
+                  label="Nome Completo"
+                  placeholder="ex: Maria Silva"
+                  value={formUser.nome}
+                  onChange={(e) => setFormUser({ ...formUser, nome: e.target.value })}
+                />
+
+                <TextInput
+                  label={editingUser ? "Nova Senha (deixe em branco para manter a atual)" : "Senha de Acesso (6+ caracteres)"}
+                  type="password"
+                  placeholder="••••••••"
+                  value={formUser.senha}
+                  onChange={(e) => setFormUser({ ...formUser, senha: e.target.value })}
+                />
+
+                {/* SELETOR DE PERMISSÕES - DESIGN MODERNO SEM PARTE PRETA */}
+                <div className="pt-2 border-t border-zinc-100 dark:border-white/5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
+                      Permissões de Acesso às Abas
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const all = PERMISSOES_DISPONIVEIS.map((p) => p.id);
+                        const isAll = formUser.permissoes.length === all.length;
+                        setFormUser({ ...formUser, permissoes: isAll ? [] : all });
+                      }}
+                      className="text-[10px] font-bold text-[#86a621] dark:text-[#9FC131] hover:underline cursor-pointer"
+                    >
+                      {formUser.permissoes.length === PERMISSOES_DISPONIVEIS.length ? "Desmarcar Todas" : "Marcar Todas"}
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-52 overflow-y-auto custom-scrollbar pr-1">
+                    {PERMISSOES_DISPONIVEIS.map((perm) => {
+                      const isChecked = (formUser.permissoes || []).includes(perm.id);
+                      return (
+                        <button
+                          key={perm.id}
+                          type="button"
+                          onClick={() => togglePermissao(perm.id)}
+                          className={`p-3 rounded-2xl border text-left transition-all flex items-start gap-2.5 cursor-pointer ${
+                            isChecked
+                              ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-950 dark:text-emerald-200 shadow-xs ring-1 ring-emerald-500/20"
+                              : "bg-zinc-50/70 dark:bg-zinc-900/50 border-zinc-200/80 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-700"
+                          }`}
+                        >
+                          <div
+                            className={`w-4 h-4 rounded-md flex items-center justify-center mt-0.5 shrink-0 transition-colors ${
+                              isChecked
+                                ? "bg-emerald-600 text-white"
+                                : "border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800"
+                            }`}
+                          >
+                            {isChecked && <Check size={11} strokeWidth={3} />}
+                          </div>
+                          <div className="min-w-0">
+                            <span className="block text-xs font-bold leading-tight truncate">{perm.label}</span>
+                            <span className="block text-[10px] opacity-75 leading-tight mt-0.5 line-clamp-2">{perm.desc}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-3 border-t border-zinc-100 dark:border-white/5">
+                <button
+                  type="button"
+                  onClick={() => setModalNovoUsuario(false)}
+                  className="flex-1 py-3 px-4 rounded-xl border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 font-bold text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={isSavingUser}
+                  onClick={handleSalvarUsuario}
+                  className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/20 transition-all cursor-pointer"
+                >
+                  <span>{isSavingUser ? "Salvando..." : editingUser ? "Salvar Alterações" : "Criar Usuário"}</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

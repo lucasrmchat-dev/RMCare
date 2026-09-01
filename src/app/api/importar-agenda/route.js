@@ -32,7 +32,7 @@ export async function POST(request) {
     const configCampos = empresa.config_campos || {};
     const enviarMensagensErp = Boolean(configCampos.enviar_mensagens_importados_erp);
     const mapCols = configCampos.medicalsys_column_mapping || {
-      convenio: "coluna_convenio", // "coluna_convenio" (separada), "observacoes", "eliminar_coluna"
+      convenio: "coluna_convenio",
       especialidade: "especialidade"
     };
 
@@ -58,7 +58,6 @@ export async function POST(request) {
         let novaEsp = currentEsp;
         let novaObs = currentObs;
 
-        // Detecta se um convênio (ex: Unimed, Bradesco, Casssi, Funasa, Plano, Convênio) foi salvo erroneamente em especialidade
         const regexPlano = /(unimed|bradesco|casssi|funasa|geap|sulamerica|hapvida|samp|particular|amil|ipam|ipem|plano|convenio)/i;
 
         if (!currentConv && regexPlano.test(currentEsp)) {
@@ -87,7 +86,7 @@ export async function POST(request) {
 
       return NextResponse.json({
         success: true,
-        message: `Re-processamento concluído com sucesso! ${corrigidosCount} registros retroativos foram corrigidos e tiveram o Convênio/Plano separado da Especialidade.`
+        message: `Re-processamento concluído com sucesso! ${corrigidosCount} registros retroativos foram corrigidos.`
       });
     }
 
@@ -157,7 +156,7 @@ export async function POST(request) {
     let registrosAtualizados = 0;
     const rascunhosMensagensFila = [];
 
-    // 4. PROCESSAR REGISTROS GARANTINDO SEPARAÇÃO ENTRE CONVÊNIO E ESPECIALIDADE
+    // 4. PROCESSAR REGISTROS GARANTINDO CAPTURA DE TODAS AS COLUNAS (CPF, OBSERVAÇÕES, METADADOS)
     for (const item of todosAgendamentos) {
       if (item.momento < dataDeHoje) continue;
 
@@ -174,10 +173,18 @@ export async function POST(request) {
         nomePaciente = item.paciente;
       }
 
-      // CPF do Paciente
-      let cpfPaciente = item.cpf_paciente || item.cpf || null;
-      if (!cpfPaciente && item.paciente && typeof item.paciente === "object" && item.paciente.cpf) {
-        cpfPaciente = item.paciente.cpf;
+      // CPF do Paciente - Extração robusta
+      let cpfPaciente =
+        item.cpf_paciente ||
+        item.cpf ||
+        item.paciente_cpf ||
+        (item.paciente && typeof item.paciente === "object" ? item.paciente.cpf : null);
+
+      if (cpfPaciente) {
+        const cleanCpfNum = String(cpfPaciente).replace(/\D/g, "");
+        if (cleanCpfNum.length === 11) {
+          cpfPaciente = cleanCpfNum.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+        }
       }
 
       // Médico / Especialista
@@ -190,7 +197,7 @@ export async function POST(request) {
         medicoNome = item.medico;
       }
 
-      // SEPARAÇÃO RIGOROSA ENTRE CONVÊNIO E ESPECIALIDADE / PROCEDIMENTO
+      // Separação de Convênio vs Especialidade
       let rawConvenio = null;
       if (item.convenio && typeof item.convenio === "object" && item.convenio.nome) {
         rawConvenio = item.convenio.nome.trim();
@@ -199,13 +206,12 @@ export async function POST(request) {
       }
 
       let rawEspecialidade = item.especialidade?.nome || item.medico?.especialidade?.nome || item.procedimento?.especialidade?.nome || null;
-      let rawObservacoes = item.observacoes || null;
+      let rawObservacoes = item.observacoes || item.observacao || item.obs || null;
 
       let finalConvenio = rawConvenio;
       let finalEspecialidade = rawEspecialidade || "Geral";
       let finalObservacoes = rawObservacoes;
 
-      // Aplicação das regras de mapeamento do usuário
       if (mapCols.convenio === "observacoes" && rawConvenio) {
         finalObservacoes = finalObservacoes ? `${finalObservacoes} | Plano: ${rawConvenio}` : `Plano: ${rawConvenio}`;
       } else if (mapCols.convenio === "eliminar_coluna") {
@@ -216,7 +222,6 @@ export async function POST(request) {
         finalEspecialidade = "Geral";
       }
 
-      // TRAVA DE SEGURANÇA: NUNCA PERMITIR QUE UM CONVÊNIO (EX: UNIMED) SEJA REGISTRADO COMO ESPECIALIDADE
       const regexPlanoInvalido = /(unimed|bradesco|casssi|funasa|geap|sulamerica|hapvida|samp|particular|amil|ipam|ipem)/i;
       if (regexPlanoInvalido.test(finalEspecialidade)) {
         if (!finalConvenio) finalConvenio = finalEspecialidade;
@@ -232,37 +237,39 @@ export async function POST(request) {
         horario_fim: horaFimFormatada,
         medico_profissional: medicoNome,
         nome_paciente: nomePaciente,
-        cpf_paciente: cpfPaciente,
+        cpf_paciente: cpfPaciente || null,
         especialidade: finalEspecialidade,
         convenio: finalConvenio,
         telefone_paciente: fone,
         situacao: item.situacao || "agen",
-        observacoes: finalObservacoes,
+        observacoes: finalObservacoes || null,
         meio_de_pagamento: item.meio_de_pagamento || "espe",
         medicalsys_id: item.id || null,
+        raw_payload_completo: item,
         status: "importado"
       };
 
       const existente = (item.id && mapaExistentesId.get(item.id)) || mapaExistentesChave.get(`${item.momento}|${horaInicioFormatada}|${medicoNome}`);
 
       if (existente) {
-        await supabase
+        let { error: errUp } = await supabase
           .from("bloqueios_horarios")
           .update(payloadDado)
           .eq("id", existente.id);
+
+        if (errUp && (errUp.code === "42703" || errUp.message?.includes("column"))) {
+          delete payloadDado.raw_payload_completo;
+          await supabase.from("bloqueios_horarios").update(payloadDado).eq("id", existente.id);
+        }
         registrosAtualizados++;
       } else {
         registrosNovos.push(payloadDado);
       }
 
-      // TRAVA DE SEGURANÇA PARA MENSAGENS:
-      // AS MENSAGENS SÃO GERADAS EM MODO 'rascunho' (AGUARDANDO VALIDAÇÃO DO GESTOR NO PAINEL).
-      // ELAS NUNCA SÃO ENVIADAS AUTOMATICAMENTE SEM CONFERÊNCIA PRÉVIA DO USUÁRIO.
       if (enviarMensagensErp && fone) {
         const dataFormatada = item.momento.split("-").reverse().join("/");
         const msgTexto = `Olá ${nomePaciente}, confirmamos seu agendamento de ${finalEspecialidade} (${finalConvenio ? "Convenio: " + finalConvenio : "Particular"}) com ${medicoNome} no dia ${dataFormatada} às ${horaInicioFormatada}h.`;
 
-        // Verifica se já existe mensagem para este agendamento na fila
         const { data: msgExistente } = await supabase
           .from("fila_mensagens")
           .select("id, status")
@@ -278,7 +285,7 @@ export async function POST(request) {
             nome_paciente: nomePaciente,
             mensagem: msgTexto,
             data_hora_programada: `${item.momento}T${horaInicioFormatada}:00-03:00`,
-            status: "rascunho", // ⚠️ STATUS RASCUNHO EXIGE VALIDAÇÃO ANTES DO DISPARO OBRIGATORIAMENTE
+            status: "rascunho",
             gatilho: "importado_erp"
           });
         }
@@ -286,8 +293,15 @@ export async function POST(request) {
     }
 
     if (registrosNovos.length > 0) {
-      const { error: errInsert } = await supabase.from("bloqueios_horarios").insert(registrosNovos);
-      if (errInsert) throw errInsert;
+      let { error: errInsert } = await supabase.from("bloqueios_horarios").insert(registrosNovos);
+      if (errInsert && (errInsert.code === "42703" || errInsert.message?.includes("column"))) {
+        const fallbackList = registrosNovos.map((r) => {
+          const copy = { ...r };
+          delete copy.raw_payload_completo;
+          return copy;
+        });
+        await supabase.from("bloqueios_horarios").insert(fallbackList);
+      }
     }
 
     if (rascunhosMensagensFila.length > 0) {
@@ -299,7 +313,7 @@ export async function POST(request) {
       novos: registrosNovos.length,
       atualizados: registrosAtualizados,
       mensagensRascunhoGeradas: rascunhosMensagensFila.length,
-      message: `Sincronização concluída com sucesso: ${registrosNovos.length} novos agendamentos criados e ${registrosAtualizados} atualizados. ${rascunhosMensagensFila.length > 0 ? `${rascunhosMensagensFila.length} mensagens foram geradas em RASCUNHO para sua validação prévia.` : ""}`
+      message: `Sincronização concluída com sucesso: ${registrosNovos.length} novos agendamentos criados e ${registrosAtualizados} atualizados.`
     });
   } catch (error) {
     console.error("[Importação Medicalsys Error]:", error);

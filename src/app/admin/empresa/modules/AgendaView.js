@@ -64,6 +64,7 @@ import {
   actionExcluirAgendamentoAdmin,
   actionRemarcarAgendamentoAdmin,
   actionAprovarPagamentoAgendamento,
+  actionRejeitarPagamentoAgendamento,
   actionCriarAgendamentoManualAdmin,
   fetchAdminCustomization,
   fetchAdminRegras,
@@ -232,6 +233,11 @@ export default function AgendaView({
 
   // Modais de Ações
   const [confirmApproveModalItem, setConfirmApproveModalItem] = useState(null);
+  const [rejectModalItem, setRejectModalItem] = useState(null);
+  const [motivoRejeicao, setMotivoRejeicao] = useState("");
+  const [mensagemCustomRejeicao, setMensagemCustomRejeicao] = useState("");
+  const [enviarMensagemRejeicao, setEnviarMensagemRejeicao] = useState(true);
+  const [isRejecting, setIsRejecting] = useState(false);
   const [cancelModalItem, setCancelModalItem] = useState(null);
   const [cancelReason, setReason] = useState("");
   const [mensagemCustomCancel, setMensagemCustomCancel] = useState("");

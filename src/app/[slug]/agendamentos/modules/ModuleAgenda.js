@@ -153,14 +153,24 @@ export default function ModuleAgenda() {
       const diaNum = new Date(y, m - 1, d).getDate();
       const semOrd = Math.ceil(diaNum / 7);
       const ultimoDia = new Date(y, m, 0).getDate();
-      const isUltima = diaNum > ultimoDia - 7;
-      const isPenultima = diaNum > ultimoDia - 14 && diaNum <= ultimoDia - 7;
-      const isAntepenultima = diaNum > ultimoDia - 21 && diaNum <= ultimoDia - 14;
 
-      if (semanas.includes("primeiras_3") && (semOrd === 1 || semOrd === 2 || semOrd === 3)) return true;
-      if (semanas.includes("ultimas_3") && (isUltima || isPenultima || isAntepenultima)) return true;
-      if (semanas.includes("ultimas") && isUltima) return true;
-      if (semanas.includes(String(semOrd))) return true;
+      // Checa regras dinâmicas
+      for (const sem of semanas) {
+        if (sem === "todas") return true;
+        if (sem === String(semOrd)) return true;
+        if (sem === "meio" && (semOrd === 2 || semOrd === 3)) return true;
+
+        if (sem.startsWith("primeiras_")) {
+          const limit = Number(sem.replace("primeiras_", "")) || 1;
+          if (semOrd <= limit) return true;
+        }
+
+        if (sem.startsWith("ultimas_") || sem === "ultimas") {
+          const limit = sem === "ultimas" ? 1 : Number(sem.replace("ultimas_", "")) || 1;
+          const cutoff = ultimoDia - (limit * 7);
+          if (diaNum > cutoff) return true;
+        }
+      }
       return false;
     };
 
@@ -331,14 +341,41 @@ export default function ModuleAgenda() {
     let slotsGerados = [];
     const intervals = agenda?.occupiedIntervals || [];
 
-    const medicoRulesToday = rMedico.filter((r) =>
-      (r.dias_semana || []).map((d) => parseInt(d, 10)).includes(diaSelecionado)
+    const isSemanaValidaSel = (r) => {
+      const semanas = r.semanas_mes;
+      if (!semanas || !Array.isArray(semanas) || semanas.length === 0 || semanas.includes("todas")) return true;
+      const [sy, sm, sd] = formData.data_agendamento.split("-").map(Number);
+      const diaNum = sd;
+      const semOrd = Math.ceil(diaNum / 7);
+      const ultimoDia = new Date(sy, sm, 0).getDate();
+
+      for (const sem of semanas) {
+        if (sem === "todas") return true;
+        if (sem === String(semOrd)) return true;
+        if (sem === "meio" && (semOrd === 2 || semOrd === 3)) return true;
+
+        if (sem.startsWith("primeiras_")) {
+          const limit = Number(sem.replace("primeiras_", "")) || 1;
+          if (semOrd <= limit) return true;
+        }
+
+        if (sem.startsWith("ultimas_") || sem === "ultimas") {
+          const limit = sem === "ultimas" ? 1 : Number(sem.replace("ultimas_", "")) || 1;
+          const cutoff = ultimoDia - (limit * 7);
+          if (diaNum > cutoff) return true;
+        }
+      }
+      return false;
+    };
+
+    const medicoRulesToday = rMedico.filter(
+      (r) => (r.dias_semana || []).map((d) => parseInt(d, 10)).includes(diaSelecionado) && isSemanaValidaSel(r)
     );
-    const espRulesToday = rEspecialidade.filter((r) =>
-      (r.dias_semana || []).map((d) => parseInt(d, 10)).includes(diaSelecionado)
+    const espRulesToday = rEspecialidade.filter(
+      (r) => (r.dias_semana || []).map((d) => parseInt(d, 10)).includes(diaSelecionado) && isSemanaValidaSel(r)
     );
-    const geralRulesToday = rGeral.filter((r) =>
-      (r.dias_semana || []).map((d) => parseInt(d, 10)).includes(diaSelecionado)
+    const geralRulesToday = rGeral.filter(
+      (r) => (r.dias_semana || []).map((d) => parseInt(d, 10)).includes(diaSelecionado) && isSemanaValidaSel(r)
     );
 
     // Lista de janelas de tempo efetivas calculadas pela interseção

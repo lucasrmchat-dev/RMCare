@@ -264,6 +264,64 @@ export async function actionAprovarPagamentoAgendamento(id) {
   }
 }
 
+export async function actionRejeitarPagamentoAgendamento(id, motivo = null, mensagemCustom = null) {
+  try {
+    const admin = await getAdminLogado(true);
+    const { data: ag, error: errAg } = await supabaseAdmin
+      .from("agendamentos")
+      .select("id, empresa_id, status_pagamento_antecipado, pacientes(*)")
+      .eq("id", id)
+      .eq("empresa_id", admin.empresa_id)
+      .maybeSingle();
+
+    if (errAg || !ag) throw new Error("Agendamento não encontrado.");
+
+    const motivoFinal = (motivo && String(motivo).trim()) ? String(motivo).trim() : "Comprovante de pagamento não aprovado ou inválido";
+
+    let { data: updated, error: errUpdate } = await supabaseAdmin
+      .from("agendamentos")
+      .update({
+        status_pagamento_antecipado: false,
+        status_atendimento: "cancelado",
+        motivo_cancelamento: motivoFinal
+      })
+      .eq("id", id)
+      .eq("empresa_id", admin.empresa_id)
+      .select("*, pacientes(*)")
+      .single();
+
+    if (errUpdate) throw errUpdate;
+
+    // Dispara mensagem WhatsApp de Pagamento Rejeitado
+    try {
+      const { dispararGatilhoServidor } = await import("@/lib/serverDisparo");
+      await dispararGatilhoServidor({
+        agendamentoId: id,
+        empresaId: admin.empresa_id,
+        gatilho: "pagamento_rejeitado",
+        motivo: motivoFinal,
+        mensagemCustom: mensagemCustom
+      });
+    } catch (errDisparo) {
+      console.warn("Aviso ao disparar WhatsApp de pagamento rejeitado:", errDisparo);
+    }
+
+    // Registrar auditoria
+    await actionRegistrarAuditoria({
+      modulo: "agenda",
+      acao: "Rejeição de Pagamento",
+      detalhes: `Pagamento rejeitado para o agendamento #${id} (${ag.pacientes?.nome_completo || "Paciente"}) por ${admin.usuario || admin.email}. Motivo: ${motivoFinal}.`,
+      novo: { status_pagamento_antecipado: false, status_atendimento: "cancelado", motivo: motivoFinal },
+      alterado_por: admin.usuario || admin.email
+    });
+
+    return { success: true, data: updated };
+  } catch (err) {
+    console.error("Erro em actionRejeitarPagamentoAgendamento:", err);
+    return { success: false, error: err.message };
+  }
+}
+
 export async function actionExcluirAgendamentoAdmin(id) {
   const admin = await getAdminLogado(true);
   const { data: appointment } = await supabaseAdmin
@@ -2332,6 +2390,8 @@ export async function fetchAdminAuditoriaLogs(filtros = {}) {
     return [];
   }
 }
+
+export const fetchAdminAuditoria = fetchAdminAuditoriaLogs;
 
 /* ==========================================
    AGENDAMENTO MANUAL PELO COLABORADOR

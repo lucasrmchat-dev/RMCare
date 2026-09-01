@@ -16,13 +16,13 @@ const supabaseAdmin = createClient(
 );
 
 export async function checkIdentifier(identificador) {
-  const idClean = identificador.trim().toLowerCase();
+  const idClean = (identificador || "").trim().toLowerCase();
 
-  // Busca segura do administrador
+  // 1. Busca do administrador por e-mail ou nome de usuário
   let { data: admin } = await supabaseAdmin
     .from("administradores")
     .select("*")
-    .eq("usuario", idClean)
+    .or(`usuario.ilike.${idClean},email.ilike.${idClean}`)
     .maybeSingle();
 
   if (admin) {
@@ -31,14 +31,17 @@ export async function checkIdentifier(identificador) {
       type: "admin",
       role: admin.role,
       empresa_id: admin.empresa_id,
+      usuario: admin.usuario,
+      email: admin.email || admin.usuario,
       primeiro_acesso: Boolean(admin.primeiro_acesso)
     };
   }
 
+  // 2. Busca de paciente por CPF
   const cleanCpf = idClean.replace(/\D/g, "");
   
   if (cleanCpf.length !== 11) {
-    return { success: false, error: "Usuário não encontrado. Digite um CPF válido ou usuário administrativo." };
+    return { success: false, error: "E-mail ou CPF não encontrado. Digite seu e-mail de acesso ou CPF de paciente." };
   }
 
   const maskedCpf = cleanCpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
@@ -68,7 +71,6 @@ export async function checkIdentifier(identificador) {
 export async function authenticateUser(payload) {
   const { type, id, role, password, birthDate, isDefiningPassword, identificador } = payload;
   
-  // Await é obrigatório no Next.js 15+ para lidar com cookies
   const cookieStore = await cookies();
 
   if (type === "paciente") {
@@ -120,15 +122,15 @@ export async function authenticateUser(payload) {
   }
 
   if (type === "admin") {
-    const idClean = identificador.trim().toLowerCase();
+    const idClean = (identificador || "").trim().toLowerCase();
     let isAuthorized = false;
     let adminRecord = null;
 
-    // 1. Tenta a verificação com senha em texto simples (compatibilidade com cadastros diretos)
+    // 1. Tenta a verificação com senha em texto simples (compatibilidade com cadastros diretos por email ou usuario)
     const { data: plainAdmin } = await supabaseAdmin
       .from("administradores")
       .select("*")
-      .eq("usuario", idClean)
+      .or(`usuario.ilike.${idClean},email.ilike.${idClean}`)
       .eq("senha_hash", password)
       .maybeSingle();
 
@@ -136,7 +138,7 @@ export async function authenticateUser(payload) {
       isAuthorized = true;
       adminRecord = plainAdmin;
     } else {
-      // 2. Tenta a verificação com Criptografia Forte via RPC (se existir a função)
+      // 2. Tenta a verificação com Criptografia Forte via RPC (se existir)
       try {
         const { data: hashAdmin } = await supabaseAdmin.rpc("verificar_senha_admin", {
           p_usuario: idClean,
@@ -147,30 +149,28 @@ export async function authenticateUser(payload) {
           const { data: fetchAdmin } = await supabaseAdmin
             .from("administradores")
             .select("*")
-            .eq("usuario", idClean)
+            .or(`usuario.ilike.${idClean},email.ilike.${idClean}`)
             .maybeSingle();
           adminRecord = fetchAdmin;
         }
-      } catch (errRpc) {
-        // Se a RPC não existir, apenas continua
-      }
+      } catch (errRpc) {}
     }
 
     if (isAuthorized && adminRecord) {
-      // Se for primeiro acesso do usuário (e a flag primeiro_acesso estiver explicitamente como true)
       if (adminRecord.primeiro_acesso === true) {
         return {
           success: true,
           mustResetPassword: true,
-          usuario: idClean,
+          usuario: adminRecord.usuario || idClean,
+          email: adminRecord.email || idClean,
           role: adminRecord.role,
           empresa_id: adminRecord.empresa_id,
           message: "Primeiro acesso detectado. Por favor, cadastre sua nova senha."
         };
       }
 
-      // Cria a sessão em Cookie para isolar o Tenant
-      const sessionToken = await createAdminSession(idClean);
+      const sessionIdentifier = adminRecord.usuario || idClean;
+      const sessionToken = await createAdminSession(sessionIdentifier);
       cookieStore.set("rmagenda_auth", sessionToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
@@ -194,7 +194,7 @@ export async function authenticateUser(payload) {
       };
     }
 
-    return { success: false, error: "Senha administrativa inválida." };
+    return { success: false, error: "Senha de acesso incorreta." };
   }
 
   return { success: false, error: "Erro de autenticação." };
@@ -213,13 +213,13 @@ export async function actionRedefinirSenhaPrimeiroAcesso({ usuario, novaSenha })
       senha_hash: novaSenha,
       primeiro_acesso: false
     })
-    .eq("usuario", cleanUser);
+    .or(`usuario.ilike.${cleanUser},email.ilike.${cleanUser}`);
 
   if (error && (error.code === "42703" || error.message?.includes("column") || error.message?.includes("primeiro_acesso"))) {
     const retry = await supabaseAdmin
       .from("administradores")
       .update({ senha_hash: novaSenha })
-      .eq("usuario", cleanUser);
+      .or(`usuario.ilike.${cleanUser},email.ilike.${cleanUser}`);
     error = retry.error;
   }
 
@@ -246,7 +246,7 @@ export async function actionRedefinirSenhaPrimeiroAcesso({ usuario, novaSenha })
   const { data: adminRecord } = await supabaseAdmin
     .from("administradores")
     .select("role, empresa_id")
-    .eq("usuario", cleanUser)
+    .or(`usuario.ilike.${cleanUser},email.ilike.${cleanUser}`)
     .maybeSingle();
 
   return {
@@ -297,7 +297,7 @@ export async function getSessionAdminInfo() {
   const { data: admin } = await supabaseAdmin
     .from("administradores")
     .select("*")
-    .eq("usuario", current.sub)
+    .or(`usuario.ilike.${current.sub},email.ilike.${current.sub}`)
     .maybeSingle();
 
   return admin || null;
@@ -308,8 +308,8 @@ export async function updateAdminCredentials({ currentPassword, newUsername, new
   const session = await verifyAdminSession(cookieStore.get("rmagenda_auth")?.value || cookieStore.get("rmcare_auth")?.value);
   if (!session) return { success: false, error: "Sessão expirada." };
   const username = newUsername.trim().toLowerCase();
-  if (username.length < 3 || newPassword.length < 8) return { success: false, error: "Use login com 3+ caracteres e senha com 8+ caracteres." };
-  const { data: legacyAdmin } = await supabaseAdmin.from("administradores").select("id").eq("usuario", session.sub).eq("senha_hash", currentPassword).maybeSingle();
+  if (username.length < 3 || newPassword.length < 8) return { success: false, error: "Use login/e-mail válido e senha com 8+ caracteres." };
+  const { data: legacyAdmin } = await supabaseAdmin.from("administradores").select("id").or(`usuario.ilike.${session.sub},email.ilike.${session.sub}`).eq("senha_hash", currentPassword).maybeSingle();
   const { data: hashedValid } = legacyAdmin ? { data: true } : await supabaseAdmin.rpc("verificar_senha_admin", { p_usuario: session.sub, p_senha: currentPassword });
   if (!hashedValid) return { success: false, error: "Senha atual inválida." };
   const { error } = await supabaseAdmin.rpc("alterar_credenciais_admin", { p_usuario_atual: session.sub, p_novo_usuario: username, p_nova_senha: newPassword });
