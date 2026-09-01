@@ -147,14 +147,31 @@ export default function ModuleAgenda() {
   const isDiaPermitidoPelasRegras = (dataStr) => {
     const diaWeek = getDiaSemana(dataStr);
 
-    const medicoRulesToday = rMedico.filter((r) =>
-      (r.dias_semana || []).map((d) => parseInt(d, 10)).includes(diaWeek)
+    const isSemanaValida = (r) => {
+      const semanas = r.semanas_mes;
+      if (!semanas || !Array.isArray(semanas) || semanas.length === 0 || semanas.includes("todas")) return true;
+      const diaNum = new Date(y, m - 1, d).getDate();
+      const semOrd = Math.ceil(diaNum / 7);
+      const ultimoDia = new Date(y, m, 0).getDate();
+      const isUltima = diaNum > ultimoDia - 7;
+      const isPenultima = diaNum > ultimoDia - 14 && diaNum <= ultimoDia - 7;
+      const isAntepenultima = diaNum > ultimoDia - 21 && diaNum <= ultimoDia - 14;
+
+      if (semanas.includes("primeiras_3") && (semOrd === 1 || semOrd === 2 || semOrd === 3)) return true;
+      if (semanas.includes("ultimas_3") && (isUltima || isPenultima || isAntepenultima)) return true;
+      if (semanas.includes("ultimas") && isUltima) return true;
+      if (semanas.includes(String(semOrd))) return true;
+      return false;
+    };
+
+    const medicoRulesToday = rMedico.filter(
+      (r) => (r.dias_semana || []).map((d) => parseInt(d, 10)).includes(diaWeek) && isSemanaValida(r)
     );
-    const espRulesToday = rEspecialidade.filter((r) =>
-      (r.dias_semana || []).map((d) => parseInt(d, 10)).includes(diaWeek)
+    const espRulesToday = rEspecialidade.filter(
+      (r) => (r.dias_semana || []).map((d) => parseInt(d, 10)).includes(diaWeek) && isSemanaValida(r)
     );
-    const geralRulesToday = rGeral.filter((r) =>
-      (r.dias_semana || []).map((d) => parseInt(d, 10)).includes(diaWeek)
+    const geralRulesToday = rGeral.filter(
+      (r) => (r.dias_semana || []).map((d) => parseInt(d, 10)).includes(diaWeek) && isSemanaValida(r)
     );
 
     // Caso 1: Ambos têm regras cadastradas -> INTERSEÇÃO (Conjunto Menor)

@@ -17,7 +17,8 @@ export async function dispararGatilhoServidor({
   gatilho,
   novaData = null,
   novoHorario = null,
-  motivo = null
+  motivo = null,
+  mensagemCustom = null
 }) {
   try {
     if (!agendamentoId || !empresaId || !gatilho) return false;
@@ -41,7 +42,14 @@ export async function dispararGatilhoServidor({
     if (errEmp || !emp) return false;
 
     const regras = emp.config_mensagens || [];
-    const regrasDoGatilho = regras.filter((r) => r.gatilho === gatilho);
+    let regrasDoGatilho = regras.filter((r) => r.gatilho === gatilho);
+    if (regrasDoGatilho.length === 0 && mensagemCustom) {
+      regrasDoGatilho = [{
+        gatilho,
+        mensagem: mensagemCustom,
+        tipo_envio: "whatsapp"
+      }];
+    }
     if (regrasDoGatilho.length === 0) return false;
 
     const paciente = ag.pacientes || {};
@@ -75,7 +83,6 @@ export async function dispararGatilhoServidor({
       /(colonoscopia|endoscopia|ultrassom|exame)/i.test(`${nomeEspecialidade} ${nomeProfissional}`);
 
     // Variáveis universais para mensagens
-    // A variável {nome} agora se transforma no Nome Completo conforme solicitado
     const vars = {
       nome: nomeCompleto,
       nome_completo: nomeCompleto,
@@ -127,7 +134,8 @@ export async function dispararGatilhoServidor({
       const isWebhookTipo = regra.tipo_envio === "webhook";
       const targetUrl = (regra.url_webhook_customizada || (isWebhookTipo ? urlWebhookFluxoInteligente : urlWebhookPadrao))?.trim();
 
-      const msgFormatada = parseTemplate(regra.mensagem, vars);
+      const msgTpl = mensagemCustom && gatilho === "cancelado" ? mensagemCustom : regra.mensagem;
+      const msgFormatada = parseTemplate(msgTpl, vars);
       let enviadoComSucesso = false;
 
       if (targetUrl && targetUrl.startsWith("http")) {
@@ -135,7 +143,6 @@ export async function dispararGatilhoServidor({
           let payload;
 
           if (isWebhookTipo) {
-            // Disparo de Webhook / Fluxo Inteligente com dados estruturados
             payload = {
               evento: "disparo_fluxo_inteligente",
               tipo_disparo: "webhook",
@@ -177,7 +184,6 @@ export async function dispararGatilhoServidor({
               webhook_retorno_url: `${process.env.NEXT_PUBLIC_APP_URL || "https://rmagenda.com.br"}/api/webhook-resposta`
             };
           } else {
-            // Disparo padrão via WhatsApp (RM Chat)
             payload = {
               name: nomeCompleto,
               number: telFormatadoEnvio,

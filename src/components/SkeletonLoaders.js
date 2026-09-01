@@ -77,3 +77,31 @@ export function SkeletonStats() {
     </div>
   );
 }
+
+export function CapsuleSpinner({ size = "md", className = "" }) {
+  const sizeMap = {
+    xs: "w-3.5 h-3.5 border-[2px]",
+    sm: "w-4 h-4 border-[2px]",
+    md: "w-5 h-5 border-[2.5px]",
+    lg: "w-7 h-7 border-[3px]",
+    xl: "w-10 h-10 border-[3.5px]"
+  };
+  return (
+    <div
+      className={`inline-block rounded-full border-zinc-300 dark:border-zinc-700 border-t-zinc-950 dark:border-t-white animate-spin shrink-0 ${
+        sizeMap[size] || sizeMap.md
+      } ${className}`}
+      role="status"
+      aria-label="Carregando"
+    />
+  );
+}
+
+export function CapsulePillLoader({ text = "Processando...", className = "" }) {
+  return (
+    <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-100 dark:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200 text-xs font-bold shadow-xs ${className}`}>
+      <span className="w-2.5 h-4 rounded-full border-2 border-zinc-400 dark:border-zinc-500 border-t-[#86a621] dark:border-t-[#9FC131] animate-spin" />
+      <span>{text}</span>
+    </div>
+  );
+}

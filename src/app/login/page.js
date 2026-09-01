@@ -256,7 +256,7 @@ export default function LoginUnificado() {
   };
 
   return (
-    <main className="min-h-[100dvh] bg-[#060A12] text-white flex flex-col items-center justify-center p-4 sm:p-6 antialiased selection:bg-[#9FC131] selection:text-black relative overflow-hidden font-sans">
+    <main className="min-h-[100dvh] bg-[#060A12] text-white flex flex-col items-center justify-center p-4 sm:p-6 antialiased relative overflow-hidden font-sans">
       <Navbar />
 
       <div className="absolute top-[-15%] left-[-10%] w-[550px] h-[550px] rounded-full bg-[#9FC131]/15 blur-[140px] pointer-events-none" />

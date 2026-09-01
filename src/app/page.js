@@ -61,7 +61,7 @@ export default function Home() {
   };
 
   return (
-    <main className="relative min-h-[100dvh] bg-[#F8FAFC] dark:bg-[#060A12] overflow-x-hidden antialiased text-gray-950 dark:text-white transition-colors duration-400 selection:bg-[#9FC131] selection:text-black flex flex-col justify-between">
+    <main className="relative min-h-[100dvh] bg-[#F8FAFC] dark:bg-[#060A12] overflow-x-hidden antialiased text-gray-950 dark:text-white transition-colors duration-400 flex flex-col justify-between">
       <Navbar />
 
       <div className="absolute top-[-8%] left-[-10%] w-[550px] h-[550px] bg-[#9FC131]/8 dark:bg-[#9FC131]/5 rounded-full blur-[130px] pointer-events-none" />

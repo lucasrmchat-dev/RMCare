@@ -231,8 +231,11 @@ export default function AgendaView({
   const [empresaConfig, setEmpresaConfig] = useState(null);
 
   // Modais de Ações
+  const [confirmApproveModalItem, setConfirmApproveModalItem] = useState(null);
   const [cancelModalItem, setCancelModalItem] = useState(null);
   const [cancelReason, setReason] = useState("");
+  const [mensagemCustomCancel, setMensagemCustomCancel] = useState("");
+  const [enviarMensagemCancel, setEnviarMensagemCancel] = useState(true);
   const [confirmarCancelamentoStep, setConfirmarCancelamentoStep] = useState(false);
 
   // Modal Inteligente de Remarcação (com Calendário e Horários em Tempo Real)
@@ -1538,83 +1541,7 @@ export default function AgendaView({
             </div>
           </div>
 
-          {/* BARRA DE ORDENAÇÃO RÁPIDA (DISPONÍVEL EM TODOS OS MODOS) */}
-          <div className="flex items-center justify-between gap-2 pt-2 border-t border-zinc-200/50 dark:border-zinc-800/60 flex-wrap">
-            <div className="flex items-center gap-1.5 text-xs text-zinc-500 font-semibold flex-wrap">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-400 flex items-center gap-1">
-                <ArrowUpDown size={12} /> Ordenar:
-              </span>
-              <button
-                type="button"
-                onClick={() => handleSort("horario")}
-                className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
-                  sortConfig.key === "horario"
-                    ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
-                    : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300"
-                }`}
-              >
-                <span>Horário</span>
-                {sortConfig.key === "horario" && (
-                  sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleSort("paciente")}
-                className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
-                  sortConfig.key === "paciente"
-                    ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
-                    : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300"
-                }`}
-              >
-                <span>Paciente (Nome)</span>
-                {sortConfig.key === "paciente" && (
-                  sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleSort("data")}
-                className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
-                  sortConfig.key === "data"
-                    ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
-                    : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300"
-                }`}
-              >
-                <span>Data</span>
-                {sortConfig.key === "data" && (
-                  sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleSort("especialista")}
-                className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
-                  sortConfig.key === "especialista"
-                    ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
-                    : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300"
-                }`}
-              >
-                <span>Especialista</span>
-                {sortConfig.key === "especialista" && (
-                  sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
-                )}
-              </button>
-
-              {sortConfig.key && (
-                <button
-                  type="button"
-                  onClick={() => setSortConfig({ key: null, direction: "asc" })}
-                  className="text-[10px] text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 underline font-bold ml-1 cursor-pointer"
-                >
-                  Limpar Ordenação
-                </button>
-              )}
-            </div>
-
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-200/50 dark:border-zinc-800/60 flex-wrap">
             <div className="text-[10px] text-zinc-400 font-mono" suppressHydrationWarning>
               {mounted && lastSyncedAt
                 ? `Última atualização: ${lastSyncedAt.toLocaleTimeString("pt-BR")}`
@@ -1735,83 +1662,85 @@ export default function AgendaView({
                     </span>
                   </div>
 
-                  {/* BARRA DE ORDENAÇÃO RÁPIDA DE PACIENTES DO DIA */}
-                  <div className="flex items-center justify-between gap-2 mb-4 p-2.5 bg-white/70 dark:bg-zinc-900/60 backdrop-blur-xl rounded-2xl border border-zinc-200/70 dark:border-white/5 flex-wrap">
-                    <div className="flex items-center gap-1.5 text-xs text-zinc-500 font-semibold flex-wrap">
-                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-400 flex items-center gap-1">
-                        <ArrowUpDown size={11} /> Ordenar Dia:
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleSort("horario")}
-                        className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
-                          sortConfig.key === "horario"
-                            ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
-                            : "bg-white/90 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"
-                        }`}
-                      >
-                        <span>Horário</span>
-                        {sortConfig.key === "horario" && (
-                          sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
-                        )}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleSort("paciente")}
-                        className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
-                          sortConfig.key === "paciente"
-                            ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
-                            : "bg-white/90 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"
-                        }`}
-                      >
-                        <span>Nome Paciente</span>
-                        {sortConfig.key === "paciente" && (
-                          sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
-                        )}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleSort("especialista")}
-                        className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
-                          sortConfig.key === "especialista"
-                            ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
-                            : "bg-white/90 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"
-                        }`}
-                      >
-                        <span>Especialista</span>
-                        {sortConfig.key === "especialista" && (
-                          sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
-                        )}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleSort("status")}
-                        className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
-                          sortConfig.key === "status"
-                            ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
-                            : "bg-white/90 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"
-                        }`}
-                      >
-                        <span>Status</span>
-                        {sortConfig.key === "status" && (
-                          sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
-                        )}
-                      </button>
-
-                      {sortConfig.key && (
+                  {/* BARRA DE ORDENAÇÃO RÁPIDA (EXIBIDA APENAS NA VISUALIZAÇÃO EM CARDS) */}
+                  {viewMode === "cards" && eventosAgendaMistaDiaria.length > 0 && (
+                    <div className="flex items-center justify-between gap-2 mb-4 p-2.5 bg-white/70 dark:bg-zinc-900/60 backdrop-blur-xl rounded-2xl border border-zinc-200/70 dark:border-white/5 flex-wrap">
+                      <div className="flex items-center gap-1.5 text-xs text-zinc-500 font-semibold flex-wrap">
+                        <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-400 flex items-center gap-1">
+                          <ArrowUpDown size={11} /> Ordenar Cards:
+                        </span>
                         <button
                           type="button"
-                          onClick={() => setSortConfig({ key: null, direction: "asc" })}
-                          className="text-[10.5px] text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 underline font-bold ml-1 cursor-pointer"
+                          onClick={() => handleSort("horario")}
+                          className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                            sortConfig.key === "horario"
+                              ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
+                              : "bg-white/90 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"
+                          }`}
                         >
-                          Limpar Ordenação
+                          <span>Horário</span>
+                          {sortConfig.key === "horario" && (
+                            sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                          )}
                         </button>
-                      )}
+
+                        <button
+                          type="button"
+                          onClick={() => handleSort("paciente")}
+                          className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                            sortConfig.key === "paciente"
+                              ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
+                              : "bg-white/90 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"
+                          }`}
+                        >
+                          <span>Nome Paciente</span>
+                          {sortConfig.key === "paciente" && (
+                            sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleSort("especialista")}
+                          className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                            sortConfig.key === "especialista"
+                              ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
+                              : "bg-white/90 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"
+                          }`}
+                        >
+                          <span>Especialista</span>
+                          {sortConfig.key === "especialista" && (
+                            sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleSort("status")}
+                          className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                            sortConfig.key === "status"
+                              ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
+                              : "bg-white/90 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"
+                          }`}
+                        >
+                          <span>Status</span>
+                          {sortConfig.key === "status" && (
+                            sortConfig.direction === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />
+                          )}
+                        </button>
+
+                        {sortConfig.key && (
+                          <button
+                            type="button"
+                            onClick={() => setSortConfig({ key: null, direction: "asc" })}
+                            className="text-[10.5px] text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 underline font-bold ml-1 cursor-pointer"
+                          >
+                            Limpar Ordenação
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {eventosAgendaMistaDiaria.length === 0 ? (
                     <div className="mt-16 text-center flex flex-col items-center justify-center p-8 border border-dashed rounded-3xl border-zinc-200 dark:border-zinc-800 bg-white/40 dark:bg-white/[0.02]">
@@ -1977,7 +1906,7 @@ export default function AgendaView({
                                 !isCanceled && (
                                   <button
                                     type="button"
-                                    onClick={() => handleAprovarPagamento(item)}
+                                    onClick={() => setConfirmApproveModalItem(item.rawItem || item)}
                                     disabled={isApproving}
                                     className="min-h-[40px] px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 text-xs font-extrabold transition-all shadow-sm cursor-pointer"
                                     title="Confirmar que o paciente particular efetuou o pagamento"
@@ -2193,7 +2122,7 @@ export default function AgendaView({
                                     item.statusAtendimento !== "cancelado" && (
                                       <button
                                         type="button"
-                                        onClick={() => handleAprovarPagamento(item)}
+                                        onClick={() => setConfirmApproveModalItem(item.rawItem || item)}
                                         className="min-h-[34px] px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-extrabold inline-flex items-center gap-1 shadow-sm cursor-pointer"
                                         title="Aprovar Pagamento Manual"
                                       >
@@ -2269,12 +2198,13 @@ export default function AgendaView({
                   </span>
                 </div>
 
-                {/* BARRA DE ORDENAÇÃO RÁPIDA DE TODOS OS PACIENTES */}
-                <div className="flex items-center justify-between gap-2 mb-4 p-2.5 bg-white/70 dark:bg-zinc-900/60 backdrop-blur-xl rounded-2xl border border-zinc-200/70 dark:border-white/5 flex-wrap">
-                  <div className="flex items-center gap-1.5 text-xs text-zinc-500 font-semibold flex-wrap">
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-400 flex items-center gap-1">
-                      <ArrowUpDown size={11} /> Ordenar Geral:
-                    </span>
+                {/* BARRA DE ORDENAÇÃO RÁPIDA DE TODOS OS PACIENTES (APENAS NA VISUALIZAÇÃO EM CARDS) */}
+                {viewMode === "cards" && listaUnificadaTodosPacientes.length > 0 && (
+                  <div className="flex items-center justify-between gap-2 mb-4 p-2.5 bg-white/70 dark:bg-zinc-900/60 backdrop-blur-xl rounded-2xl border border-zinc-200/70 dark:border-white/5 flex-wrap">
+                    <div className="flex items-center gap-1.5 text-xs text-zinc-500 font-semibold flex-wrap">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-400 flex items-center gap-1">
+                        <ArrowUpDown size={11} /> Ordenar Cards:
+                      </span>
                     <button
                       type="button"
                       onClick={() => handleSort("data")}
@@ -2376,6 +2306,7 @@ export default function AgendaView({
                     )}
                   </div>
                 </div>
+                )}
 
                 {listaUnificadaTodosPacientes.length === 0 ? (
                   <div className="py-20 text-center rounded-3xl border border-dashed border-zinc-200 dark:border-zinc-800 text-zinc-500 bg-white/40 dark:bg-white/[0.02]">
@@ -2491,7 +2422,7 @@ export default function AgendaView({
                               !isCanceled && (
                                 <button
                                   type="button"
-                                  onClick={() => handleAprovarPagamento(item)}
+                                  onClick={() => setConfirmApproveModalItem(item.rawItem || item)}
                                   disabled={isApproving}
                                   className="min-h-[40px] px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 text-xs font-extrabold transition-all shadow-sm cursor-pointer"
                                 >
@@ -2690,7 +2621,7 @@ export default function AgendaView({
                                   item.statusAtendimento !== "cancelado" && (
                                     <button
                                       type="button"
-                                      onClick={() => handleAprovarPagamento(item)}
+                                      onClick={() => setConfirmApproveModalItem(item.rawItem || item)}
                                       className="min-h-[34px] px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-extrabold inline-flex items-center gap-1 shadow-sm cursor-pointer"
                                       title="Aprovar Pagamento Manual"
                                     >
@@ -3337,6 +3268,101 @@ export default function AgendaView({
 
       {/* MODAL: CANCELAR AGENDAMENTO COM SEGURANÇA E MOTIVO PADRÃO PROFISSIONAL */}
       <AnimatePresence>
+        {/* MODAL DE CONFIRMAÇÃO DE APROVAÇÃO DE PAGAMENTO */}
+        {confirmApproveModalItem && (
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-md z-[9999] flex items-center justify-center p-4"
+            onClick={() => setConfirmApproveModalItem(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={spring}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-[#111116] border border-zinc-200/90 dark:border-zinc-800 rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl space-y-5 text-left"
+            >
+              <div className="flex items-center justify-between border-b border-zinc-100 dark:border-white/5 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                    <CheckCircle2 size={20} strokeWidth={2.5} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-zinc-950 dark:text-white">
+                      Confirmar Aprovação
+                    </h3>
+                    <p className="text-[11px] text-zinc-400">
+                      Liberação de pagamento e disparo de notificações
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setConfirmApproveModalItem(null)}
+                  className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="p-4 bg-zinc-50 dark:bg-zinc-900/60 rounded-2xl border border-zinc-200/60 dark:border-white/5 space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-zinc-400 font-bold uppercase tracking-wider text-[10px]">Paciente</span>
+                  <span className="font-extrabold text-zinc-900 dark:text-white truncate max-w-[220px]">
+                    {confirmApproveModalItem.pacientes?.nome_completo ||
+                      confirmApproveModalItem.nomePaciente ||
+                      confirmApproveModalItem.nome_paciente ||
+                      "Paciente"}
+                  </span>
+                </div>
+                <div className="flex justify-between border-t border-zinc-100 dark:border-white/5 pt-2">
+                  <span className="text-zinc-400 font-bold uppercase tracking-wider text-[10px]">Atendimento</span>
+                  <span className="font-semibold text-zinc-800 dark:text-zinc-200 truncate max-w-[220px]">
+                    {confirmApproveModalItem.medico_profissional ||
+                      confirmApproveModalItem.medicoProfissional ||
+                      confirmApproveModalItem.subtipo_exame ||
+                      confirmApproveModalItem.especialidade ||
+                      "Atendimento"}
+                  </span>
+                </div>
+                <div className="flex justify-between border-t border-zinc-100 dark:border-white/5 pt-2">
+                  <span className="text-zinc-400 font-bold uppercase tracking-wider text-[10px]">Data & Horário</span>
+                  <span className="font-bold text-zinc-800 dark:text-zinc-200">
+                    {(confirmApproveModalItem.data_agendamento || confirmApproveModalItem.data)?.split("-").reverse().join("/")} às {confirmApproveModalItem.horario_agendamento || confirmApproveModalItem.horario}h
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                Deseja confirmar a aprovação do pagamento deste atendimento? O agendamento será marcado como pago e as mensagens de confirmação (push/WhatsApp) serão enviadas ao paciente.
+              </p>
+
+              <div className="flex gap-2 pt-2 border-t border-zinc-100 dark:border-white/5">
+                <button
+                  type="button"
+                  onClick={() => setConfirmApproveModalItem(null)}
+                  className="flex-1 py-3 px-4 rounded-xl border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 font-bold text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={approvingPaymentId === confirmApproveModalItem.id}
+                  onClick={async () => {
+                    const itemParaAprovar = confirmApproveModalItem;
+                    setConfirmApproveModalItem(null);
+                    await handleAprovarPagamento(itemParaAprovar);
+                  }}
+                  className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/20 transition-all cursor-pointer"
+                >
+                  <CheckCircle2 size={15} />
+                  <span>{approvingPaymentId === confirmApproveModalItem.id ? "Aprovando..." : "Confirmar e Aprovar"}</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
         {cancelModalItem && (
           <div
             className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-md p-4 flex items-center justify-center"

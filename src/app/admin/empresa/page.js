@@ -223,11 +223,10 @@ export default function EmpresaAdmin() {
       },
       {
         id: "personalizacao",
-        label: "Aparência & Mensagens",
+        label: "Configurações Gerais",
         icon: Palette,
         subItems: [
-          { id: "jornada", label: "Identificação & Logo" },
-          { id: "aparencia", label: "Design & Cores" },
+          { id: "jornada", label: "Formato de Trabalho e Design" },
           { id: "mensagens", label: "Mensagens WhatsApp" },
           { id: "historico_mensagens", label: "Histórico de Envios" }
         ]
@@ -298,7 +297,7 @@ export default function EmpresaAdmin() {
   const servicosOptions = (servicos || []).map((s) => ({ value: s.id, label: s.nome }));
 
   return (
-    <div className="h-screen w-screen bg-[#F8FAFC] dark:bg-[#060A12] flex flex-col font-sans overflow-hidden text-zinc-900 dark:text-white selection:bg-[#9FC131] selection:text-black">
+    <div className="h-screen w-screen bg-[#F8FAFC] dark:bg-[#060A12] flex flex-col font-sans overflow-hidden text-zinc-900 dark:text-white">
       <AdminSessionBar />
 
       <motion.button

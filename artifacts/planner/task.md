@@ -1,28 +1,21 @@
-# Task: RM Care Fixes & Master Admin Architecture
+# Task: RMCare Updates & Enhancements
 
-- [/] 1. Diagnostics & Root-Cause Analysis
-  - [x] Analyze Turbopack build errors (`actionAtualizarChavesEmpresaMaster`, `actionCriarEmpresaMaster`, `actionListarEmpresasMaster`, etc.)
-  - [ ] Inspect `src/actions/adminData.js` and `src/actions/auth.js`
-  - [ ] Inspect `src/app/admin/empresa/modules/AgendaView.js` for sorting, card/list toggle, auto-refresh, and manual refresh
-  - [ ] Inspect `src/app/admin/empresa/modules/PersonalizacaoView.js`, `src/lib/serverDisparo.js`, `src/app/api/disparar-webhook/route.js`, `src/app/api/processar-fila/route.js` for WhatsApp / Webhook triggers, days/timing column, and test buttons
-  - [ ] Inspect `src/components/AdminSessionBar.js`, `SidebarPremium.js`, `Navbar.js` for profile dropdown (remove "Sessão Ativa" from dropdown, fix z-index layering)
-  - [ ] Inspect login flow (`src/app/login`, `src/actions/auth.js`, middleware/proxy) to unify master & empresa login and fix double-login issue
-- [ ] 2. Core Fixes & Action Exports
-  - [ ] Implement & export all master admin actions in `src/actions/adminData.js` (`actionListarEmpresasMaster`, `actionCriarEmpresaMaster`, `actionAtualizarChavesEmpresaMaster`, `actionExcluirEmpresaMaster`, `actionTestarPushRmChat`)
-  - [ ] Unify login logic in `src/actions/auth.js` and login routes to eliminate double authentication prompts and smoothly redirect by role
-- [ ] 3. AgendaView Enhancements (Pacientes do Dia & Todos os Pacientes)
-  - [ ] Fix sorting logic (by time asc/desc, by patient name asc/desc A-Z and Z-A) ensuring responsive updates
-  - [ ] Fix Cards vs List view switching functionality
-  - [ ] Add manual Refresh button ("Atualizar dados")
-  - [ ] Add 60-second auto-synchronizer (polling with indicator)
-- [ ] 4. WhatsApp & Webhooks Architecture
-  - [ ] Add Days/Timing column and badges in message automations list/editor (ex: "1 dia antes", "Imediatamente", "2 dias após", etc.)
-  - [ ] Fix webhook firing logic in `serverDisparo.js` and API routes
-  - [ ] Add test button for Webhook & test button for WhatsApp template
-- [ ] 5. Profile Dropdown & Layout/Z-Index Visual Fixes
-  - [ ] Remove "Sessão Ativa" from user profile popover/dropdown (keeping outside session bar)
-  - [ ] Fix z-index stacking issues where profile dropdown or controls get hidden under other elements
-  - [ ] Refine and modernize UI across master system admin and clinic admin
-- [ ] 6. Build Verification & Full Validation
-  - [ ] Run `npm run build` or Next.js build verification to ensure zero build errors
-  - [ ] Verify all routes and user requirements
+- [ ] Phase 1: Research & Audit Existing Codebase <!-- id: 0 -->
+    - [ ] Audit Push Notification & Redirection logic for private ("particular") appointments vs attendant approval <!-- id: 1 -->
+    - [ ] Audit Payment approval flow & confirmation modal <!-- id: 2 -->
+    - [ ] Audit Agenda > Pacientes do dia views (List and Cards) sorting filters and column header sorting <!-- id: 3 -->
+    - [ ] Audit PersonalizacaoView / Settings (Aparência e Mensagens -> Configurações Gerais, Formato de Trabalho e Design, Brand Colors removal, System Default View placement) <!-- id: 4 -->
+    - [ ] Audit MedicalSys API integration (importar-agenda, agendar route, sync, patient columns/CPF, export toggle and implementation based on PDF documentation) <!-- id: 5 -->
+    - [ ] Audit Selection CSS styling in globals.css <!-- id: 6 -->
+    - [ ] Audit Specialist schedule rules logic & UI (AgendaView / RestricoesView / appointmentRules) for ordinal week patterns (e.g. 3 primeiras sextas, últimas...) <!-- id: 7 -->
+- [ ] Phase 2: Implementation <!-- id: 8 -->
+    - [ ] Fix CSS selection styling (`::selection`) in `src/app/globals.css` <!-- id: 9 -->
+    - [ ] Implement confirmation modal before payment approval <!-- id: 10 -->
+    - [ ] Adjust private appointment push notification flow (defer push until attendant approval) <!-- id: 11 -->
+    - [ ] Fix Agenda > Pacientes do dia sorting controls (1 filter only, clickable table column headers for asc/desc) <!-- id: 12 -->
+    - [ ] Update Settings / Personalização UI (Configurações Gerais, Formato de Trabalho e Design, remove brand color palette, move default view mode) <!-- id: 13 -->
+    - [ ] Implement MedicalSys export toggle & future appointment export logic using MedicalSys API <!-- id: 14 -->
+    - [ ] Enhance Patient import to capture CPF and all available fields, and update "Ver Todas as Colunas Importadas" in ERP integration <!-- id: 15 -->
+    - [ ] Implement ordinal week/day schedule rules (1st, 2nd, 3rd, last X of the month) in Agenda rules UI & availability calculations <!-- id: 16 -->
+- [ ] Phase 3: Verification & Testing <!-- id: 17 -->
+    - [ ] Test and verify all modified components, routes, and logic <!-- id: 18 -->

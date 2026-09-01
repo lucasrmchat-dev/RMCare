@@ -105,17 +105,27 @@ export default function ModuleConcluido() {
         </motion.div>
       </motion.div>
 
-      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold uppercase tracking-wider mb-2.5 shadow-sm">
-        <CheckCircle2 size={13} strokeWidth={2.5} /> Agendamento Concluído com Sucesso
+      <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full ${
+        !pixData && formData?.modalidade?.toLowerCase().includes("partic") && !formData?.status_pagamento_antecipado
+          ? "bg-amber-500/10 border border-amber-500/25 text-amber-800 dark:text-amber-300"
+          : "bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300"
+      } text-[11px] font-bold uppercase tracking-wider mb-2.5 shadow-sm`}>
+        <CheckCircle2 size={13} strokeWidth={2.5} /> {!pixData && formData?.modalidade?.toLowerCase().includes("partic") && !formData?.status_pagamento_antecipado ? "Horário Pré-Reservado" : "Agendamento Concluído com Sucesso"}
       </div>
 
       <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-zinc-950 dark:text-white tracking-tight leading-tight">
-        {pixData ? "Finalize seu pagamento Pix" : "Agendamento Confirmado!"}
+        {pixData
+          ? "Finalize seu pagamento Pix"
+          : !pixData && formData?.modalidade?.toLowerCase().includes("partic") && !formData?.status_pagamento_antecipado
+          ? "Horário Reservado!"
+          : "Agendamento Confirmado!"}
       </h2>
 
       <p className="text-zinc-500 dark:text-zinc-400 mt-2.5 text-xs sm:text-sm leading-relaxed max-w-md">
         {pixData
           ? `Sua vaga para ${procedimentoNome} com ${profissionalNome} no dia ${dataFormatada} às ${formData.horario_agendamento}h está pré-reservada.`
+          : !pixData && formData?.modalidade?.toLowerCase().includes("partic") && !formData?.status_pagamento_antecipado
+          ? `Seu atendimento para o dia ${dataFormatada} às ${formData.horario_agendamento}h foi pré-reservado no sistema e está pendente de confirmação do pagamento com a atendente no WhatsApp.`
           : `Tudo pronto! Seu atendimento para o dia ${dataFormatada} às ${formData.horario_agendamento}h foi confirmado com sucesso.`}
       </p>
 

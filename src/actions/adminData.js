@@ -158,11 +158,11 @@ export async function fetchAdminAgendamentos() {
   return data || [];
 }
 
-export async function actionCancelarAgendamentoAdmin(id, motivo = null) {
+export async function actionCancelarAgendamentoAdmin(id, motivo = null, mensagemCustom = null) {
   const admin = await getAdminLogado(true);
   const { data: appointment } = await supabaseAdmin
     .from("agendamentos")
-    .select("id, empresa_id, medico_profissional, data_agendamento, horario_agendamento")
+    .select("id, empresa_id, medico_profissional, data_agendamento, horario_agendamento, pacientes(*)")
     .eq("id", id)
     .eq("empresa_id", admin.empresa_id)
     .maybeSingle();
@@ -188,11 +188,23 @@ export async function actionCancelarAgendamentoAdmin(id, motivo = null) {
       agendamentoId: id,
       empresaId: admin.empresa_id,
       gatilho: "cancelado",
-      motivo: motivoEfetivo
+      motivo: motivoEfetivo,
+      mensagemCustom: mensagemCustom
     });
   } catch (errDisparo) {
     console.error("Aviso ao disparar WhatsApp de cancelamento:", errDisparo);
   }
+
+  // Registrar auditoria
+  try {
+    await actionRegistrarAuditoria({
+      modulo: "agenda",
+      acao: "Cancelamento / Desreserva de Horário",
+      detalhes: `Horário #${id} desreservado/cancelado (${appointment.pacientes?.nome_completo || "Paciente"}) por ${admin.usuario || admin.email}. Motivo: ${motivoEfetivo}.`,
+      novo: { status_atendimento: "cancelado", motivo: motivoEfetivo },
+      alterado_por: admin.usuario || admin.email
+    });
+  } catch (eAud) {}
 
   return data;
 }
@@ -219,13 +231,18 @@ export async function actionAprovarPagamentoAgendamento(id) {
 
     if (errUpdate) throw errUpdate;
 
-    // Dispara mensagem WhatsApp de Pagamento Aprovado se configurada
+    // Dispara mensagens WhatsApp de Pagamento Aprovado e Imediato se configuradas
     try {
       const { dispararGatilhoServidor } = await import("@/lib/serverDisparo");
       await dispararGatilhoServidor({
         agendamentoId: id,
         empresaId: admin.empresa_id,
         gatilho: "pagamento_aprovado"
+      });
+      await dispararGatilhoServidor({
+        agendamentoId: id,
+        empresaId: admin.empresa_id,
+        gatilho: "imediato"
       });
     } catch (errDisparo) {
       console.warn("Aviso ao disparar WhatsApp de pagamento aprovado:", errDisparo);

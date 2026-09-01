@@ -65,7 +65,6 @@ export default function ModuleCheckout() {
     setIsProcessingWpp(true);
     playDopamineSound("select");
     triggerHaptic("success");
-    showIsland("Reservando seu horário e abrindo WhatsApp...", "loading");
 
     try {
       // 1. Salva o agendamento no Supabase com pagamento pendente
@@ -76,16 +75,10 @@ export default function ModuleCheckout() {
         return;
       }
 
-      // 2. Dispara mensagens automáticas configuradas (ex: imediato, antes_pagamento)
-      try {
-        await processarMensagensDinamicas(formData, empresaDados, saved.id, null, {
-          valor: valorEntrada
-        });
-      } catch (eMsg) {
-        console.warn("Aviso ao processar mensagens do agendamento:", eMsg);
-      }
+      // Quando redirecionado para atendente no particular, o push NÃO é enviado automaticamente.
+      // O push será enviado apenas quando o atendente aprovar o pagamento no painel administrativo.
 
-      // 3. Formata mensagem e redireciona para o WhatsApp da clínica
+      // 2. Formata mensagem e redireciona para o WhatsApp da clínica
       const rawWpp =
         empresaDados?.config_campos?.whatsapp_atendimento ||
         empresaDados?.whatsapp_atendimento ||
@@ -105,8 +98,11 @@ export default function ModuleCheckout() {
         window.open(`https://wa.me/55${wppNum.replace(/^55/, "")}?text=${textoEncoded}`, "_blank");
       }
 
-      // 4. Avança para a tela de conclusão com sucesso
+      // 3. Mostra confirmação de reserva sem loading infinito
+      showIsland("Horário reservado com sucesso! Pendente de confirmação com a atendente.", "success");
       playDopamineSound("success");
+
+      // 4. Avança para a tela de conclusão
       const idxConcluido = modulosAtivos.indexOf("concluido");
       if (idxConcluido !== -1) {
         setCurrentStepIndex(idxConcluido);

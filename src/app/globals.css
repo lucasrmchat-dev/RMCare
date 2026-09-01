@@ -15,6 +15,16 @@
   --glass-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.08);
 }
 
+::selection {
+  background-color: rgba(159, 193, 49, 0.35);
+  color: inherit !important;
+}
+
+::-moz-selection {
+  background-color: rgba(159, 193, 49, 0.35);
+  color: inherit !important;
+}
+
 /* 3. Cores do Modo Escuro vinculadas à classe .dark */
 .dark {
   --background: #060a12;

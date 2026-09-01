@@ -284,7 +284,7 @@ export default function SuperAdminSistemaPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#07090e] text-white flex flex-col font-sans selection:bg-[#9FC131] selection:text-black">
+    <div className="min-h-screen bg-[#07090e] text-white flex flex-col font-sans">
       {/* BARRA SUPERIOR EXECUTIVA */}
       <AdminSessionBar />
 

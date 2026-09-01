@@ -80,6 +80,7 @@ export default function RestricoesView({
     nome_grupo: "",
     especialidades_selecionadas: [],
     dias_semana: [],
+    semanas_mes: ["todas"],
     hora_inicio: "08:00",
     hora_fim: "18:00",
     ultimo_horario_agendamento: "17:30",
@@ -115,6 +116,7 @@ export default function RestricoesView({
       nome_grupo: "",
       especialidades_selecionadas: [],
       dias_semana: [],
+      semanas_mes: ["todas"],
       hora_inicio: "08:00",
       hora_fim: "18:00",
       ultimo_horario_agendamento: "17:30",
@@ -161,6 +163,7 @@ export default function RestricoesView({
       nome_grupo: regra.especialidade && !listaEspecialidades.includes(regra.especialidade) ? regra.especialidade : "",
       especialidades_selecionadas: espsSelecionadas,
       dias_semana: regra.dias_semana || [],
+      semanas_mes: Array.isArray(regra.semanas_mes) && regra.semanas_mes.length > 0 ? regra.semanas_mes : ["todas"],
       hora_inicio: regra.hora_inicio?.slice(0, 5) || "08:00",
       hora_fim: regra.hora_fim?.slice(0, 5) || "18:00",
       ultimo_horario_agendamento: regra.ultimo_horario_agendamento?.slice(0, 5) || "17:30",
@@ -222,6 +225,7 @@ export default function RestricoesView({
     try {
       const payload = {
         dias_semana: formData.dias_semana,
+        semanas_mes: formData.semanas_mes || ["todas"],
         hora_inicio: formData.hora_inicio,
         hora_fim: formData.hora_fim,
         ultimo_horario_agendamento: formData.ultimo_horario_agendamento,
@@ -630,29 +634,89 @@ export default function RestricoesView({
 
                 <hr className="border-zinc-100 dark:border-zinc-800" />
 
-                {/* ETAPA 2: DIAS DE ATENDIMENTO */}
-                <section>
+                {/* ETAPA 2: DIAS DE ATENDIMENTO & OCORRÊNCIA NO MÊS */}
+                <section className="space-y-4">
                   <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-zinc-900 dark:text-white mb-4">
                     <span className="w-5 h-5 rounded-md bg-zinc-900 dark:bg-white text-white dark:text-black flex items-center justify-center text-[10px]">
                       2
                     </span>
-                    Dias de Atendimento
+                    Dias de Atendimento & Recorrência no Mês
                   </h4>
-                  <div className="flex flex-wrap gap-2">
-                    {DIAS_SEMANA.map((dia) => (
-                      <button
-                        type="button"
-                        key={dia.id}
-                        onClick={() => toggleDia(dia.id)}
-                        className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all border flex items-center justify-center cursor-pointer ${
-                          formData.dias_semana.includes(dia.id)
-                            ? "bg-zinc-900 text-white dark:bg-white dark:text-black border-zinc-900 dark:border-white shadow-sm"
-                            : "bg-white dark:bg-zinc-900 text-zinc-500 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300"
-                        }`}
-                      >
-                        {dia.label}
-                      </button>
-                    ))}
+                  <div>
+                    <label className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-wider block mb-2">
+                      Dias da Semana
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {DIAS_SEMANA.map((dia) => (
+                        <button
+                          type="button"
+                          key={dia.id}
+                          onClick={() => toggleDia(dia.id)}
+                          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all border flex items-center justify-center cursor-pointer ${
+                            formData.dias_semana.includes(dia.id)
+                              ? "bg-zinc-900 text-white dark:bg-white dark:text-black border-zinc-900 dark:border-white shadow-sm"
+                              : "bg-white dark:bg-zinc-900 text-zinc-500 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300"
+                          }`}
+                        >
+                          {dia.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800">
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-wider block">
+                        Ocorrência no Mês (Semanas Específicas)
+                      </label>
+                      <span className="text-[11px] text-zinc-500">
+                        Ex: 3 primeiras sextas, últimas sextas do mês
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {[
+                        { id: "todas", label: "Todas as Semanas" },
+                        { id: "primeiras_3", label: "3 Primeiras Semanas" },
+                        { id: "ultimas_3", label: "3 Últimas Semanas" },
+                        { id: "1", label: "1ª Semana do Mês" },
+                        { id: "2", label: "2ª Semana do Mês" },
+                        { id: "3", label: "3ª Semana do Mês" },
+                        { id: "4", label: "4ª Semana do Mês" },
+                        { id: "ultimas", label: "Última Semana do Mês" }
+                      ].map((sem) => {
+                        const isSelected = (formData.semanas_mes || ["todas"]).includes(sem.id);
+                        return (
+                          <button
+                            key={sem.id}
+                            type="button"
+                            onClick={() => {
+                              let current = formData.semanas_mes || ["todas"];
+                              if (sem.id === "todas") {
+                                current = ["todas"];
+                              } else {
+                                current = current.filter((x) => x !== "todas");
+                                if (isSelected) {
+                                  current = current.filter((x) => x !== sem.id);
+                                  if (current.length === 0) current = ["todas"];
+                                } else {
+                                  current = [...current, sem.id];
+                                }
+                              }
+                              setFormData((prev) => ({ ...prev, semanas_mes: current }));
+                            }}
+                            className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all text-left flex items-center justify-between cursor-pointer ${
+                              isSelected
+                                ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs"
+                                : "bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300"
+                            }`}
+                          >
+                            <span>{sem.label}</span>
+                            {isSelected && <CheckCircle2 size={12} />}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </section>
 

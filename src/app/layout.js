@@ -63,7 +63,7 @@ export default function RootLayout({ children }) {
           }}
         />
       </head>
-      <body className="min-h-full flex flex-col selection:bg-[var(--brand-primary,#9FC131)] selection:text-black font-sans">
+      <body className="min-h-full flex flex-col font-sans">
         {children}
         <CommandPalette />
       </body>
