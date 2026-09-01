@@ -362,3 +362,31 @@ export const CapsulePillLoader = ({ text = "Processando...", className = "" }) =
     <span>{text}</span>
   </div>
 );
+
+export const ModuleHeader = ({ icon: Icon, title, description, badge, rightElement }) => (
+  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-200/80 dark:border-white/10 pb-4 text-left">
+    <div className="flex items-start sm:items-center gap-3.5">
+      {Icon && (
+        <div className="w-12 h-12 rounded-2xl bg-zinc-900/5 dark:bg-white/5 border border-zinc-200/80 dark:border-white/10 text-zinc-900 dark:text-white flex items-center justify-center shrink-0 shadow-xs">
+          <Icon size={22} strokeWidth={1.8} className="text-[#86a621] dark:text-[#9FC131]" />
+        </div>
+      )}
+      <div>
+        {badge && (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 text-[10px] font-black uppercase tracking-wider mb-1">
+            {badge}
+          </span>
+        )}
+        <h2 className="text-xl font-bold text-zinc-950 dark:text-white tracking-tight leading-tight">
+          {title}
+        </h2>
+        {description && (
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 font-medium mt-0.5 leading-relaxed">
+            {description}
+          </p>
+        )}
+      </div>
+    </div>
+    {rightElement && <div className="flex items-center gap-2.5 shrink-0">{rightElement}</div>}
+  </div>
+);

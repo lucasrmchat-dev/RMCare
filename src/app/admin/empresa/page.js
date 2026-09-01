@@ -241,7 +241,6 @@ export default function EmpresaAdmin() {
         label: "Acesso & Segurança",
         icon: KeyRound,
         subItems: [
-          { id: "credenciais", label: "Minhas Credenciais" },
           { id: "usuarios", label: "Usuários & Permissões" },
           { id: "auditoria", label: "Auditoria do Sistema" }
         ]
@@ -250,15 +249,36 @@ export default function EmpresaAdmin() {
     []
   );
 
+  // Filtragem estrita de permissões (inclusive para a aba de Acesso & Segurança)
   const menuStructure = useMemo(() => {
     if (!loggedAdmin) return baseMenuStructure;
     if (loggedAdmin.is_owner || loggedAdmin.role === "sistema") return baseMenuStructure;
 
-    const userPerms = loggedAdmin.permissoes || ["agenda", "metricas"];
-    return baseMenuStructure.filter((item) => {
-      if (item.id === "conta") return true;
-      return userPerms.includes(item.id);
-    });
+    const userPerms = Array.isArray(loggedAdmin.permissoes) ? loggedAdmin.permissoes : ["agenda"];
+
+    return baseMenuStructure
+      .map((item) => {
+        // Se for o módulo conta, filtra seus sub-itens de acordo com as permissões reais
+        if (item.id === "conta") {
+          const hasUsuarios = userPerms.includes("usuarios") || userPerms.includes("conta");
+          const hasAuditoria = userPerms.includes("auditoria") || userPerms.includes("conta");
+
+          if (!hasUsuarios && !hasAuditoria) return null;
+
+          const filteredSub = (item.subItems || []).filter((sub) => {
+            if (sub.id === "usuarios") return hasUsuarios;
+            if (sub.id === "auditoria") return hasAuditoria;
+            return false;
+          });
+
+          return { ...item, subItems: filteredSub };
+        }
+
+        // Para os outros módulos, checa permissão direta
+        if (!userPerms.includes(item.id)) return null;
+        return item;
+      })
+      .filter(Boolean);
   }, [loggedAdmin, baseMenuStructure]);
 
   const handleMainMenuClick = (item) => {

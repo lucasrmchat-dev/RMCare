@@ -760,7 +760,8 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
     { value: "remarcado", label: "Quando Remarcado / Reagendado (Imediato)" },
     { value: "cancelado", label: "Quando Cancelado (Imediato)" },
     { value: "antes_pagamento", label: "Cobrança / Antes do Pagamento (Pendente)" },
-    { value: "pagamento_aprovado", label: "Confirmação de Pagamento Aprovado (Imediato)" }
+    { value: "pagamento_aprovado", label: "Confirmação de Pagamento Aprovado (Imediato)" },
+    { value: "pagamento_rejeitado", label: "Pagamento Não Aprovado / Recusado" }
   ];
 
   const variaveisDisponiveis = [

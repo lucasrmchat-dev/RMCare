@@ -877,6 +877,41 @@ export default function AgendaView({
   };
 
   // APROVAR PAGAMENTO MANUAL
+  const handleAbrirRejeicaoPagamento = (item) => {
+    playDopamineSound("click");
+    setRejectModalItem(item.rawItem || item);
+    setMotivoRejeicao("Comprovante de pagamento não aprovado ou inválido");
+    setMensagemCustomRejeicao("");
+    setEnviarMensagemRejeicao(true);
+    setConfirmApproveModalItem(null);
+  };
+
+  const handleConfirmarRejeicaoPagamento = async () => {
+    if (!rejectModalItem) return;
+    setIsRejecting(true);
+    playDopamineSound("select");
+    triggerHaptic("medium");
+
+    try {
+      const motivoFinal = motivoRejeicao?.trim() || "Comprovante de pagamento não aprovado ou inválido";
+      const msgCustom = enviarMensagemRejeicao ? (mensagemCustomRejeicao?.trim() || null) : null;
+      const res = await actionRejeitarPagamentoAgendamento(rejectModalItem.id, motivoFinal, msgCustom);
+      if (res && res.success === false) {
+        throw new Error(res.error || "Falha ao rejeitar pagamento.");
+      }
+      if (showToast) showToast("Pagamento rejeitado e horário liberado com sucesso!");
+      if (fetchAgendamentos) await fetchAgendamentos();
+      setRejectModalItem(null);
+      setMotivoRejeicao("");
+      setMensagemCustomRejeicao("");
+    } catch (err) {
+      console.error("Erro ao rejeitar pagamento:", err);
+      if (showToast) showToast(err.message || "Erro ao rejeitar pagamento.", "error");
+    } finally {
+      setIsRejecting(false);
+    }
+  };
+
   const handleAprovarPagamento = async (item) => {
     if (!item?.id) return;
     setApprovingPaymentId(item.id);
@@ -3353,6 +3388,14 @@ export default function AgendaView({
                 </button>
                 <button
                   type="button"
+                  onClick={() => handleAbrirRejeicaoPagamento(confirmApproveModalItem)}
+                  className="flex-1 py-3 px-4 rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50/70 dark:bg-red-950/30 text-red-600 dark:text-red-400 font-extrabold text-xs hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <X size={14} />
+                  <span>Não Aprovar</span>
+                </button>
+                <button
+                  type="button"
                   disabled={approvingPaymentId === confirmApproveModalItem.id}
                   onClick={async () => {
                     const itemParaAprovar = confirmApproveModalItem;
@@ -3495,6 +3538,117 @@ export default function AgendaView({
         )}
       </AnimatePresence>
 
+              {/* MODAL DE NÃO APROVAÇÃO / REJEIÇÃO DE PAGAMENTO COM MENSAGEM CUSTOMIZADA */}
+        {rejectModalItem && (
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-md z-[9999] flex items-center justify-center p-4"
+            onClick={() => setRejectModalItem(null)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-[#111116] border border-zinc-200/90 dark:border-zinc-800 rounded-3xl p-6 sm:p-7 max-w-lg w-full shadow-2xl space-y-5 text-left animate-in fade-in zoom-in-95 duration-200"
+            >
+              <div className="flex items-center justify-between border-b border-zinc-100 dark:border-white/5 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 flex items-center justify-center">
+                    <X size={20} strokeWidth={2.5} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-zinc-950 dark:text-white">
+                      Não Aprovar Pagamento
+                    </h3>
+                    <p className="text-[11px] text-zinc-400">
+                      Liberar o horário e notificar o paciente
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRejectModalItem(null)}
+                  className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="p-4 bg-zinc-50 dark:bg-zinc-900/60 rounded-2xl border border-zinc-200/60 dark:border-white/5 space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-zinc-400 font-bold uppercase tracking-wider text-[10px]">Paciente</span>
+                  <span className="font-extrabold text-zinc-950 dark:text-white">
+                    {rejectModalItem.pacientes?.nome_completo ||
+                      rejectModalItem.nomePaciente ||
+                      rejectModalItem.nome_paciente ||
+                      "Paciente"}
+                  </span>
+                </div>
+                <div className="flex justify-between border-t border-zinc-100 dark:border-white/5 pt-2">
+                  <span className="text-zinc-400 font-bold uppercase tracking-wider text-[10px]">Data & Horário</span>
+                  <span className="font-bold text-zinc-800 dark:text-zinc-200">
+                    {(rejectModalItem.data_agendamento || rejectModalItem.data)?.split("-").reverse().join("/")} às{" "}
+                    {rejectModalItem.horario_agendamento || rejectModalItem.horario}h
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-400">
+                  Motivo da Não Aprovação
+                </label>
+                <input
+                  type="text"
+                  value={motivoRejeicao}
+                  onChange={(e) => setMotivoRejeicao(e.target.value)}
+                  placeholder="Ex: Comprovante divergente ou ilegível..."
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs text-zinc-900 dark:text-white outline-none focus:border-red-500"
+                />
+              </div>
+
+              <div className="space-y-2 pt-2 border-t border-zinc-100 dark:border-white/5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-400">
+                    Enviar Mensagem de Não Aprovação no WhatsApp
+                  </label>
+                  <input
+                    type="checkbox"
+                    checked={enviarMensagemRejeicao}
+                    onChange={(e) => setEnviarMensagemRejeicao(e.target.checked)}
+                    className="rounded accent-red-600 cursor-pointer"
+                  />
+                </div>
+
+                {enviarMensagemRejeicao && (
+                  <textarea
+                    value={mensagemCustomRejeicao}
+                    onChange={(e) => setMensagemCustomRejeicao(e.target.value)}
+                    placeholder="Digite a mensagem personalizada que o paciente receberá no WhatsApp (ou deixe em branco para usar o padrão da clínica)..."
+                    rows={3}
+                    className="w-full p-3 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs text-zinc-900 dark:text-white outline-none focus:border-red-500"
+                  />
+                )}
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-zinc-100 dark:border-white/5">
+                <button
+                  type="button"
+                  onClick={() => setRejectModalItem(null)}
+                  className="flex-1 py-3 px-4 rounded-xl border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 font-bold text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors cursor-pointer"
+                >
+                  Voltar
+                </button>
+                <button
+                  type="button"
+                  disabled={isRejecting}
+                  onClick={handleConfirmarRejeicaoPagamento}
+                  className="flex-1 py-3 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-red-600/20 transition-all cursor-pointer"
+                >
+                  <X size={15} />
+                  <span>{isRejecting ? "Rejeitando..." : "Confirmar Não Aprovação"}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
       {/* MODAL: FICHA CLÍNICA, DADOS SENSÍVEIS & FILA DE MENSAGENS DO WHATSAPP */}
       <AnimatePresence>
         {sensitiveModalItem && temPermissaoSigiloClinico && (
@@ -3634,6 +3788,48 @@ export default function AgendaView({
                           <span className="text-zinc-400">Não informado</span>
                         )}
                       </div>
+                    </div>
+                  </div>
+
+                                    {/* OBSERVAÇÕES DO ATENDIMENTO & PACIENTE */}
+                  <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/25 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                        <FileText size={13} /> Observações do Atendimento & Paciente
+                      </span>
+                      {sensitiveModalItem.tipo === "medicalsys" && (
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-900 dark:text-amber-200">
+                          Importado ERP MedicalSYS
+                        </span>
+                      )}
+                    </div>
+                    <div className="p-3 bg-white/90 dark:bg-zinc-900/90 rounded-xl border border-amber-500/20 text-xs text-zinc-800 dark:text-zinc-200 font-medium whitespace-pre-wrap leading-relaxed min-h-[44px]">
+                      {sensitiveModalItem.rawItem?.observacoes ||
+                        sensitiveModalItem.rawItem?.observacao ||
+                        sensitiveModalItem.observacoes ||
+                        sensitiveModalItem.rawItem?.obs ||
+                        "Nenhuma observação informada para este atendimento."}
+                    </div>
+                  </div>
+
+                  {/* OBSERVAÇÕES DO ATENDIMENTO & PACIENTE */}
+                  <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/25 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                        <FileText size={13} /> Observações do Atendimento & Paciente
+                      </span>
+                      {sensitiveModalItem.tipo === "medicalsys" && (
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-900 dark:text-amber-200">
+                          Importado ERP MedicalSYS
+                        </span>
+                      )}
+                    </div>
+                    <div className="p-3 bg-white/90 dark:bg-zinc-900/90 rounded-xl border border-amber-500/20 text-xs text-zinc-800 dark:text-zinc-200 font-medium whitespace-pre-wrap leading-relaxed min-h-[44px]">
+                      {sensitiveModalItem.rawItem?.observacoes ||
+                        sensitiveModalItem.rawItem?.observacao ||
+                        sensitiveModalItem.observacoes ||
+                        sensitiveModalItem.rawItem?.obs ||
+                        "Nenhuma observação informada para este atendimento."}
                     </div>
                   </div>
 

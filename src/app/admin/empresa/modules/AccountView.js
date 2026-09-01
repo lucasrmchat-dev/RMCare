@@ -28,7 +28,8 @@ import {
   Sparkles,
   Info,
   KeyRound,
-  Check
+  Check,
+  X
 } from "lucide-react";
 import {
   fadeUp,
@@ -36,7 +37,8 @@ import {
   ButtonPrimary,
   TextInput,
   ToggleSwitch,
-  CapsuleSpinner
+  CapsuleSpinner,
+  ModuleHeader
 } from "../components/SharedUI";
 import {
   actionListarUsuariosEmpresa,
@@ -60,8 +62,8 @@ const PERMISSOES_DISPONIVEIS = [
 ];
 
 export default function AccountView({ subTab = "usuarios", setSubTab, showToast, loggedAdmin, isOwner }) {
-  // A aba ativa é controlada diretamente pela Sidebar (credenciais | usuarios | auditoria)
-  const currentView = subTab === "credenciais" ? "credenciais" : subTab === "auditoria" ? "auditoria" : "usuarios";
+  // A aba ativa é controlada exclusivamente pela Sidebar (usuarios | auditoria)
+  const isAuditoria = subTab === "auditoria";
 
   // USUÁRIOS & PERMISSÕES
   const [usuarios, setUsuarios] = useState([]);
@@ -78,7 +80,8 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
   });
   const [isSavingUser, setIsSavingUser] = useState(false);
 
-  // MINHAS CREDENCIAIS
+  // MODAL MINHAS CREDENCIAIS (INCORPORADO DIRETAMENTE EM USUÁRIOS)
+  const [modalCredenciais, setModalCredenciais] = useState(false);
   const [credForm, setCredForm] = useState({
     novoLogin: loggedAdmin?.email || loggedAdmin?.usuario || "",
     senhaAtual: "",
@@ -131,12 +134,12 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
   };
 
   useEffect(() => {
-    if (currentView === "usuarios") {
-      carregarUsuarios();
-    } else if (currentView === "auditoria") {
+    if (isAuditoria) {
       carregarAuditoria();
+    } else {
+      carregarUsuarios();
     }
-  }, [currentView, filtroDataInicio, filtroDataFim, filtroModulo]);
+  }, [isAuditoria, filtroDataInicio, filtroDataFim, filtroModulo]);
 
   // FILTRAGEM DE USUÁRIOS
   const usuariosFiltrados = useMemo(() => {
@@ -194,12 +197,14 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
       }
 
       if (showToast) showToast("Credenciais atualizadas com sucesso!");
+      setModalCredenciais(false);
       setCredForm((prev) => ({
         ...prev,
         senhaAtual: "",
         novaSenha: "",
         confirmaNovaSenha: ""
       }));
+      await carregarUsuarios();
     } catch (err) {
       if (showToast) showToast(err.message || "Erro ao salvar credenciais.", "error");
     } finally {
@@ -276,7 +281,7 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
     }
   };
 
-  // Toggle de permissão individual seguro e responsivo
+  // Toggle de permissão individual
   const togglePermissao = (permId) => {
     playDopamineSound("click");
     triggerHaptic("light");
@@ -292,106 +297,44 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
     <motion.div
       key="account-view"
       {...fadeUp}
-      className="flex-1 flex flex-col h-full overflow-hidden w-full max-w-7xl mx-auto p-4 md:p-6 lg:p-8 space-y-6"
+      className="flex-1 flex flex-col h-full overflow-hidden w-full max-w-7xl mx-auto p-4 md:p-6 lg:p-8 space-y-6 text-left"
     >
-      {/* CABEÇALHO */}
-      <div className="border-b border-zinc-200/80 dark:border-white/10 pb-4 text-left">
-        <h2 className="text-xl font-bold text-zinc-950 dark:text-white tracking-tight flex items-center gap-2.5">
-          {currentView === "credenciais" ? (
-            <>
-              <KeyRound size={22} className="text-[#86a621] dark:text-[#9FC131]" />
-              Minhas Credenciais de Acesso
-            </>
-          ) : currentView === "auditoria" ? (
-            <>
-              <History size={22} className="text-[#86a621] dark:text-[#9FC131]" />
-              Auditoria do Sistema & Logs de Atividade
-            </>
-          ) : (
-            <>
-              <ShieldCheck size={22} className="text-[#86a621] dark:text-[#9FC131]" />
-              Usuários & Permissões da Clínica
-            </>
-          )}
-        </h2>
-        <p className="text-xs text-zinc-500 dark:text-zinc-400 font-medium mt-0.5">
-          {currentView === "credenciais"
-            ? "Atualize seu e-mail de login e altere sua senha de acesso ao painel."
-            : currentView === "auditoria"
+      {/* CABEÇALHO PADRONIZADO APPLE DESIGN */}
+      <ModuleHeader
+        icon={isAuditoria ? History : ShieldCheck}
+        title={isAuditoria ? "Auditoria do Sistema & Logs" : "Usuários & Permissões da Clínica"}
+        description={
+          isAuditoria
             ? "Histórico imutável de todas as ações, alterações de regras e aprovações executadas."
-            : "Gerencie o acesso da sua equipe, crie novos atendentes e configure permissões por aba."}
-        </p>
-      </div>
+            : "Gerencie contas de acesso com e-mail, permissões por aba e altere suas credenciais."
+        }
+        rightElement={
+          !isAuditoria && (
+            <button
+              type="button"
+              onClick={() => {
+                setCredForm({
+                  novoLogin: loggedAdmin?.email || loggedAdmin?.usuario || "",
+                  senhaAtual: "",
+                  novaSenha: "",
+                  confirmaNovaSenha: ""
+                });
+                setModalCredenciais(true);
+              }}
+              className="px-4 py-2.5 rounded-2xl bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-900 dark:text-white text-xs font-extrabold flex items-center gap-2 border border-zinc-200/80 dark:border-white/10 transition-all cursor-pointer"
+            >
+              <KeyRound size={15} className="text-[#86a621] dark:text-[#9FC131]" />
+              <span>Minhas Credenciais</span>
+            </button>
+          )
+        }
+      />
 
-      {/* CONTEÚDO PRINCIPAL CONTROLADO PELA SIDEBAR */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar pb-24 space-y-6 pr-1 text-left">
-        {/* SUB-VIEW 1: MINHAS CREDENCIAIS */}
-        {currentView === "credenciais" && (
-          <div className="max-w-xl bg-white/80 dark:bg-[#0f0f13]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
-            <div className="flex items-center gap-3 pb-4 border-b border-zinc-100 dark:border-white/5">
-              <div className="w-12 h-12 rounded-2xl bg-[#9FC131]/15 text-[#86a621] dark:text-[#9FC131] flex items-center justify-center">
-                <KeyRound size={24} strokeWidth={2.2} />
-              </div>
-              <div>
-                <h3 className="text-base font-extrabold text-zinc-950 dark:text-white">
-                  Alterar E-mail e Senha
-                </h3>
-                <span className="text-xs text-zinc-400">
-                  Usuário conectado: <strong>{loggedAdmin?.email || loggedAdmin?.usuario}</strong>
-                </span>
-              </div>
-            </div>
-
-            <form onSubmit={handleSalvarMinhasCredenciais} className="space-y-4">
-              <TextInput
-                label="E-mail de Acesso (Login)"
-                type="email"
-                value={credForm.novoLogin}
-                onChange={(e) => setCredForm({ ...credForm, novoLogin: e.target.value })}
-                placeholder="seu.email@clinica.com.br"
-              />
-
-              <TextInput
-                label="Senha Atual (Obrigatória)"
-                type="password"
-                value={credForm.senhaAtual}
-                onChange={(e) => setCredForm({ ...credForm, senhaAtual: e.target.value })}
-                placeholder="Digite sua senha atual"
-              />
-
-              <div className="grid sm:grid-cols-2 gap-3 pt-2 border-t border-zinc-100 dark:border-white/5">
-                <TextInput
-                  label="Nova Senha (Opcional)"
-                  type="password"
-                  value={credForm.novaSenha}
-                  onChange={(e) => setCredForm({ ...credForm, novaSenha: e.target.value })}
-                  placeholder="Mínimo 8 caracteres"
-                />
-                <TextInput
-                  label="Confirmar Nova Senha"
-                  type="password"
-                  value={credForm.confirmaNovaSenha}
-                  onChange={(e) => setCredForm({ ...credForm, confirmaNovaSenha: e.target.value })}
-                  placeholder="Repita a nova senha"
-                />
-              </div>
-
-              <div className="pt-3">
-                <ButtonPrimary
-                  disabled={isSavingCred}
-                  type="submit"
-                  className="w-full sm:w-auto px-6 py-3 text-xs min-h-[44px] rounded-2xl cursor-pointer"
-                >
-                  <span>{isSavingCred ? "Salvando..." : "Salvar Novas Credenciais"}</span>
-                </ButtonPrimary>
-              </div>
-            </form>
-          </div>
-        )}
-
-        {/* SUB-VIEW 2: USUÁRIOS & PERMISSÕES */}
-        {currentView === "usuarios" && (
+      {/* CONTEÚDO PRINCIPAL */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar pb-24 space-y-6 pr-1">
+        {!isAuditoria ? (
           <div className="space-y-6">
+            {/* BARRA SUPERIOR DE USUÁRIOS */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
               <div className="relative flex-1 max-w-md">
                 <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
@@ -422,6 +365,7 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
               </ButtonPrimary>
             </div>
 
+            {/* LISTA DE USUÁRIOS */}
             {loadingUsuarios ? (
               <div className="p-12 text-center">
                 <CapsuleSpinner size="lg" className="mx-auto text-zinc-400" />
@@ -438,6 +382,7 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
                 {usuariosFiltrados.map((u) => {
                   const perms = Array.isArray(u.permissoes) ? u.permissoes : [];
                   const isOwnerUser = Boolean(u.is_owner);
+                  const isCurrentUser = loggedAdmin?.id === u.id || loggedAdmin?.usuario === u.usuario || loggedAdmin?.email === u.email;
 
                   return (
                     <div
@@ -461,15 +406,22 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
                             </div>
                           </div>
 
-                          {isOwnerUser ? (
-                            <span className="px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-[10px] font-black uppercase tracking-wider">
-                              Proprietário
-                            </span>
-                          ) : (
-                            <span className="px-2.5 py-1 rounded-full bg-blue-500/15 border border-blue-500/30 text-blue-700 dark:text-blue-300 text-[10px] font-bold uppercase tracking-wider">
-                              Operador
-                            </span>
-                          )}
+                          <div className="flex flex-col items-end gap-1">
+                            {isOwnerUser ? (
+                              <span className="px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-[10px] font-black uppercase tracking-wider">
+                                Proprietário
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-1 rounded-full bg-blue-500/15 border border-blue-500/30 text-blue-700 dark:text-blue-300 text-[10px] font-bold uppercase tracking-wider">
+                                Operador
+                              </span>
+                            )}
+                            {isCurrentUser && (
+                              <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400">
+                                (Você)
+                              </span>
+                            )}
+                          </div>
                         </div>
 
                         {/* TAGS DE PERMISSÃO */}
@@ -496,24 +448,45 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
                       </div>
 
                       {/* AÇÕES */}
-                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-white/5">
-                        <button
-                          type="button"
-                          onClick={() => handleAbrirEdicao(u)}
-                          className="px-3 py-1.5 rounded-xl text-xs font-bold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
-                        >
-                          Editar Permissões
-                        </button>
-                        {!isOwnerUser && (
+                      <div className="flex items-center justify-between gap-2 pt-2 border-t border-zinc-100 dark:border-white/5">
+                        {isCurrentUser ? (
                           <button
                             type="button"
-                            onClick={() => handleExcluirUsuario(u)}
-                            className="p-2 rounded-xl text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors cursor-pointer"
-                            title="Excluir Usuário"
+                            onClick={() => {
+                              setCredForm({
+                                novoLogin: u.email || u.usuario || "",
+                                senhaAtual: "",
+                                novaSenha: "",
+                                confirmaNovaSenha: ""
+                              });
+                              setModalCredenciais(true);
+                            }}
+                            className="text-xs font-bold text-[#86a621] dark:text-[#9FC131] hover:underline flex items-center gap-1 cursor-pointer"
                           >
-                            <Trash2 size={14} />
+                            <KeyRound size={13} />
+                            <span>Alterar Minhas Credenciais</span>
                           </button>
-                        )}
+                        ) : <div />}
+
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleAbrirEdicao(u)}
+                            className="px-3 py-1.5 rounded-xl text-xs font-bold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                          >
+                            Editar
+                          </button>
+                          {!isOwnerUser && (
+                            <button
+                              type="button"
+                              onClick={() => handleExcluirUsuario(u)}
+                              className="p-2 rounded-xl text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors cursor-pointer"
+                              title="Excluir Usuário"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
@@ -521,10 +494,8 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
               </div>
             )}
           </div>
-        )}
-
-        {/* SUB-VIEW 3: AUDITORIA DO SISTEMA */}
-        {currentView === "auditoria" && (
+        ) : (
+          /* PAINEL DE AUDITORIA */
           <div className="space-y-4">
             <div className="p-5 rounded-3xl bg-white/80 dark:bg-[#0f0f13]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 shadow-sm space-y-4">
               <div className="flex items-center justify-between">
@@ -684,7 +655,7 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
         )}
       </div>
 
-      {/* MODAL DE CRIAÇÃO / EDIÇÃO DE USUÁRIO COM SELEÇÃO MODERNA E LIMPA DE PERMISSÕES */}
+      {/* MODAL DE CRIAÇÃO / EDIÇÃO DE USUÁRIO */}
       <AnimatePresence>
         {modalNovoUsuario && (
           <div
@@ -712,6 +683,13 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
                     </p>
                   </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setModalNovoUsuario(false)}
+                  className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                >
+                  <X size={16} />
+                </button>
               </div>
 
               <div className="space-y-3.5">
@@ -738,7 +716,7 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
                   onChange={(e) => setFormUser({ ...formUser, senha: e.target.value })}
                 />
 
-                {/* SELETOR DE PERMISSÕES - DESIGN MODERNO SEM PARTE PRETA */}
+                {/* SELETOR DE PERMISSÕES LIMPO E MODERNO */}
                 <div className="pt-2 border-t border-zinc-100 dark:border-white/5 space-y-2">
                   <div className="flex items-center justify-between">
                     <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
@@ -808,6 +786,99 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
                   <span>{isSavingUser ? "Salvando..." : editingUser ? "Salvar Alterações" : "Criar Usuário"}</span>
                 </button>
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL: MINHAS CREDENCIAIS */}
+      <AnimatePresence>
+        {modalCredenciais && (
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-md z-[9999] flex items-center justify-center p-4"
+            onClick={() => setModalCredenciais(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-[#111116] border border-zinc-200/90 dark:border-zinc-800 rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl space-y-5 text-left"
+            >
+              <div className="flex items-center justify-between border-b border-zinc-100 dark:border-white/5 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-[#9FC131]/15 text-[#86a621] dark:text-[#9FC131] flex items-center justify-center">
+                    <KeyRound size={20} strokeWidth={2.2} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-zinc-950 dark:text-white">
+                      Minhas Credenciais
+                    </h3>
+                    <p className="text-[11px] text-zinc-400">
+                      Atualize seu e-mail e redefina sua senha
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setModalCredenciais(false)}
+                  className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSalvarMinhasCredenciais} className="space-y-3.5">
+                <TextInput
+                  label="Endereço de E-mail (Login)"
+                  type="email"
+                  value={credForm.novoLogin}
+                  onChange={(e) => setCredForm({ ...credForm, novoLogin: e.target.value })}
+                  placeholder="seu.email@clinica.com.br"
+                />
+
+                <TextInput
+                  label="Senha Atual (Obrigatória)"
+                  type="password"
+                  value={credForm.senhaAtual}
+                  onChange={(e) => setCredForm({ ...credForm, senhaAtual: e.target.value })}
+                  placeholder="Digite sua senha atual"
+                />
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-zinc-100 dark:border-white/5">
+                  <TextInput
+                    label="Nova Senha"
+                    type="password"
+                    value={credForm.novaSenha}
+                    onChange={(e) => setCredForm({ ...credForm, novaSenha: e.target.value })}
+                    placeholder="Mínimo 8 dígitos"
+                  />
+                  <TextInput
+                    label="Confirmar Senha"
+                    type="password"
+                    value={credForm.confirmaNovaSenha}
+                    onChange={(e) => setCredForm({ ...credForm, confirmaNovaSenha: e.target.value })}
+                    placeholder="Repita a nova senha"
+                  />
+                </div>
+
+                <div className="flex gap-2 pt-3 border-t border-zinc-100 dark:border-white/5">
+                  <button
+                    type="button"
+                    onClick={() => setModalCredenciais(false)}
+                    className="flex-1 py-3 px-4 rounded-xl border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 font-bold text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingCred}
+                    className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/20 transition-all cursor-pointer"
+                  >
+                    <span>{isSavingCred ? "Salvando..." : "Salvar Senha"}</span>
+                  </button>
+                </div>
+              </form>
             </motion.div>
           </div>
         )}

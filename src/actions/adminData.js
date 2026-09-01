@@ -2394,6 +2394,51 @@ export async function fetchAdminAuditoriaLogs(filtros = {}) {
 export const fetchAdminAuditoria = fetchAdminAuditoriaLogs;
 
 /* ==========================================
+   OBSERVAÇÕES CLÍNICAS E HISTÓRICO DE NOTAS
+   ========================================== */
+export async function actionAdicionarObservacaoPaciente({ agendamentoId, pacienteId, texto, autor }) {
+  const admin = await getAdminLogado(true);
+  if (!texto || !texto.trim()) throw new Error("A observação não pode estar vazia.");
+
+  const autorFinal = autor || admin.nome || admin.usuario || admin.email || "Equipe Clínica";
+  const dataHoraAtual = new Date().toLocaleString("pt-BR");
+  const novaLinha = `[${dataHoraAtual} - ${autorFinal}]: ${texto.trim()}`;
+
+  if (agendamentoId) {
+    const { data: ag } = await supabaseAdmin
+      .from("agendamentos")
+      .select("id, observacoes")
+      .eq("id", agendamentoId)
+      .eq("empresa_id", admin.empresa_id)
+      .maybeSingle();
+
+    if (ag) {
+      const obsAtual = ag.observacoes ? `${ag.observacoes}
+
+${novaLinha}` : novaLinha;
+      await supabaseAdmin
+        .from("agendamentos")
+        .update({ observacoes: obsAtual })
+        .eq("id", agendamentoId)
+        .eq("empresa_id", admin.empresa_id);
+    }
+  }
+
+  // Registrar auditoria
+  try {
+    await actionRegistrarAuditoria({
+      modulo: "agenda",
+      acao: "Nova Observação Clínica",
+      detalhes: `Anotação inserida no atendimento #${agendamentoId || pacienteId} por ${autorFinal}: "${texto.trim()}".`,
+      novo: { observacao: novaLinha },
+      alterado_por: autorFinal
+    });
+  } catch (e) {}
+
+  return { success: true, novaLinha };
+}
+
+/* ==========================================
    AGENDAMENTO MANUAL PELO COLABORADOR
    ========================================== */
 export async function actionCriarAgendamentoManualAdmin(dados) {
