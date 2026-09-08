@@ -11,6 +11,19 @@ export const parseTemplate = (tpl, data) => {
   return tpl.replace(/{(\w+)}/g, (_, k) => (data[k] !== undefined ? data[k] : `{${k}}`));
 };
 
+const TEMPLATES_PADRAO = {
+  imediato:
+    "Olá {nome}, seu agendamento de {servico} com {especialista} foi confirmado com sucesso para o dia {data} às {hora}h na {clinica}. Te aguardamos!",
+  cancelado:
+    "Olá {nome}, informamos que seu agendamento de {servico} com {especialista} marcado para o dia {data} às {hora}h foi cancelado. Motivo: {motivo}.",
+  remarcado:
+    "Olá {nome}, seu agendamento de {servico} com {especialista} foi remarcado com sucesso para o dia {data} às {hora}h. Te aguardamos!",
+  pagamento_aprovado:
+    "Olá {nome}, seu pagamento para o agendamento de {servico} com {especialista} no dia {data} às {hora}h foi confirmado com sucesso!",
+  pagamento_rejeitado:
+    "Olá {nome}, informamos que o pagamento/comprovante referente ao agendamento de {servico} no dia {data} às {hora}h não foi aprovado. Motivo: {motivo}. Por favor, entre em contato conosco para regularizar ou escolher um novo horário."
+};
+
 export async function dispararGatilhoServidor({
   agendamentoId,
   empresaId,
@@ -30,7 +43,10 @@ export async function dispararGatilhoServidor({
       .eq("id", agendamentoId)
       .maybeSingle();
 
-    if (errAg || !ag) return false;
+    if (errAg || !ag) {
+      console.warn("Agendamento não encontrado para disparo de mensagem:", agendamentoId);
+      return false;
+    }
 
     // 2. Buscar dados da empresa
     const { data: emp, error: errEmp } = await supabaseAdmin
@@ -39,39 +55,32 @@ export async function dispararGatilhoServidor({
       .eq("id", empresaId)
       .maybeSingle();
 
-    if (errEmp || !emp) return false;
-
-    const regras = emp.config_mensagens || [];
-    let regrasDoGatilho = regras.filter((r) => r.gatilho === gatilho);
-    if (regrasDoGatilho.length === 0 && mensagemCustom) {
-      regrasDoGatilho = [{
-        gatilho,
-        mensagem: mensagemCustom,
-        tipo_envio: "whatsapp"
-      }];
+    if (errEmp || !emp) {
+      console.warn("Empresa não encontrada para disparo:", empresaId);
+      return false;
     }
-    if (regrasDoGatilho.length === 0) return false;
 
     const paciente = ag.pacientes || {};
-    const tel = paciente.telefone_whatsapp || "";
-    if (!tel) return false;
+    const tel = paciente.telefone_whatsapp || ag.telefone_whatsapp || "";
+    if (!tel) {
+      console.warn("Paciente sem telefone cadastrado para disparo de WhatsApp.");
+      return false;
+    }
 
     const telFormatadoEnvio = formatarTelefoneEnvio(tel);
-
-    const nomeCompleto = (paciente.nome_completo || "").trim() || "Paciente";
+    const nomeCompleto = (paciente.nome_completo || ag.nome_paciente || paciente.nome || ag.nome || "").trim() || "Paciente";
     const primeiroNome = nomeCompleto.split(" ")[0] || "Paciente";
     const sobrenome = nomeCompleto.split(" ").slice(1).join(" ");
 
-    // Motivo padrão de cancelamento / remarcação se não fornecido
+    // Motivo de cancelamento / remarcação
     const motivoPadrao = "Readequação operacional da grade de atendimentos da clínica";
     const motivoFinal = (motivo && String(motivo).trim()) ? String(motivo).trim() : motivoPadrao;
 
-    // Histórico de datas (anterior e nova)
+    // Histórico de datas
     const dataAnterior = ag.data_agendamento;
     const horaAnterior = ag.horario_agendamento ? ag.horario_agendamento.substring(0, 5) : "";
     const dataAnteriorFormatada = dataAnterior ? dataAnterior.split("-").reverse().join("/") : "";
 
-    // Data/Hora Nova (remarcada ou atual)
     const dataFinal = novaData || ag.data_agendamento;
     const horaFinal = (novoHorario || ag.horario_agendamento || "").substring(0, 5);
     const dataFormatada = dataFinal ? dataFinal.split("-").reverse().join("/") : "";
@@ -82,11 +91,11 @@ export async function dispararGatilhoServidor({
       ag.tipo_servico === "Exame" ||
       /(colonoscopia|endoscopia|ultrassom|exame)/i.test(`${nomeEspecialidade} ${nomeProfissional}`);
 
-    // Variáveis universais para mensagens
+    // Variáveis universais para substituição nos templates
     const vars = {
       nome: nomeCompleto,
       nome_completo: nomeCompleto,
-      primeiro_nome: nomeCompleto,
+      primeiro_nome: primeiroNome,
       sobrenome: sobrenome,
       servico: isExame ? nomeEspecialidade : nomeProfissional,
       especialista: nomeProfissional,
@@ -116,6 +125,7 @@ export async function dispararGatilhoServidor({
       valor: ag.valor_total ? `R$ ${Number(ag.valor_total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : ""
     };
 
+    // Resolução de URL de Webhook / WhatsApp
     const configWebhooks = emp.config_campos?.config_webhooks || emp.config_chaves?.config_webhooks || {};
 
     const urlWebhookPadrao =
@@ -123,18 +133,63 @@ export async function dispararGatilhoServidor({
       emp.config_chaves?.rmchat_webhook_url ||
       emp.config_chaves?.url_rmchat ||
       emp.config_chaves?.webhook_url ||
-      emp.config_campos?.rmchat_webhook_url;
+      emp.config_campos?.rmchat_webhook_url ||
+      emp.config_campos?.url_rmchat ||
+      emp.config_campos?.whatsapp_webhook_url;
 
     const urlWebhookFluxoInteligente =
       configWebhooks.webhook_url ||
       emp.config_chaves?.webhook_url_inteligente ||
       urlWebhookPadrao;
 
+    // Regras cadastradas: busca na nova tabela regras_mensagens com fallback para emp.config_mensagens
+    let regras = [];
+    try {
+      const { data: regrasDb, error: errRegrasDb } = await supabaseAdmin
+        .from("regras_mensagens")
+        .select("*")
+        .eq("empresa_id", empresaId)
+        .eq("ativo", true)
+        .order("ordem", { ascending: true })
+        .order("created_at", { ascending: true });
+
+      if (!errRegrasDb && Array.isArray(regrasDb) && regrasDb.length > 0) {
+        regras = regrasDb;
+      } else {
+        regras = Array.isArray(emp.config_mensagens) ? emp.config_mensagens.filter((r) => r.ativo !== false) : [];
+      }
+    } catch {
+      regras = Array.isArray(emp.config_mensagens) ? emp.config_mensagens.filter((r) => r.ativo !== false) : [];
+    }
+
+    let regrasDoGatilho = regras.filter((r) => r.gatilho === gatilho);
+
+    // Se houver mensagem customizada (ex: pelo modal de cancelamento/rejeição), ela tem prioridade
+    if (mensagemCustom && String(mensagemCustom).trim()) {
+      regrasDoGatilho = [
+        {
+          gatilho,
+          mensagem: String(mensagemCustom).trim(),
+          tipo_envio: "whatsapp"
+        }
+      ];
+    } else if (regrasDoGatilho.length === 0) {
+      // Se não houver regra configurada no painel, usa o template padrão daquele gatilho
+      const templateFallback = TEMPLATES_PADRAO[gatilho] || TEMPLATES_PADRAO.imediato;
+      regrasDoGatilho = [
+        {
+          gatilho,
+          mensagem: templateFallback,
+          tipo_envio: "whatsapp"
+        }
+      ];
+    }
+
     for (const regra of regrasDoGatilho) {
       const isWebhookTipo = regra.tipo_envio === "webhook";
       const targetUrl = (regra.url_webhook_customizada || (isWebhookTipo ? urlWebhookFluxoInteligente : urlWebhookPadrao))?.trim();
 
-      const msgTpl = mensagemCustom && gatilho === "cancelado" ? mensagemCustom : regra.mensagem;
+      const msgTpl = mensagemCustom && String(mensagemCustom).trim() ? String(mensagemCustom).trim() : regra.mensagem;
       const msgFormatada = parseTemplate(msgTpl, vars);
       let enviadoComSucesso = false;
 
@@ -169,7 +224,7 @@ export async function dispararGatilhoServidor({
                 id: paciente.id || null,
                 nome: nomeCompleto,
                 nome_completo: nomeCompleto,
-                primeiro_nome: nomeCompleto,
+                primeiro_nome: primeiroNome,
                 telefone: telFormatadoEnvio,
                 cpf: paciente.cpf || null,
                 email: paciente.email || null,
@@ -190,6 +245,7 @@ export async function dispararGatilhoServidor({
               phone: telFormatadoEnvio,
               texto: msgFormatada,
               mensagem: msgFormatada,
+              text: msgFormatada,
               media_url: regra.anexo_url || null
             };
           }
@@ -203,6 +259,8 @@ export async function dispararGatilhoServidor({
             headers["x-webhook-secret"] = configWebhooks.webhook_secret;
           }
 
+          console.log(`📡 [DISPARO SERVIDOR] Enviando gatilho "${gatilho}" para ${targetUrl} | Tel: ${telFormatadoEnvio}`);
+
           const res = await fetch(targetUrl, {
             method: "POST",
             headers,
@@ -210,12 +268,20 @@ export async function dispararGatilhoServidor({
           });
 
           enviadoComSucesso = res.ok;
+          if (!res.ok) {
+            const errTxt = await res.text();
+            console.error(`❌ [DISPARO SERVIDOR] Servidor retornou HTTP ${res.status}:`, errTxt);
+          } else {
+            console.log(`✅ [DISPARO SERVIDOR] Mensagem enviada com sucesso para ${telFormatadoEnvio}`);
+          }
         } catch (fetchErr) {
-          console.error("Erro ao enviar webhook no servidor:", fetchErr);
+          console.error("❌ [DISPARO SERVIDOR] Erro ao enviar fetch:", fetchErr);
         }
+      } else {
+        console.warn("⚠️ [DISPARO SERVIDOR] Nenhuma URL de WhatsApp/Webhook configurada na empresa:", emp.nome);
       }
 
-      // Registra na fila_mensagens para auditoria
+      // Registra na fila_mensagens para histórico e auditoria
       try {
         const payloadInsert = {
           empresa_id: empresaId,

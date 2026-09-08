@@ -501,7 +501,23 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
   });
 
   // 4. REGRAS DE MENSAGENS CONFIGURADAS
-  const regrasMensagens = empresaDados?.config_mensagens || [];
+  let regrasMensagens = empresaDados?.regras_mensagens || empresaDados?.config_mensagens || [];
+  if ((!Array.isArray(regrasMensagens) || regrasMensagens.length === 0) && empresaDados?.id) {
+    try {
+      const { data: regrasDb } = await supabase
+        .from("regras_mensagens")
+        .select("*")
+        .eq("empresa_id", empresaDados.id)
+        .eq("ativo", true)
+        .order("ordem", { ascending: true });
+      if (Array.isArray(regrasDb) && regrasDb.length > 0) {
+        regrasMensagens = regrasDb;
+      }
+    } catch (e) {
+      console.warn("Aviso ao buscar regras_mensagens no agendamento:", e);
+    }
+  }
+
   if (!Array.isArray(regrasMensagens) || regrasMensagens.length === 0) {
     console.warn("⚠️ Nenhuma regra de mensagem cadastrada.");
     console.groupEnd();
@@ -521,6 +537,10 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
   let mensagensParaFila = [];
 
   for (const [idx, regra] of regrasMensagens.entries()) {
+    if (regra.ativo === false) {
+      console.log(`⏩ [Regra #${idx + 1}] Ignorada: desativada.`);
+      continue;
+    }
     const alvo = (regra.alvo || (regra.especialidade === "Todas" ? "Todas" : `especialidade:${regra.especialidade}`)).trim();
     console.log(`🔍 [Regra #${idx + 1}] Gatilho: "${regra.gatilho}" | Alvo: "${alvo}"`);
 
@@ -552,7 +572,18 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
     // Helper de normalização (remove acentos, símbolos e espaços)
     const norm = (s) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
-    if (!alvo || alvo === "Todas" || alvo === "todos") {
+    const tipoAlvo = norm(regra.tipo_alvo || (
+      regra.alvo?.startsWith("categoria:") ? "categoria" :
+      regra.alvo?.startsWith("especialidade:") ? "especialidade" :
+      regra.categoria ? "categoria" :
+      regra.especialidade && regra.especialidade !== "Todas" ? "especialidade" :
+      (alvo === "Todas" || alvo === "todos" ? "todos" : "")
+    ));
+
+    const catRegra = norm(regra.categoria || (regra.alvo?.startsWith("categoria:") ? regra.alvo.replace("categoria:", "") : (tipoAlvo === "categoria" ? alvo : "")));
+    const espRegra = norm(regra.especialidade || (regra.alvo?.startsWith("especialidade:") ? regra.alvo.replace("especialidade:", "") : (tipoAlvo === "especialidade" ? alvo : "")));
+
+    if (tipoAlvo === "todos" || (!catRegra && !espRegra && (alvo === "Todas" || alvo === "todos" || !alvo))) {
       // Se for regra global "Todas", bloqueia envio de mensagens de preparo de exame (PICOPREP, etc.) para consultas!
       const msgLower = (regra.mensagem || "").toLowerCase();
       const contemPreparoExame = /(picoprep|laxante|lavagem|colonoscopia|endoscopia|jejum absoluto|laudo de exame)/i.test(msgLower);
@@ -561,17 +592,26 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
         continue;
       }
       alvoValido = true;
-    } else if (alvo.startsWith("categoria:")) {
-      const targetCat = norm(alvo.replace("categoria:", ""));
-      const isTargetExame = targetCat.includes("exame");
-      const isTargetConsulta = targetCat.includes("consulta");
+    } else if (tipoAlvo === "categoria" || catRegra) {
+      const isTargetExame = catRegra.includes("exame");
+      const isTargetConsulta = catRegra.includes("consulta");
 
       if (isTargetExame && isExame) {
         alvoValido = true;
       } else if (isTargetConsulta && !isExame) {
         alvoValido = true;
       } else {
-        console.log(`⛔ [Regra #${idx + 1}] BLOQUEADA POR CATEGORIA: Regra é "${targetCat}", mas atendimento é "${categoriaEfetiva}".`);
+        console.log(`⛔ [Regra #${idx + 1}] BLOQUEADA POR CATEGORIA: Regra é "${catRegra}", mas atendimento é "${categoriaEfetiva}".`);
+        continue;
+      }
+    } else if (tipoAlvo === "especialidade" || espRegra) {
+      const currEsp = norm(especialidade);
+      const currSub = norm(subtipo_exame);
+
+      if (currEsp === espRegra || (isExame && currSub === espRegra) || currEsp.includes(espRegra) || espRegra.includes(currEsp)) {
+        alvoValido = true;
+      } else {
+        console.log(`⛔ [Regra #${idx + 1}] BLOQUEADA POR ESPECIALIDADE: Esperada="${espRegra}", Atual="${currEsp}".`);
         continue;
       }
     } else if (alvo.startsWith("tipo:")) {
@@ -579,18 +619,6 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
       if (targetTipo.includes("exame") && isExame) alvoValido = true;
       else if (targetTipo.includes("consulta") && !isExame) alvoValido = true;
       else continue;
-    } else if (alvo.startsWith("especialidade:")) {
-      const targetEsp = norm(alvo.replace("especialidade:", ""));
-      const currEsp = norm(especialidade);
-      const currSub = norm(subtipo_exame);
-
-      // Casamento ESTRITO e EXATO (evita que "Colonoscopia" case com "Endoscopia + Colonoscopia")
-      if (currEsp === targetEsp || (isExame && currSub === targetEsp)) {
-        alvoValido = true;
-      } else {
-        console.log(`⛔ [Regra #${idx + 1}] BLOQUEADA POR ESPECIALIDADE: Esperada="${targetEsp}", Atual="${currEsp}".`);
-        continue;
-      }
     } else if (alvo.startsWith("servico:")) {
       const targetSrv = norm(alvo.replace("servico:", ""));
       const currProf = norm(nomeProfissionalOficial);

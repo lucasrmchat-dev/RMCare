@@ -21,7 +21,7 @@ import {
   Lock
 } from "lucide-react";
 import AdminSessionBar from "@/components/AdminSessionBar";
-import { spring } from "./components/SharedUI";
+import { spring, CapsuleSpinner } from "./components/SharedUI";
 import {
   fetchAdminBloqueios,
   fetchAdminAgendamentos,
@@ -50,6 +50,7 @@ export default function EmpresaAdmin() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const [loggedAdmin, setLoggedAdmin] = useState(null);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [bloqueios, setBloqueios] = useState([]);
   const [agendamentos, setAgendamentos] = useState([]);
   const [servicos, setServicos] = useState([]);
@@ -157,6 +158,17 @@ export default function EmpresaAdmin() {
           return;
         }
         setLoggedAdmin(info);
+        setIsLoadingAuth(false);
+
+        // Se o usuário não tiver permissão para agenda, redireciona para a primeira aba permitida
+        if (!info.is_owner && info.role !== "sistema") {
+          const perms = Array.isArray(info.permissoes) ? info.permissoes : ["agenda"];
+          if (!perms.includes("agenda")) {
+            const firstAllowed = perms[0] || "conta";
+            setActiveView(firstAllowed);
+          }
+        }
+
         fetchAllData();
       } catch (e) {
         console.error(e);
@@ -241,6 +253,7 @@ export default function EmpresaAdmin() {
         label: "Acesso & Segurança",
         icon: KeyRound,
         subItems: [
+          { id: "credenciais", label: "Minhas Credenciais" },
           { id: "usuarios", label: "Usuários & Permissões" },
           { id: "auditoria", label: "Auditoria do Sistema" }
         ]
@@ -249,23 +262,23 @@ export default function EmpresaAdmin() {
     []
   );
 
-  // Filtragem estrita de permissões (inclusive para a aba de Acesso & Segurança)
+  // 1. PREVENÇÃO DO FLASH DE MENUS NÃO AUTORIZADOS
+  // Retorna estritamente vazio enquanto loggedAdmin for null, evitando qualquer flash de opções indevidas
   const menuStructure = useMemo(() => {
-    if (!loggedAdmin) return baseMenuStructure;
+    if (!loggedAdmin) return [];
     if (loggedAdmin.is_owner || loggedAdmin.role === "sistema") return baseMenuStructure;
 
     const userPerms = Array.isArray(loggedAdmin.permissoes) ? loggedAdmin.permissoes : ["agenda"];
 
     return baseMenuStructure
       .map((item) => {
-        // Se for o módulo conta, filtra seus sub-itens de acordo com as permissões reais
         if (item.id === "conta") {
-          const hasUsuarios = userPerms.includes("usuarios") || userPerms.includes("conta");
+          const hasCredenciais = true; // Todo usuário autenticado pode alterar a própria senha
+          const hasUsuarios = userPerms.includes("usuarios") || userPerms.includes("conta") || userPerms.includes("seguranca");
           const hasAuditoria = userPerms.includes("auditoria") || userPerms.includes("conta");
 
-          if (!hasUsuarios && !hasAuditoria) return null;
-
           const filteredSub = (item.subItems || []).filter((sub) => {
+            if (sub.id === "credenciais") return hasCredenciais;
             if (sub.id === "usuarios") return hasUsuarios;
             if (sub.id === "auditoria") return hasAuditoria;
             return false;
@@ -274,7 +287,6 @@ export default function EmpresaAdmin() {
           return { ...item, subItems: filteredSub };
         }
 
-        // Para os outros módulos, checa permissão direta
         if (!userPerms.includes(item.id)) return null;
         return item;
       })
@@ -315,6 +327,18 @@ export default function EmpresaAdmin() {
   };
 
   const servicosOptions = (servicos || []).map((s) => ({ value: s.id, label: s.nome }));
+
+  // Enquanto valida autenticação, exibe tela de carregamento protegida sem flash
+  if (isLoadingAuth) {
+    return (
+      <div className="h-screen w-screen bg-[#F8FAFC] dark:bg-[#060A12] flex flex-col items-center justify-center font-sans space-y-3">
+        <CapsuleSpinner size="xl" />
+        <p className="text-xs font-bold text-zinc-500 dark:text-zinc-400">
+          Autenticando sessão e permissões...
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen w-screen bg-[#F8FAFC] dark:bg-[#060A12] flex flex-col font-sans overflow-hidden text-zinc-900 dark:text-white">
@@ -502,6 +526,7 @@ export default function EmpresaAdmin() {
                 showToast={showToast}
                 permissoes={loggedAdmin?.permissoes}
                 isOwner={loggedAdmin?.is_owner}
+                loggedAdmin={loggedAdmin}
               />
             )}
             {activeView === "metricas" && (
@@ -564,6 +589,7 @@ export default function EmpresaAdmin() {
             {activeView === "conta" && (
               <AccountView
                 subTab={activeSubView}
+                setSubTab={setActiveSubView}
                 showToast={showToast}
                 loggedAdmin={loggedAdmin}
                 permissoes={loggedAdmin?.permissoes}

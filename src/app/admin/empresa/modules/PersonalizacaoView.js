@@ -150,6 +150,145 @@ const DEFAULT_ORDEM_ETAPAS = [
   "checkout"
 ];
 
+export const DEFAULT_REGRAS_MENSAGENS = [
+  {
+    id: "padrao_imediato",
+    alvo: "Todas",
+    tipo_envio: "whatsapp",
+    url_webhook_customizada: "",
+    gatilho: "imediato",
+    dias_antes: 0,
+    unidade_antes: "dias",
+    hora_envio: "08:00",
+    pos_base: "termino",
+    pos_unidade: "minutos",
+    pos_tempo: 30,
+    filtro_modalidade: "todas",
+    filtrar_enfermidade: false,
+    enfermidade_alvo: "",
+    mensagem: "Olá {nome}, seu agendamento de *{servico}* com *{especialista}* ({modalidade}) foi realizado com sucesso para o dia *{data}* às *{hora}h* na clínica {clinica}! Te aguardamos."
+  },
+  {
+    id: "padrao_lembrete_24h",
+    alvo: "Todas",
+    tipo_envio: "whatsapp",
+    url_webhook_customizada: "",
+    gatilho: "agendado",
+    dias_antes: 1,
+    unidade_antes: "dias",
+    hora_envio: "08:00",
+    pos_base: "termino",
+    pos_unidade: "minutos",
+    pos_tempo: 30,
+    filtro_modalidade: "todas",
+    filtrar_enfermidade: false,
+    enfermidade_alvo: "",
+    mensagem: "Olá {nome}, passando para lembrar da sua consulta de *{servico}* amanhã, dia *{data}*, às *{hora}h* com *{especialista}* na {clinica}. Por favor, responda *SIM* para confirmar sua presença."
+  },
+  {
+    id: "padrao_lembrete_2h",
+    alvo: "Todas",
+    tipo_envio: "whatsapp",
+    url_webhook_customizada: "",
+    gatilho: "agendado",
+    dias_antes: 2,
+    unidade_antes: "horas",
+    hora_envio: "08:00",
+    pos_base: "termino",
+    pos_unidade: "minutos",
+    pos_tempo: 30,
+    filtro_modalidade: "todas",
+    filtrar_enfermidade: false,
+    enfermidade_alvo: "",
+    mensagem: "Olá {nome}, seu atendimento de *{servico}* na {clinica} com *{especialista}* acontecerá hoje às *{hora}h*. Recomendamos chegar com 10 minutos de antecedência."
+  },
+  {
+    id: "padrao_pagamento_aprovado",
+    alvo: "Todas",
+    tipo_envio: "whatsapp",
+    url_webhook_customizada: "",
+    gatilho: "pagamento_aprovado",
+    dias_antes: 0,
+    unidade_antes: "dias",
+    hora_envio: "08:00",
+    pos_base: "termino",
+    pos_unidade: "minutos",
+    pos_tempo: 30,
+    filtro_modalidade: "Particular",
+    filtrar_enfermidade: false,
+    enfermidade_alvo: "",
+    mensagem: "Olá {nome}, confirmamos o recebimento do seu pagamento com sucesso! Seu horário para *{servico}* no dia *{data}* às *{hora}h* com *{especialista}* está garantido."
+  },
+  {
+    id: "padrao_pagamento_rejeitado",
+    alvo: "Todas",
+    tipo_envio: "whatsapp",
+    url_webhook_customizada: "",
+    gatilho: "pagamento_rejeitado",
+    dias_antes: 0,
+    unidade_antes: "dias",
+    hora_envio: "08:00",
+    pos_base: "termino",
+    pos_unidade: "minutos",
+    pos_tempo: 30,
+    filtro_modalidade: "Particular",
+    filtrar_enfermidade: false,
+    enfermidade_alvo: "",
+    mensagem: "Olá {nome}, informamos que o comprovante/pagamento referente ao agendamento de *{servico}* no dia *{data}* às *{hora}h* não foi aprovado. Motivo: {motivo}. Por favor, entre em contato conosco para regularizar ou escolher um novo horário."
+  },
+  {
+    id: "padrao_cancelado",
+    alvo: "Todas",
+    tipo_envio: "whatsapp",
+    url_webhook_customizada: "",
+    gatilho: "cancelado",
+    dias_antes: 0,
+    unidade_antes: "dias",
+    hora_envio: "08:00",
+    pos_base: "termino",
+    pos_unidade: "minutos",
+    pos_tempo: 30,
+    filtro_modalidade: "todas",
+    filtrar_enfermidade: false,
+    enfermidade_alvo: "",
+    mensagem: "Olá {nome}, informamos que o seu agendamento de *{servico}* marcado para *{data}* às *{hora}h* foi cancelado. Motivo: {motivo_cancelamento}. Caso deseje reagendar, estamos à disposição!"
+  },
+  {
+    id: "padrao_remarcado",
+    alvo: "Todas",
+    tipo_envio: "whatsapp",
+    url_webhook_customizada: "",
+    gatilho: "remarcado",
+    dias_antes: 0,
+    unidade_antes: "dias",
+    hora_envio: "08:00",
+    pos_base: "termino",
+    pos_unidade: "minutos",
+    pos_tempo: 30,
+    filtro_modalidade: "todas",
+    filtrar_enfermidade: false,
+    enfermidade_alvo: "",
+    mensagem: "Olá {nome}, seu agendamento de *{servico}* foi remarcado com sucesso! Sua nova data é *{data}* às *{hora}h* com *{especialista}*. Te aguardamos na clínica {clinica}!"
+  },
+  {
+    id: "padrao_preparo_exames",
+    alvo: "categoria:Exames",
+    tipo_envio: "whatsapp",
+    url_webhook_customizada: "",
+    gatilho: "agendado",
+    dias_antes: 1,
+    unidade_antes: "dias",
+    hora_envio: "14:00",
+    pos_base: "termino",
+    pos_unidade: "minutos",
+    pos_tempo: 30,
+    filtro_modalidade: "todas",
+    filtrar_enfermidade: false,
+    enfermidade_alvo: "",
+    mensagem: "Olá {nome}, para a realização do seu exame de *{servico}* amanhã ({data} às {hora}h), lembre-se de manter o jejum indicado e trazer seus exames anteriores e documento com foto."
+  }
+];
+
 // Helper para limpar prefixos "categoria:", "especialidade:", "modalidade:"
 const limparNomeAlvo = (str) => {
   if (!str) return "Todas";
@@ -158,42 +297,34 @@ const limparNomeAlvo = (str) => {
     .trim() || "Todas";
 };
 
-// Helper visual para badges de alvos
-const obterBadgeAlvo = (alvoStr) => {
-  if (!alvoStr || alvoStr === "Todas" || alvoStr === "todos") {
+// Helper visual para badges de alvos (com suporte a colunas separadas)
+const obterBadgeAlvo = (regra) => {
+  const tipo = typeof regra === "object" ? regra?.tipo_alvo : null;
+  const cat = typeof regra === "object" ? regra?.categoria : null;
+  const esp = typeof regra === "object" ? regra?.especialidade : null;
+  const str = String(typeof regra === "object" ? (regra?.alvo || "") : (regra || "")).trim();
+
+  if (tipo === "todos" || str === "Todas" || str === "todos" || (!str && !cat && !esp)) {
     return {
       tipo: "global",
       texto: "Todas",
       badgeClass: "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border-zinc-200/60 dark:border-zinc-700/60"
     };
   }
-  const str = String(alvoStr).trim();
-  if (str.startsWith("categoria:")) {
+  if (tipo === "categoria" || cat || str.startsWith("categoria:") || str === "Exames" || str === "Consultas") {
+    const nomeCat = cat || str.replace("categoria:", "").trim();
     return {
       tipo: "categoria",
-      texto: `Cat: ${str.replace("categoria:", "").trim()}`,
+      texto: `Categoria: ${nomeCat}`,
       badgeClass: "bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200/50"
     };
   }
-  if (str.startsWith("especialidade:")) {
+  if (tipo === "especialidade" || esp || str.startsWith("especialidade:")) {
+    const nomeEsp = esp || str.replace("especialidade:", "").trim();
     return {
       tipo: "especialidade",
-      texto: `Esp: ${str.replace("especialidade:", "").trim()}`,
+      texto: `Especialidade: ${nomeEsp}`,
       badgeClass: "bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200/50"
-    };
-  }
-  if (str.startsWith("modalidade:")) {
-    return {
-      tipo: "modalidade",
-      texto: `Mod: ${str.replace("modalidade:", "").trim()}`,
-      badgeClass: "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200/50"
-    };
-  }
-  if (str.startsWith("tipo:")) {
-    return {
-      tipo: "tipo",
-      texto: `Tipo: ${str.replace("tipo:", "").trim()}`,
-      badgeClass: "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200/50"
     };
   }
   return {
@@ -204,16 +335,30 @@ const obterBadgeAlvo = (alvoStr) => {
 };
 
 // Helper para normalizar o valor do select de alvo
-const normalizarAlvoValue = (alvo, options) => {
-  if (!alvo || alvo === "Todas" || alvo === "todos") return "Todas";
-  if (options.some((o) => o.value === alvo)) return alvo;
-  const clean = alvo.replace(/^(categoria|especialidade|modalidade|tipo|servico):\s*/i, "").trim().toLowerCase();
+const normalizarAlvoValue = (regra, options) => {
+  if (!regra) return "Todas";
+  const tipo = typeof regra === "object" ? regra.tipo_alvo : null;
+  const cat = typeof regra === "object" ? regra.categoria : null;
+  const esp = typeof regra === "object" ? regra.especialidade : null;
+  const str = String(typeof regra === "object" ? (regra.alvo || "") : (regra || "")).trim();
+
+  if (tipo === "todos" || str === "Todas" || str === "todos" || (!str && !cat && !esp)) return "Todas";
+  if (tipo === "categoria" || cat || str.startsWith("categoria:")) {
+    const nomeCat = cat || str.replace("categoria:", "").trim();
+    return `categoria:${nomeCat}`;
+  }
+  if (tipo === "especialidade" || esp || str.startsWith("especialidade:")) {
+    const nomeEsp = esp || str.replace("especialidade:", "").trim();
+    return `especialidade:${nomeEsp}`;
+  }
+  if (str === "Exames" || str === "Consultas") return `categoria:${str}`;
+  const clean = str.replace(/^(categoria|especialidade|modalidade|tipo|servico):\s*/i, "").trim().toLowerCase();
   const match = options.find((o) => {
     const oClean = o.value.replace(/^(categoria|especialidade|modalidade|tipo|servico):\s*/i, "").trim().toLowerCase();
     return oClean === clean;
   });
   if (match) return match.value;
-  return alvo;
+  return str;
 };
 
 // Helper universal para formatar os Dias / Tempo de Envio / Antecedência
@@ -524,7 +669,13 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
             }
           }));
         }
-        if (Array.isArray(emp.config_mensagens)) setRegrasMensagens(emp.config_mensagens);
+        if (Array.isArray(emp.regras_mensagens) && emp.regras_mensagens.length > 0) {
+          setRegrasMensagens(emp.regras_mensagens);
+        } else if (Array.isArray(emp.config_mensagens) && emp.config_mensagens.length > 0) {
+          setRegrasMensagens(emp.config_mensagens);
+        } else {
+          setRegrasMensagens([...DEFAULT_REGRAS_MENSAGENS]);
+        }
       }
     };
     fetchDados();
@@ -626,16 +777,26 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
   };
 
   // Funções de Mensagens
+  const handleRestaurarModelosPadrao = () => {
+    playDopamineSound("click");
+    triggerHaptic("medium");
+    if (regrasMensagens.length > 0 && !confirm("Deseja restaurar o pacote completo de mensagens automáticas padrão? Suas automações atuais serão substituídas.")) return;
+    setRegrasMensagens([...DEFAULT_REGRAS_MENSAGENS]);
+    if (showToast) showToast("Modelos de mensagens padrão carregados com sucesso! Clique em 'Salvar Alterações' para salvar.");
+  };
+
   const adicionarNovaRegra = () => {
     const novaRegra = {
-      id: Date.now().toString(),
+      id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(),
+      titulo: "",
       alvo: filterEspecialidade !== "Todas" ? filterEspecialidade : "Todas",
       tipo_envio: "whatsapp", // "whatsapp" | "webhook"
       url_webhook_customizada: "",
       gatilho: filterGatilho !== "Todos" ? filterGatilho : "imediato",
       // Configurações para Lembrete Antes do Atendimento ("agendado")
       dias_antes: 1,
-      unidade_antes: "dias", // "dias" | "horas"
+      unidade_antes: "dias", // "dias" | "horas" | "dias_uteis"
+      tipo_dias_antes: "corridos",
       hora_envio: "08:00",
       // Configurações para Pós-Atendimento ("pos_atendimento")
       pos_base: "termino", // "termino" | "inicio"
@@ -643,9 +804,15 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
       pos_tempo: 30, // 30 min, 1h, 1 dia
       // Filtros de refinamento adicionais
       filtro_modalidade: "todas", // "todas" | "Particular" | "Convênio" | "Retorno"
+      filtro_idade_tipo: "todas",
+      idade_minima: null,
+      idade_maxima: null,
       filtrar_enfermidade: false,
       enfermidade_alvo: "Refluxo",
-      mensagem: "Olá {nome}, seu agendamento de {servico} com {especialista} ({modalidade}) está confirmado!"
+      mensagem: "Olá {nome}, seu agendamento de {servico} com {especialista} ({modalidade}) está confirmado!",
+      anexo_url: "",
+      ativo: true,
+      ordem: 0
     };
     setRegrasMensagens([novaRegra, ...regrasMensagens]);
     setEditingRegraId(novaRegra.id);
@@ -655,7 +822,8 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
   const duplicarRegra = (regraOriginal) => {
     const clone = {
       ...regraOriginal,
-      id: Date.now().toString(),
+      id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(),
+      titulo: regraOriginal.titulo ? `${regraOriginal.titulo} (Cópia)` : "",
       mensagem: `${regraOriginal.mensagem}`
     };
     setRegrasMensagens([clone, ...regrasMensagens]);
@@ -671,6 +839,41 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
     setRegrasMensagens((prev) => prev.filter((r) => r.id !== id));
     if (editingRegraId === id) setEditingRegraId(null);
     if (showToast) showToast("Regra removida.");
+  };
+
+  const handleMudarAlvo = (regraId, v) => {
+    let tipoAlvo = "todos";
+    let cat = null;
+    let esp = null;
+    let cleanAlvo = "Todas";
+
+    if (v.startsWith("categoria:")) {
+      tipoAlvo = "categoria";
+      cat = v.replace("categoria:", "").trim();
+      cleanAlvo = cat;
+    } else if (v.startsWith("especialidade:")) {
+      tipoAlvo = "especialidade";
+      esp = v.replace("especialidade:", "").trim();
+      cleanAlvo = esp;
+      cat = /(colono|endo|exame|ultrassom)/i.test(esp) ? "Exames" : "Consultas";
+    } else if (v === "Todas" || v === "todos") {
+      tipoAlvo = "todos";
+      cleanAlvo = "Todas";
+    }
+
+    setRegrasMensagens((prev) =>
+      prev.map((r) =>
+        r.id === regraId
+          ? {
+              ...r,
+              tipo_alvo: tipoAlvo,
+              categoria: cat,
+              especialidade: esp,
+              alvo: cleanAlvo
+            }
+          : r
+      )
+    );
   };
 
   const inserirVariavelNaRegra = (id, tag) => {
@@ -2022,7 +2225,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                         <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800 font-medium">
                           {regrasFiltradas.map((regra, idx) => {
                             const isExpanded = editingRegraId === regra.id;
-                            const badgeAlvo = obterBadgeAlvo(regra.alvo || regra.especialidade);
+                            const badgeAlvo = obterBadgeAlvo(regra);
                             const infoTempo = formatarTempoRegra(regra);
 
                             return (
@@ -2034,9 +2237,28 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
 
                                   <td className="p-3.5">
                                     <div className="space-y-1">
-                                      <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-bold text-[10px] border border-blue-200/50 block truncate max-w-[140px]">
-                                        {gatilhoOptions.find((g) => g.value === regra.gatilho)?.label?.split("(")[0]?.trim() || regra.gatilho}
-                                      </span>
+                                      {regra.titulo && (
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="font-bold text-xs text-zinc-900 dark:text-white block truncate max-w-[150px]" title={regra.titulo}>
+                                            {regra.titulo}
+                                          </span>
+                                          {regra.ativo === false && (
+                                            <span className="px-1.5 py-0.2 rounded bg-zinc-200 dark:bg-zinc-800 text-zinc-500 text-[8.5px] font-bold uppercase">
+                                              Inativa
+                                            </span>
+                                          )}
+                                        </div>
+                                      )}
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-bold text-[10px] border border-blue-200/50 block truncate max-w-[140px]">
+                                          {gatilhoOptions.find((g) => g.value === regra.gatilho)?.label?.split("(")[0]?.trim() || regra.gatilho}
+                                        </span>
+                                        {!regra.titulo && regra.ativo === false && (
+                                          <span className="px-1.5 py-0.2 rounded bg-zinc-200 dark:bg-zinc-800 text-zinc-500 text-[8.5px] font-bold uppercase">
+                                            Inativa
+                                          </span>
+                                        )}
+                                      </div>
                                       
                                       <div className="flex items-center gap-1 flex-wrap">
                                         {regra.tipo_envio === "webhook" ? (
@@ -2151,10 +2373,28 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                                       <div className="p-5 bg-white dark:bg-[#0e0e12] space-y-4 shadow-inner">
                                         <div className="grid lg:grid-cols-2 gap-5">
                                           <div className="space-y-3">
+                                            <div className="grid sm:grid-cols-3 gap-3">
+                                              <div className="sm:col-span-2">
+                                                <TextInput
+                                                  label="Título / Identificação da Regra (Opcional)"
+                                                  placeholder="Ex: Lembrete 24h Antes, Preparo Exame..."
+                                                  value={regra.titulo || ""}
+                                                  onChange={(e) => atualizarRegra(regra.id, "titulo", e.target.value)}
+                                                />
+                                              </div>
+                                              <div className="flex items-center pt-5 px-2">
+                                                <ToggleSwitch
+                                                  label="Regra Ativa"
+                                                  checked={regra.ativo !== false}
+                                                  onChange={(v) => atualizarRegra(regra.id, "ativo", v)}
+                                                />
+                                              </div>
+                                            </div>
+
                                             <CustomSelect
                                               label="Alvo da Mensagem (Especialidade, Categoria ou Modalidade)"
-                                              value={normalizarAlvoValue(regra.alvo || regra.especialidade, listaOpcoesAlvo)}
-                                              onChange={(v) => atualizarRegra(regra.id, "alvo", v)}
+                                              value={normalizarAlvoValue(regra, listaOpcoesAlvo)}
+                                              onChange={(v) => handleMudarAlvo(regra.id, v)}
                                               options={listaOpcoesAlvo}
                                             />
 
@@ -2461,10 +2701,28 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                               </span>
                             </div>
 
+                            <div className="grid sm:grid-cols-3 gap-3">
+                              <div className="sm:col-span-2">
+                                <TextInput
+                                  label="Título / Identificação da Regra (Opcional)"
+                                  placeholder="Ex: Lembrete 24h Antes, Preparo Exame..."
+                                  value={regra.titulo || ""}
+                                  onChange={(e) => atualizarRegra(regra.id, "titulo", e.target.value)}
+                                />
+                              </div>
+                              <div className="flex items-center pt-5 px-2">
+                                <ToggleSwitch
+                                  label="Regra Ativa"
+                                  checked={regra.ativo !== false}
+                                  onChange={(v) => atualizarRegra(regra.id, "ativo", v)}
+                                />
+                              </div>
+                            </div>
+
                             <CustomSelect
                               label="Alvo da Mensagem (Especialidade, Categoria ou Modalidade)"
-                              value={normalizarAlvoValue(regra.alvo || regra.especialidade, listaOpcoesAlvo)}
-                              onChange={(v) => atualizarRegra(regra.id, "alvo", v)}
+                              value={normalizarAlvoValue(regra, listaOpcoesAlvo)}
+                              onChange={(v) => handleMudarAlvo(regra.id, v)}
                               options={listaOpcoesAlvo}
                             />
 

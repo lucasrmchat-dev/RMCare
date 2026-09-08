@@ -132,18 +132,24 @@ function AgendamentoOrquestrador() {
             return;
           }
 
-          setEmpresaDados(empresa);
           localStorage.setItem("rmagenda_last_slug", slug);
 
           const conf = empresa.config_campos || {};
 
-          const [{ data: srvs }, { data: pergs }, { data: ops }, { data: regrasDB }] =
+          const [{ data: srvs }, { data: pergs }, { data: ops }, { data: regrasDB }, { data: regrasMsgDB }] =
             await Promise.all([
               supabase.from("servicos").select("*").eq("ativo", true).eq("empresa_id", empresa.id),
               supabase.from("perguntas_triagem").select("*").eq("ativa", true).eq("empresa_id", empresa.id),
               supabase.from("opcoes_triagem").select("*"),
-              supabase.from("regras_agenda").select("*").eq("ativo", true).eq("empresa_id", empresa.id)
+              supabase.from("regras_agenda").select("*").eq("ativo", true).eq("empresa_id", empresa.id),
+              supabase.from("regras_mensagens").select("*").eq("ativo", true).eq("empresa_id", empresa.id).order("ordem", { ascending: true })
             ]);
+
+          if (Array.isArray(regrasMsgDB) && regrasMsgDB.length > 0) {
+            empresa.regras_mensagens = regrasMsgDB;
+            empresa.config_mensagens = regrasMsgDB;
+          }
+          setEmpresaDados(empresa);
 
           const srvsAtivos = (srvs || []).filter((s) => s.ativo !== false);
           setServicosDB(srvsAtivos);

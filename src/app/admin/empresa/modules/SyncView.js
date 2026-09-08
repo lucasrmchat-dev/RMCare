@@ -172,6 +172,8 @@ const UnmatchedItem = ({ erpName, servicosDisponiveis, onResolve, onBloquear, sh
 // ==========================================
 export default function SyncView({ bloqueios = [], servicos = [], fetchBloqueios, fetchServicos, showToast }) {
   const [importLoading, setImportLoading] = useState(false);
+  const [syncProgress, setSyncProgress] = useState(0);
+  const [syncStepText, setSyncStepText] = useState("");
   const [savingConfig, setSavingConfig] = useState(false);
   const [reprocessing, setReprocessing] = useState(false);
 
@@ -226,7 +228,7 @@ export default function SyncView({ bloqueios = [], servicos = [], fetchBloqueios
   const handleSaveMapping = async () => {
     setSavingConfig(true);
     try {
-      await actionSalvarCustomization({ config_campos: campos, config_mensagens: [] });
+      await actionSalvarCustomization({ config_campos: campos });
       if (showToast) showToast("Mapeamento de colunas do ERP salvo!");
     } catch (err) {
       if (showToast) showToast(`Erro ao salvar: ${err.message}`, "error");
@@ -288,14 +290,31 @@ export default function SyncView({ bloqueios = [], servicos = [], fetchBloqueios
 
   const handleSync = async () => {
     setImportLoading(true);
+    setSyncProgress(10);
+    setSyncStepText("Iniciando conexão segura com Gateway MedicalSYS...");
     try {
+      setTimeout(() => {
+        setSyncProgress(35);
+        setSyncStepText("Consultando médicos, setores e agendas no MedicalSYS...");
+      }, 400);
+
+      setTimeout(() => {
+        setSyncProgress(65);
+        setSyncStepText("Importando pacientes, CPFs e observações clínicas...");
+      }, 900);
+
       const r = await fetch("/api/importar-agenda", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: "import" })
       });
+      setSyncProgress(90);
+      setSyncStepText("Processando e gravando registros no banco de dados...");
+
       const d = await r.json();
       if (d.success) {
+        setSyncProgress(100);
+        setSyncStepText("Sincronização concluída com sucesso!");
         if (showToast) showToast(d.message);
         if (typeof fetchBloqueios === "function") await fetchBloqueios();
         await carregarRascunhos();
@@ -305,7 +324,9 @@ export default function SyncView({ bloqueios = [], servicos = [], fetchBloqueios
     } catch (e) {
       if (showToast) showToast("Erro de conexão com o servidor.", "error");
     } finally {
-      setImportLoading(false);
+      setTimeout(() => {
+        setImportLoading(false);
+      }, 1200);
     }
   };
 
@@ -430,6 +451,35 @@ export default function SyncView({ bloqueios = [], servicos = [], fetchBloqueios
           {importLoading ? "Sincronizando Agenda..." : "Sincronizar Agenda Agora"}
         </button>
       </div>
+
+      {/* BARRA DE PROGRESSO COM PORCENTAGEM E ETAPAS */}
+      <AnimatePresence>
+        {importLoading && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="p-5 rounded-2xl bg-zinc-50 dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800 space-y-3"
+          >
+            <div className="flex items-center justify-between text-xs font-bold text-zinc-900 dark:text-white">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-[#9FC131] animate-ping" />
+                <span>{syncStepText || "Sincronizando agenda..."}</span>
+              </div>
+              <span className="font-mono font-black text-sm text-[#86a621] dark:text-[#9FC131]">
+                {syncProgress}%
+              </span>
+            </div>
+
+            <div className="h-2.5 w-full bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden p-0.5">
+              <motion.div
+                className="h-full bg-gradient-to-r from-emerald-500 to-[#9FC131] rounded-full transition-all duration-300 ease-out"
+                style={{ width: `${syncProgress}%` }}
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* BANNER DE VALIDAÇÃO DE MENSAGENS EM RASCUNHO */}
       {rascunhos.length > 0 && (

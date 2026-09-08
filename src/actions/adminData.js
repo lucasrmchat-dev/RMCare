@@ -984,22 +984,138 @@ export async function fetchAdminCustomization() {
     if (fallback.error) throw fallback.error;
     data = fallback.data;
   }
+
+  // Busca regras na nova tabela estruturada regras_mensagens (com fallback para empresas.config_mensagens)
+  try {
+    const { data: regrasDb, error: errRegras } = await supabaseAdmin
+      .from("regras_mensagens")
+      .select("*")
+      .eq("empresa_id", admin.empresa_id)
+      .order("ordem", { ascending: true })
+      .order("created_at", { ascending: true });
+
+    if (!errRegras && Array.isArray(regrasDb) && regrasDb.length > 0) {
+      data.regras_mensagens = regrasDb;
+      data.config_mensagens = regrasDb;
+    } else if (Array.isArray(data.config_mensagens) && data.config_mensagens.length > 0) {
+      data.regras_mensagens = data.config_mensagens;
+    } else {
+      data.regras_mensagens = [];
+    }
+  } catch (e) {
+    console.warn("Aviso ao buscar regras_mensagens (usando fallback config_mensagens):", e.message);
+    data.regras_mensagens = data.config_mensagens || [];
+  }
+
   return data;
 }
 
 export async function actionSalvarCustomization({ config_campos, config_mensagens }) {
   const admin = await getAdminLogado(true);
-  const updatePayload = {
-    config_campos,
-    config_mensagens
-  };
+  const updatePayload = {};
+  if (config_campos !== undefined) updatePayload.config_campos = config_campos;
+  if (config_mensagens !== undefined) updatePayload.config_mensagens = config_mensagens;
 
-  const { error } = await supabaseAdmin
-    .from("empresas")
-    .update(updatePayload)
-    .eq("id", admin.empresa_id);
+  if (Object.keys(updatePayload).length > 0) {
+    const { error } = await supabaseAdmin
+      .from("empresas")
+      .update(updatePayload)
+      .eq("id", admin.empresa_id);
 
-  if (error) throw error;
+    if (error) throw error;
+  }
+
+  // Sincronização inteligente com a nova tabela regras_mensagens por empresa_id
+  if (Array.isArray(config_mensagens)) {
+    try {
+      const isUUID = (str) =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(str));
+
+      const regrasFormatadas = config_mensagens.map((r, idx) => {
+        const rawAlvo = String(r.alvo || (r.especialidade === "Todas" || !r.especialidade ? "Todas" : r.especialidade)).trim();
+        let tipoAlvo = r.tipo_alvo || "todos";
+        let cat = r.categoria || null;
+        let esp = r.especialidade && r.especialidade !== "Todas" ? r.especialidade : null;
+        let cleanAlvo = rawAlvo;
+
+        if (rawAlvo.startsWith("categoria:")) {
+          tipoAlvo = "categoria";
+          cat = rawAlvo.replace("categoria:", "").trim();
+          cleanAlvo = cat;
+          esp = null;
+        } else if (rawAlvo.startsWith("especialidade:")) {
+          tipoAlvo = "especialidade";
+          esp = rawAlvo.replace("especialidade:", "").trim();
+          cleanAlvo = esp;
+          if (!cat) {
+            cat = /(colono|endo|exame|ultrassom|tomografia)/i.test(esp) ? "Exames" : "Consultas";
+          }
+        } else if (rawAlvo.toLowerCase() === "todas" || rawAlvo.toLowerCase() === "todos") {
+          tipoAlvo = "todos";
+          cleanAlvo = "Todas";
+          cat = null;
+          esp = null;
+        } else if (r.categoria && !r.especialidade) {
+          tipoAlvo = "categoria";
+          cat = r.categoria;
+          cleanAlvo = r.categoria;
+        } else if (r.especialidade && r.especialidade !== "Todas") {
+          tipoAlvo = "especialidade";
+          esp = r.especialidade;
+          cleanAlvo = r.especialidade;
+        }
+
+        const item = {
+          empresa_id: admin.empresa_id,
+          titulo: r.titulo ? String(r.titulo).trim() : null,
+          gatilho: r.gatilho || "imediato",
+          tipo_alvo: tipoAlvo,
+          categoria: cat,
+          especialidade: esp,
+          alvo: cleanAlvo,
+          tipo_envio: r.tipo_envio || "whatsapp",
+          url_webhook_customizada: r.url_webhook_customizada ? String(r.url_webhook_customizada).trim() : null,
+          dias_antes: Number(r.dias_antes) >= 0 ? Number(r.dias_antes) : 1,
+          unidade_antes: r.unidade_antes || "dias",
+          tipo_dias_antes: r.tipo_dias_antes || "corridos",
+          hora_envio: r.hora_envio || "08:00",
+          pos_base: r.pos_base || "termino",
+          pos_unidade: r.pos_unidade || "minutos",
+          pos_tempo: Number(r.pos_tempo ?? r.dias_depois) || 30,
+          filtro_modalidade: r.filtro_modalidade || "todas",
+          filtro_idade_tipo: r.filtro_idade_tipo || "todas",
+          idade_minima: r.idade_minima !== undefined && r.idade_minima !== null && r.idade_minima !== "" ? Number(r.idade_minima) : null,
+          idade_maxima: r.idade_maxima !== undefined && r.idade_maxima !== null && r.idade_maxima !== "" ? Number(r.idade_maxima) : null,
+          filtrar_enfermidade: Boolean(r.filtrar_enfermidade),
+          enfermidade_alvo: r.enfermidade_alvo ? String(r.enfermidade_alvo).trim() : null,
+          mensagem: r.mensagem || "",
+          anexo_url: r.anexo_url ? String(r.anexo_url).trim() : null,
+          ativo: r.ativo !== false,
+          ordem: r.ordem !== undefined ? Number(r.ordem) : idx,
+          alterado_por: admin.usuario || admin.email,
+          alterado_em: new Date().toISOString()
+        };
+
+        if (r.id && isUUID(r.id)) {
+          item.id = r.id;
+        }
+
+        return item;
+      });
+
+      // Substitui / atualiza o conjunto de regras da empresa na tabela dedicada
+      await supabaseAdmin.from("regras_mensagens").delete().eq("empresa_id", admin.empresa_id);
+
+      if (regrasFormatadas.length > 0) {
+        const { error: errInsert } = await supabaseAdmin.from("regras_mensagens").insert(regrasFormatadas);
+        if (errInsert) {
+          console.warn("Aviso ao sincronizar na tabela regras_mensagens:", errInsert.message);
+        }
+      }
+    } catch (errSync) {
+      console.warn("Aviso: tabela regras_mensagens ainda não disponível no Supabase:", errSync.message);
+    }
+  }
 
   // Registrar auditoria da alteração
   await actionRegistrarAuditoria({
@@ -1009,6 +1125,114 @@ export async function actionSalvarCustomization({ config_campos, config_mensagen
     alterado_por: admin.usuario
   });
 
+  return true;
+}
+
+/* ==========================================
+   GESTÃO DEDICADA DE REGRAS DE MENSAGENS (NOVO SCHEMA)
+   ========================================== */
+export async function fetchAdminRegrasMensagens() {
+  const admin = await getAdminLogado(true);
+
+  try {
+    const { data: regrasDb, error } = await supabaseAdmin
+      .from("regras_mensagens")
+      .select("*")
+      .eq("empresa_id", admin.empresa_id)
+      .order("ordem", { ascending: true })
+      .order("created_at", { ascending: true });
+
+    if (!error && Array.isArray(regrasDb) && regrasDb.length > 0) {
+      return regrasDb;
+    }
+  } catch (e) {
+    console.warn("Aviso ao buscar da tabela regras_mensagens, tentando fallback:", e.message);
+  }
+
+  // Fallback: busca de empresas.config_mensagens
+  const { data: emp } = await supabaseAdmin
+    .from("empresas")
+    .select("config_mensagens")
+    .eq("id", admin.empresa_id)
+    .maybeSingle();
+
+  return emp?.config_mensagens || [];
+}
+
+export async function actionCriarRegraMensagem(novaRegra) {
+  const admin = await getAdminLogado(true);
+
+  const payload = {
+    empresa_id: admin.empresa_id,
+    titulo: novaRegra.titulo ? String(novaRegra.titulo).trim() : null,
+    gatilho: novaRegra.gatilho || "imediato",
+    alvo: novaRegra.alvo || "Todas",
+    tipo_envio: novaRegra.tipo_envio || "whatsapp",
+    url_webhook_customizada: novaRegra.url_webhook_customizada ? String(novaRegra.url_webhook_customizada).trim() : null,
+    dias_antes: Number(novaRegra.dias_antes) >= 0 ? Number(novaRegra.dias_antes) : 1,
+    unidade_antes: novaRegra.unidade_antes || "dias",
+    tipo_dias_antes: novaRegra.tipo_dias_antes || "corridos",
+    hora_envio: novaRegra.hora_envio || "08:00",
+    pos_base: novaRegra.pos_base || "termino",
+    pos_unidade: novaRegra.pos_unidade || "minutos",
+    pos_tempo: Number(novaRegra.pos_tempo ?? novaRegra.dias_depois) || 30,
+    filtro_modalidade: novaRegra.filtro_modalidade || "todas",
+    filtro_idade_tipo: novaRegra.filtro_idade_tipo || "todas",
+    idade_minima: novaRegra.idade_minima !== undefined && novaRegra.idade_minima !== null && novaRegra.idade_minima !== "" ? Number(novaRegra.idade_minima) : null,
+    idade_maxima: novaRegra.idade_maxima !== undefined && novaRegra.idade_maxima !== null && novaRegra.idade_maxima !== "" ? Number(novaRegra.idade_maxima) : null,
+    filtrar_enfermidade: Boolean(novaRegra.filtrar_enfermidade),
+    enfermidade_alvo: novaRegra.enfermidade_alvo ? String(novaRegra.enfermidade_alvo).trim() : null,
+    mensagem: novaRegra.mensagem || "",
+    anexo_url: novaRegra.anexo_url ? String(novaRegra.anexo_url).trim() : null,
+    ativo: novaRegra.ativo !== false,
+    ordem: Number(novaRegra.ordem) || 0,
+    alterado_por: admin.usuario || admin.email,
+    alterado_em: new Date().toISOString()
+  };
+
+  const { data, error } = await supabaseAdmin
+    .from("regras_mensagens")
+    .insert([payload])
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function actionAtualizarRegraMensagem(id, camposAtualizados) {
+  const admin = await getAdminLogado(true);
+
+  const payload = {
+    ...camposAtualizados,
+    alterado_por: admin.usuario || admin.email,
+    alterado_em: new Date().toISOString()
+  };
+  delete payload.id;
+  delete payload.empresa_id;
+
+  const { data, error } = await supabaseAdmin
+    .from("regras_mensagens")
+    .update(payload)
+    .eq("id", id)
+    .eq("empresa_id", admin.empresa_id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function actionDeletarRegraMensagem(id) {
+  const admin = await getAdminLogado(true);
+
+  const { error } = await supabaseAdmin
+    .from("regras_mensagens")
+    .delete()
+    .eq("id", id)
+    .eq("empresa_id", admin.empresa_id);
+
+  if (error) throw error;
   return true;
 }
 
@@ -2392,6 +2616,71 @@ export async function fetchAdminAuditoriaLogs(filtros = {}) {
 }
 
 export const fetchAdminAuditoria = fetchAdminAuditoriaLogs;
+
+/* ==========================================
+   CENTRAL DE OBSERVAÇÕES CLÍNICAS (APPLE NOTES STYLE)
+   ========================================== */
+export async function actionAdicionarObservacaoAgendamento({ agendamentoId, pacienteId, texto, autor }) {
+  const admin = await getAdminLogado(true);
+  if (!texto || !texto.trim()) throw new Error("Texto da observação não pode estar vazio.");
+
+  const autorEfetivo = autor || admin.usuario || admin.email || "Atendente";
+  const novaNota = {
+    id: `nota_${Date.now()}`,
+    texto: texto.trim(),
+    autor: autorEfetivo,
+    data_hora: new Date().toISOString()
+  };
+
+  if (agendamentoId) {
+    const { data: ag } = await supabaseAdmin
+      .from("agendamentos")
+      .select("id, observacoes, historico_observacoes, pacientes(*)")
+      .eq("id", agendamentoId)
+      .eq("empresa_id", admin.empresa_id)
+      .maybeSingle();
+
+    if (ag) {
+      let historico = Array.isArray(ag.historico_observacoes) ? ag.historico_observacoes : [];
+      historico = [novaNota, ...historico];
+      const obsTextoAtual = ag.observacoes
+        ? `${ag.observacoes}
+
+[${new Date().toLocaleString("pt-BR")} - ${autorEfetivo}]: ${texto.trim()}`
+        : `[${new Date().toLocaleString("pt-BR")} - ${autorEfetivo}]: ${texto.trim()}`;
+
+      let { error: updateErr } = await supabaseAdmin
+        .from("agendamentos")
+        .update({
+          observacoes: obsTextoAtual,
+          historico_observacoes: historico
+        })
+        .eq("id", agendamentoId);
+
+      if (updateErr) {
+        await supabaseAdmin
+          .from("agendamentos")
+          .update({ observacoes: obsTextoAtual })
+          .eq("id", agendamentoId);
+      }
+
+      // Registrar na Auditoria
+      try {
+        await actionRegistrarAuditoria({
+          modulo: "agenda",
+          acao: "Nova Observação Clínica",
+          detalhes: `Anotação inserida na ficha do agendamento #${agendamentoId} (${ag.pacientes?.nome_completo || "Paciente"}) por ${autorEfetivo}: "${texto.trim()}".`,
+          novo: { nova_nota: novaNota },
+          alterado_por: autorEfetivo
+        });
+      } catch (eAud) {}
+
+      return { success: true, novaNota, historico };
+    }
+  }
+
+  return { success: true, novaNota };
+}
 
 /* ==========================================
    OBSERVAÇÕES CLÍNICAS E HISTÓRICO DE NOTAS

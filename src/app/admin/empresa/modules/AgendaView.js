@@ -69,6 +69,7 @@ import {
   fetchAdminCustomization,
   fetchAdminRegras,
   actionSalvarEnfermidadesPaciente,
+  actionAdicionarObservacaoAgendamento,
   actionSalvarCatalogoEnfermidades,
   actionBuscarMensagensDoAgendamento,
   actionAtualizarMensagemFila,
@@ -159,11 +160,20 @@ export default function AgendaView({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const [mounted, setMounted] = useState(false);
+  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [novaObsTexto, setNovaObsTexto] = useState("");
+  const [isSavingObs, setIsSavingObs] = useState(false);
 
   useEffect(() => {
     setMounted(true);
     setLastSyncedAt(new Date());
-  }, []);
+    if (agendamentos.length > 0 || bloqueios.length > 0) {
+      setIsLoadingData(false);
+    } else {
+      const timer = setTimeout(() => setIsLoadingData(false), 800);
+      return () => clearTimeout(timer);
+    }
+  }, [agendamentos, bloqueios]);
 
   useEffect(() => {
     try {
@@ -912,6 +922,62 @@ export default function AgendaView({
     }
   };
 
+  const handleAdicionarObservacao = async () => {
+    if (!sensitiveModalItem || !novaObsTexto.trim()) return;
+    setIsSavingObs(true);
+    playDopamineSound("select");
+    triggerHaptic("medium");
+
+    try {
+      const agId = sensitiveModalItem.id;
+      const pacId = sensitiveModalItem.pacienteId;
+      const autorNome = loggedAdmin?.nome || loggedAdmin?.usuario || loggedAdmin?.email || "Atendente";
+
+      const res = await actionAdicionarObservacaoAgendamento({
+        agendamentoId: agId,
+        pacienteId: pacId,
+        texto: novaObsTexto.trim(),
+        autor: autorNome
+      });
+
+      if (res && res.success) {
+        if (showToast) showToast("Observação adicionada com sucesso!");
+        setNovaObsTexto("");
+        if (fetchAgendamentos) await fetchAgendamentos();
+
+        if (res.novaNota) {
+          setSensitiveModalItem((prev) => {
+            if (!prev) return prev;
+            const currentHistorico = Array.isArray(prev.rawItem?.historico_observacoes)
+              ? prev.rawItem.historico_observacoes
+              : [];
+            const newHistorico = [res.novaNota, ...currentHistorico];
+            const currentObs = prev.rawItem?.observacoes || "";
+            const newObs = currentObs
+              ? `${currentObs}
+
+[${new Date().toLocaleString("pt-BR")} - ${autorNome}]: ${novaObsTexto.trim()}`
+              : `[${new Date().toLocaleString("pt-BR")} - ${autorNome}]: ${novaObsTexto.trim()}`;
+
+            return {
+              ...prev,
+              rawItem: {
+                ...prev.rawItem,
+                observacoes: newObs,
+                historico_observacoes: newHistorico
+              }
+            };
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao salvar observação:", err);
+      if (showToast) showToast(err.message || "Erro ao adicionar observação.", "error");
+    } finally {
+      setIsSavingObs(false);
+    }
+  };
+
   const handleAprovarPagamento = async (item) => {
     if (!item?.id) return;
     setApprovingPaymentId(item.id);
@@ -950,7 +1016,8 @@ export default function AgendaView({
         cancelReason.trim() ||
         "Readequação operacional da grade de atendimentos da clínica";
 
-      await actionCancelarAgendamentoAdmin(cancelModalItem.id, motivoFinal);
+      const msgCustom = enviarMensagemCancel ? (mensagemCustomCancel?.trim() || null) : null;
+      await actionCancelarAgendamentoAdmin(cancelModalItem.id, motivoFinal, msgCustom);
       if (showToast) showToast("Agendamento cancelado. Horário liberado na agenda!");
       if (fetchAgendamentos) await fetchAgendamentos();
       setCancelModalItem(null);
@@ -3735,6 +3802,28 @@ export default function AgendaView({
                     <div className="grid sm:grid-cols-2 gap-3">
                       <div>
                         <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
+                  {/* CARD DESTACADO DE OBSERVAÇÕES DO ATENDIMENTO & PACIENTE */}
+                  <div className="p-5 rounded-3xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/30 dark:border-amber-500/40 space-y-3 shadow-xs mb-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-black uppercase tracking-widest text-amber-900 dark:text-amber-300 flex items-center gap-2">
+                        <FileText size={15} className="text-amber-600 dark:text-amber-400" />
+                        Observações do Atendimento & Paciente
+                      </span>
+                      {sensitiveModalItem.tipo === "medicalsys" && (
+                        <span className="text-[10px] font-mono font-bold px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-950 dark:text-amber-200 border border-amber-500/30">
+                          Importado do ERP MedicalSYS
+                        </span>
+                      )}
+                    </div>
+                    <div className="p-4 bg-white/95 dark:bg-zinc-900/95 rounded-2xl border border-amber-500/20 text-xs text-zinc-800 dark:text-zinc-200 font-medium whitespace-pre-wrap leading-relaxed min-h-[56px] shadow-2xs">
+                      {sensitiveModalItem.rawItem?.observacoes ||
+                        sensitiveModalItem.rawItem?.observacao ||
+                        sensitiveModalItem.observacoes ||
+                        sensitiveModalItem.rawItem?.obs ||
+                        "Nenhuma observação informada para este atendimento."}
+                    </div>
+                  </div>
+
                           Nome Completo
                         </span>
                         <span className="font-extrabold text-sm text-zinc-950 dark:text-white block mt-0.5">
