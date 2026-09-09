@@ -26,59 +26,136 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: "ID da empresa não informado." }, { status: 400 });
     }
 
-    // 1. Buscar configurações de chaves da empresa
+    // 1. Buscar configurações da empresa (config_chaves e config_campos)
     const { data: empresa, error: errEmpresa } = await supabase
       .from("empresas")
-      .select("id, config_chaves")
+      .select("id, nome, config_chaves, config_campos")
       .eq("id", empresaId)
       .maybeSingle();
 
     if (errEmpresa || !empresa) {
-      return NextResponse.json({ success: false, error: "Empresa não encontrada." }, { status: 404 });
+      return NextResponse.json({ success: false, error: "Empresa não encontrada no banco." }, { status: 404 });
     }
 
-    const config = empresa.config_chaves || {};
-    const enabled = Boolean(config.medicalsys_enabled);
+    const configChaves = empresa.config_chaves || {};
+    const configCampos = empresa.config_campos || {};
 
-    // TRAVA DE SEGURANÇA: Se desabilitado, não envia ao Medicalsys real para não afetar testes
-    if (!enabled) {
-      console.log(`[Medicalsys] Envio desabilitado nas configurações da empresa (${empresaId}). Atendimento não enviado ao ERP.`);
+    // Verifica se a sincronização está ativada (aceita ambas as propriedades para redundância total)
+    const isEnabled = Boolean(
+      configCampos.enviar_agendamentos_medicalsys ??
+      configCampos.medicalsys_enabled ??
+      configChaves.medicalsys_enabled
+    );
+
+    // TRAVA DE SEGURANÇA: Se desabilitado, não envia ao Medicalsys e mantém apenas no RMCare
+    if (!isEnabled) {
+      console.log(`[Medicalsys] Sincronização desabilitada para a empresa "${empresa.nome || empresaId}". Agendamento mantido apenas na RMCare.`);
       return NextResponse.json({
         success: true,
         enabled: false,
-        message: "Envio ao Medicalsys desabilitado nas configurações da clínica (modo de teste)."
+        message: "Sincronização com o Medicalsys desabilitada nas configurações da clínica."
       });
     }
 
-    // 2. Agente Proxy Fixie
-    const proxyUrl = process.env.FIXIE_URL || "http://fixie:1c54Fc5I1jgmHG2@criterium.usefixie.com:80";
-    const proxyAgent = new HttpsProxyAgent(proxyUrl);
+    // 2. Normalização rigorosa dos parâmetros conforme documentação do Swagger Medicalsys (POST /agenda/)
+    
+    // A. Formato da data: AAAA-MM-DD
+    let momento = String(data || "").trim();
+    if (momento.includes("/")) {
+      const [d, m, y] = momento.split("/");
+      momento = `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+    }
 
-    // 3. Montar Form Data conforme documentação da API Medicalsys
-    const apiKey = config.medicalsys_apikey || "8FxD2eUsODMO8IZWMHZaNpt78av9Vy6k";
-    const customerApiKey = config.medicalsys_customer_apikey || "SqdACjyxnXuYqL8ilnwTvXHroEOvFHFR";
-    const clinicaId = config.medicalsys_id_clinica || "9";
-    const medicoId = config.medicalsys_id_medico || medico || "1";
-
-    const calcHorarioFim = (inicio) => {
-      if (!inicio) return "00:30";
+    // B. Horário de início e fim: HH:MM
+    const cleanHorarioInicio = String(horarioInicio || "08:00").trim().slice(0, 5);
+    const calcHorarioFim = (inicio, minutos = 15) => {
+      if (!inicio) return "08:15";
       const [h, m] = inicio.split(":").map(Number);
-      const endM = (m + 15) % 60;
-      const endH = h + Math.floor((m + 15) / 60);
+      const total = h * 60 + m + minutos;
+      const endH = Math.floor(total / 60) % 24;
+      const endM = total % 60;
       return `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
     };
+    const cleanHorarioFim = String(horarioFim || calcHorarioFim(cleanHorarioInicio)).trim().slice(0, 5);
 
+    // C. Telefone do paciente: apenas dígitos com DDD (padrão Brasil)
+    let cleanFone = String(telefoneCelular || "").replace(/\D/g, "");
+    if (cleanFone.startsWith("55") && (cleanFone.length === 12 || cleanFone.length === 13)) {
+      cleanFone = cleanFone.slice(2);
+    }
+    if (!cleanFone) cleanFone = "83999999999";
+
+    // D. Meio de pagamento: 'espe', 'conv', 'cart', 'debi'
+    let cleanPagamento = "espe";
+    const meioLower = String(meioPagamento || "").toLowerCase().trim();
+    if (meioLower === "conv" || meioLower.includes("convênio") || meioLower.includes("convenio")) {
+      cleanPagamento = "conv";
+    } else if (meioLower === "cart" || meioLower.includes("cartão") || meioLower.includes("cartao") || meioLower.includes("crédito")) {
+      cleanPagamento = "cart";
+    } else if (meioLower === "debi" || meioLower.includes("débito") || meioLower.includes("debito")) {
+      cleanPagamento = "debi";
+    } else {
+      cleanPagamento = "espe";
+    }
+
+    // E. Resolução inteligente do ID do Médico (Medicalsys exige um ID inteiro de médico)
+    let resolvedMedicoId = configChaves.medicalsys_id_medico || "1";
+    if (medico && /^\d+$/.test(String(medico).trim())) {
+      resolvedMedicoId = String(medico).trim();
+    } else if (medico) {
+      const cleanMedicoNome = String(medico).trim();
+
+      // Busca por serviço cadastrado para capturar codigo_uri ou numero_especialista
+      const { data: srvMatch } = await supabase
+        .from("servicos")
+        .select("codigo_uri, numero_especialista")
+        .eq("empresa_id", empresaId)
+        .ilike("nome", `%${cleanMedicoNome}%`)
+        .maybeSingle();
+
+      if (srvMatch?.numero_especialista && /^\d+$/.test(String(srvMatch.numero_especialista))) {
+        resolvedMedicoId = String(srvMatch.numero_especialista);
+      } else if (srvMatch?.codigo_uri && /^\d+$/.test(String(srvMatch.codigo_uri))) {
+        resolvedMedicoId = String(srvMatch.codigo_uri);
+      } else {
+        // Busca nos bloqueios importados da clínica para pegar o ID real do médico retornado pelo Medicalsys
+        const { data: bMatch } = await supabase
+          .from("bloqueios_horarios")
+          .select("raw_payload_completo")
+          .eq("empresa_id", empresaId)
+          .ilike("medico_profissional", `%${cleanMedicoNome}%`)
+          .not("raw_payload_completo", "is", null)
+          .limit(1)
+          .maybeSingle();
+
+        const rawMed = bMatch?.raw_payload_completo?.medico;
+        const rawMedId = rawMed?.id || (Array.isArray(rawMed) ? rawMed[0]?.id : null);
+        if (rawMedId && /^\d+$/.test(String(rawMedId))) {
+          resolvedMedicoId = String(rawMedId);
+        }
+      }
+    }
+
+    const clinicaId = configChaves.medicalsys_id_clinica || "9";
+    const apiKey = configChaves.medicalsys_apikey || "8FxD2eUsODMO8IZWMHZaNpt78av9Vy6k";
+    const customerApiKey = configChaves.medicalsys_customer_apikey || configChaves.medicalsys_costumer_apikey || "SqdACjyxnXuYqL8ilnwTvXHroEOvFHFR";
+
+    // 3. Montar Form Data conforme especificação Swagger
     const formData = new URLSearchParams();
-    formData.append("paciente_provisorio", nomePaciente || "Paciente Online");
-    formData.append("momento", data);
-    formData.append("horario_inicio", horarioInicio);
-    formData.append("horario_fim", horarioFim || calcHorarioFim(horarioInicio));
-    formData.append("meio_de_pagamento", meioPagamento || "espe");
-    formData.append("tel_celular", (telefoneCelular || "").replace(/\D/g, ""));
+    formData.append("paciente_provisorio", (nomePaciente || "Paciente Online").trim());
+    formData.append("momento", momento);
+    formData.append("horario_inicio", cleanHorarioInicio);
+    formData.append("horario_fim", cleanHorarioFim);
+    formData.append("meio_de_pagamento", cleanPagamento);
+    formData.append("tel_celular", cleanFone);
     formData.append("id_clinica", String(clinicaId));
-    formData.append("medico", String(medicoId));
+    formData.append("medico", String(resolvedMedicoId));
 
-    console.log(`[Medicalsys] Enviando agendamento para Medicalsys: ${data} ${horarioInicio} - ${nomePaciente}`);
+    console.log(`[Medicalsys] Disparando POST /agenda/ para ${momento} às ${cleanHorarioInicio} | Paciente: ${nomePaciente} | Médico ID: ${resolvedMedicoId} | Clínica ID: ${clinicaId}`);
+
+    // 4. Proxy Fixie para IP estático homologado
+    const proxyUrl = process.env.FIXIE_URL || "http://fixie:1c54Fc5I1jgmHG2@criterium.usefixie.com:80";
+    const proxyAgent = new HttpsProxyAgent(proxyUrl);
 
     const response = await axios.post("https://gateway.medicalsys.com.br:9000/integracoes/agenda/", formData.toString(), {
       httpsAgent: proxyAgent,
@@ -86,22 +163,27 @@ export async function POST(request) {
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
         "apikey": apiKey,
-        "msys-costumer-apikey": customerApiKey
-      }
+        "msys-costumer-apikey": customerApiKey,
+        "User-Agent": "RMCare-Platform/1.0"
+      },
+      timeout: 15000
     });
 
     const resultData = response.data;
+    console.log("✅ [Medicalsys] Agendamento criado com sucesso no Medicalsys:", resultData);
 
-    // 4. Salvar ID do Medicalsys no agendamento local no Supabase
+    // 5. Salvar ID do Medicalsys no agendamento no Supabase
     if (appointmentId && resultData?.id) {
-      await supabase
-        .from("agendamentos")
-        .update({
-          medicalsys_id: resultData.id,
-          enviado_medicalsys: true,
-          resposta_medicalsys: resultData
-        })
-        .eq("id", appointmentId);
+      try {
+        await supabase
+          .from("agendamentos")
+          .update({
+            medicalsys_id: resultData.id
+          })
+          .eq("id", appointmentId);
+      } catch (eUp) {
+        console.warn("Aviso ao salvar medicalsys_id:", eUp);
+      }
     }
 
     return NextResponse.json({
@@ -109,11 +191,11 @@ export async function POST(request) {
       enabled: true,
       medicalsysId: resultData?.id || null,
       data: resultData,
-      message: "Agendamento incluído no Medicalsys com sucesso!"
+      message: "Agendamento integrado ao Medicalsys com sucesso!"
     });
   } catch (error) {
-    console.error("[Medicalsys] Erro ao enviar agendamento:", error?.response?.data || error.message);
-    const detalhes = error.response?.data?.message || error?.response?.data || error.message;
+    console.error("❌ [Medicalsys] Erro ao integrar agendamento:", error?.response?.data || error.message);
+    const detalhes = error?.response?.data?.message || error?.response?.data || error.message;
     return NextResponse.json({ success: false, enabled: true, error: detalhes }, { status: 500 });
   }
 }

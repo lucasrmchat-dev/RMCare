@@ -76,10 +76,22 @@ export async function getAdminLogado(exigeEmpresa = false) {
 export async function actionSalvarChavesIntegracao(config_chaves) {
   const admin = await getAdminLogado(true);
   
+  const { data: empCurrent } = await supabaseAdmin
+    .from("empresas")
+    .select("config_campos")
+    .eq("id", admin.empresa_id)
+    .maybeSingle();
+
+  const curCampos = empCurrent?.config_campos || {};
+  if (config_chaves?.medicalsys_enabled !== undefined) {
+    curCampos.enviar_agendamentos_medicalsys = Boolean(config_chaves.medicalsys_enabled);
+  }
+
   const { error } = await supabaseAdmin
     .from("empresas")
     .update({ 
       config_chaves,
+      config_campos: curCampos,
       rmchat_webhook_url: config_chaves?.rmchat_webhook_url ? config_chaves.rmchat_webhook_url.trim() : null
     })
     .eq("id", admin.empresa_id);
@@ -971,7 +983,7 @@ export async function fetchAdminCustomization() {
   const admin = await getAdminLogado(true);
   let { data, error } = await supabaseAdmin
     .from("empresas")
-    .select("id, config_campos, config_mensagens, especialidades")
+    .select("id, config_campos, config_mensagens, config_chaves, especialidades")
     .eq("id", admin.empresa_id)
     .single();
 
@@ -1023,6 +1035,30 @@ export async function actionSalvarCustomization({ config_campos, config_mensagen
       .eq("id", admin.empresa_id);
 
     if (error) throw error;
+  }
+
+  // Sincroniza flag de integração medicalsys em config_chaves se informada em config_campos
+  if (config_campos && config_campos.enviar_agendamentos_medicalsys !== undefined) {
+    try {
+      const { data: empCurrent } = await supabaseAdmin
+        .from("empresas")
+        .select("config_chaves")
+        .eq("id", admin.empresa_id)
+        .maybeSingle();
+
+      const curChaves = empCurrent?.config_chaves || {};
+      await supabaseAdmin
+        .from("empresas")
+        .update({
+          config_chaves: {
+            ...curChaves,
+            medicalsys_enabled: Boolean(config_campos.enviar_agendamentos_medicalsys)
+          }
+        })
+        .eq("id", admin.empresa_id);
+    } catch (eChaves) {
+      console.warn("Aviso ao sincronizar config_chaves.medicalsys_enabled:", eChaves);
+    }
   }
 
   // Sincronização inteligente com a nova tabela regras_mensagens por empresa_id

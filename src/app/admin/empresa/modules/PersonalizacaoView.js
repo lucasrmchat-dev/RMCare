@@ -48,7 +48,8 @@ import {
   X,
   Play,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Server
 } from "lucide-react";
 import {
   fadeUp,
@@ -460,6 +461,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
     ocultar_checkout: false,
     ocultar_valor_particular: false,
     ocultar_valor_consulta: false,
+    enviar_agendamentos_medicalsys: false,
     logo_url: "",
     formato_logo: "arredondada",
     enviar_mensagens_importados_erp: true,
@@ -662,6 +664,12 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                 : prev.ordem_etapas,
             logo_url: emp.logo_url || emp.config_campos.logo_url || prev.logo_url,
             formato_logo: emp.config_campos.formato_logo || prev.formato_logo || "arredondada",
+            enviar_agendamentos_medicalsys: Boolean(
+              emp.config_campos?.enviar_agendamentos_medicalsys ??
+              emp.config_campos?.medicalsys_enabled ??
+              emp.config_chaves?.medicalsys_enabled ??
+              prev.enviar_agendamentos_medicalsys
+            ),
             tema: {
               ...prev.tema,
               ...(emp.config_campos.tema || {}),
@@ -1733,6 +1741,53 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                       }
                     />
                   </div>
+                </div>
+              </section>
+
+              {/* SINCRONIZAÇÃO AUTOMÁTICA COM ERP MEDICALSYS */}
+              <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm space-y-5">
+                <div className="flex items-center gap-3 border-b border-zinc-100 dark:border-white/5 pb-4">
+                  <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center text-blue-600 dark:text-blue-400">
+                    <Server size={18} strokeWidth={1.5} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-zinc-950 dark:text-white">
+                      Sincronização com Medicalsys (ERP)
+                    </h3>
+                    <p className="text-xs text-zinc-500">
+                      Controle de integração: envie novos agendamentos concluídos na RMCare diretamente para a outra plataforma.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-zinc-50/80 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+                  <div className="space-y-1">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-900 dark:text-white flex items-center gap-2">
+                      <Activity size={14} className={campos.enviar_agendamentos_medicalsys ? "text-emerald-500" : "text-zinc-400"} />
+                      Enviar Próximos Agendamentos para o Medicalsys
+                    </h4>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed max-w-xl">
+                      {campos.enviar_agendamentos_medicalsys
+                        ? "Habilitado: Todo agendamento feito na RMCare será registrado aqui e cairá automaticamente na agenda do Medicalsys."
+                        : "Desabilitado: Os agendamentos são realizados exclusivamente na plataforma RMCare (sem envio ao Medicalsys)."}
+                    </p>
+                  </div>
+
+                  <ToggleSwitch
+                    checked={Boolean(campos.enviar_agendamentos_medicalsys)}
+                    onChange={(v) =>
+                      setCampos((prev) => ({
+                        ...prev,
+                        enviar_agendamentos_medicalsys: v,
+                        medicalsys_enabled: v
+                      }))
+                    }
+                    label={
+                      campos.enviar_agendamentos_medicalsys
+                        ? "Sincronização Ativada"
+                        : "Desativado (Só RMCare)"
+                    }
+                  />
                 </div>
               </section>
             </motion.div>

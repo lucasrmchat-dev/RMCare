@@ -756,8 +756,22 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
 // ENVIAR PARA MEDICALSYS SE HABILITADO
 export const enviarParaMedicalsysSeHabilitado = async (formData, empresaDados, agendamentoId = null) => {
   try {
-    const nomePaciente = `${formData.nome || ""} ${formData.sobrenome || ""}`.trim();
     const confCampos = empresaDados?.config_campos || {};
+    const confChaves = empresaDados?.config_chaves || {};
+
+    // Trava de segurança: se a sincronização não estiver ativada, não envia ao Medicalsys
+    const isEnabled = Boolean(
+      confCampos.enviar_agendamentos_medicalsys ??
+      confCampos.medicalsys_enabled ??
+      confChaves.medicalsys_enabled
+    );
+
+    if (!isEnabled) {
+      console.log("ℹ️ [Medicalsys] Sincronização automática desabilitada nas configurações da clínica. Agendamento salvo exclusivamente na RMCare.");
+      return { success: true, enabled: false, message: "Sincronização desabilitada nas configurações." };
+    }
+
+    const nomePaciente = `${formData.nome || ""} ${formData.sobrenome || ""}`.trim();
     const modalidadeEfetiva = formData.modalidade 
       || (confCampos.ocultar_modalidade ? (confCampos.modalidade_padrao || "Convênio") : (confCampos.modalidade_padrao || "Particular"));
     const isConvenio = modalidadeEfetiva === "Convênio" || modalidadeEfetiva?.toLowerCase().includes("conv");
@@ -769,7 +783,7 @@ export const enviarParaMedicalsysSeHabilitado = async (formData, empresaDados, a
       telefoneCelular: formData.telefone_whatsapp || "",
       data: formData.data_agendamento,
       horarioInicio: formData.horario_agendamento,
-      medico: formData.medico_profissional || formData.subtipo_exame,
+      medico: formData.medico_profissional || formData.subtipo_exame || formData.especialidade,
       meioPagamento: isConvenio ? "conv" : "espe"
     };
 
