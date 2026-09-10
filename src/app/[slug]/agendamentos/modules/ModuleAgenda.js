@@ -99,6 +99,26 @@ export default function ModuleAgenda() {
       if (!matchMod) return false;
     }
 
+    // 3. Checagem de Especialidades Permitidas nesta Regra
+    const specialTokens = ["consulta", "exame", "retorno", "particular", "convenio", "convênio", "todos", "todas"];
+    let espsPerm = [];
+    if (Array.isArray(r.especialidades_permitidas) && r.especialidades_permitidas.length > 0) {
+      espsPerm = r.especialidades_permitidas.map(normalizeText);
+    } else if (r.servico_id && permitidos.length > 0) {
+      espsPerm = permitidos.filter((t) => !specialTokens.includes(t));
+    } else if (r.servico_id && r.especialidade) {
+      espsPerm = r.especialidade.split(",").map(normalizeText).filter(Boolean);
+    }
+
+    if (espsPerm.length > 0) {
+      const matchEsp = espsPerm.some((esp) => {
+        if (especialidadeStr && (esp === especialidadeStr || esp.includes(especialidadeStr) || especialidadeStr.includes(esp))) return true;
+        if (subtipoStr && (esp === subtipoStr || esp.includes(subtipoStr) || subtipoStr.includes(esp))) return true;
+        return false;
+      });
+      if (!matchEsp) return false;
+    }
+
     return true;
   };
 
@@ -146,6 +166,7 @@ export default function ModuleAgenda() {
   // Se médico E especialidade têm regras, o dia e horário devem ser permitidos por AMBOS.
   const isDiaPermitidoPelasRegras = (dataStr) => {
     const diaWeek = getDiaSemana(dataStr);
+    const [y, m, d] = (dataStr || "").split("-").map(Number);
 
     const isSemanaValida = (r) => {
       const semanas = r.semanas_mes;

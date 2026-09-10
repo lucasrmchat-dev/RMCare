@@ -838,6 +838,8 @@ export async function actionCriarRegraAgenda(regra) {
       servico_id: regra.servico_id || null,
       especialidade: regra.especialidade || null,
       dias_semana: Array.isArray(regra.dias_semana) ? regra.dias_semana : [],
+      semanas_mes: Array.isArray(regra.semanas_mes) ? regra.semanas_mes : ["todas"],
+      especialidades_permitidas: Array.isArray(regra.especialidades_permitidas) ? regra.especialidades_permitidas : [],
       hora_inicio: regra.hora_inicio || "08:00",
       hora_fim: regra.hora_fim || "18:00",
       ultimo_horario_agendamento: regra.ultimo_horario_agendamento || null,
@@ -851,8 +853,10 @@ export async function actionCriarRegraAgenda(regra) {
     let { data, error } = await supabaseAdmin.from("regras_agenda").insert([fullPayload]).select();
 
     // Fallback progressivo se colunas novas ainda não existirem no Supabase
-    if (error && (error.code === "42703" || error.code === "PGRST204" || error.message?.includes("column") || error.message?.includes("tipo_bloqueio") || error.message?.includes("especialidade") || error.message?.includes("schema cache"))) {
+    if (error && (error.code === "42703" || error.code === "PGRST204" || error.message?.includes("column") || error.message?.includes("tipo_bloqueio") || error.message?.includes("especialidade") || error.message?.includes("semanas_mes") || error.message?.includes("especialidades_permitidas") || error.message?.includes("schema cache"))) {
       delete fullPayload.tipo_bloqueio;
+      delete fullPayload.semanas_mes;
+      delete fullPayload.especialidades_permitidas;
       const retry1 = await supabaseAdmin.from("regras_agenda").insert([fullPayload]).select();
       if (retry1.error && (retry1.error.code === "42703" || retry1.error.code === "PGRST204" || retry1.error.message?.includes("column"))) {
         const fallbackPayload = {
@@ -890,6 +894,8 @@ export async function actionAtualizarRegraAgenda(id, regra) {
       servico_id: regra.servico_id || null,
       especialidade: regra.especialidade || null,
       dias_semana: Array.isArray(regra.dias_semana) ? regra.dias_semana : [],
+      semanas_mes: Array.isArray(regra.semanas_mes) ? regra.semanas_mes : ["todas"],
+      especialidades_permitidas: Array.isArray(regra.especialidades_permitidas) ? regra.especialidades_permitidas : [],
       hora_inicio: regra.hora_inicio,
       hora_fim: regra.hora_fim,
       ultimo_horario_agendamento: regra.ultimo_horario_agendamento,
@@ -908,8 +914,10 @@ export async function actionAtualizarRegraAgenda(id, regra) {
       .select()
       .single();
 
-    if (error && (error.code === "42703" || error.code === "PGRST204" || error.message?.includes("column") || error.message?.includes("tipo_bloqueio") || error.message?.includes("especialidade") || error.message?.includes("schema cache"))) {
+    if (error && (error.code === "42703" || error.code === "PGRST204" || error.message?.includes("column") || error.message?.includes("tipo_bloqueio") || error.message?.includes("especialidade") || error.message?.includes("semanas_mes") || error.message?.includes("especialidades_permitidas") || error.message?.includes("schema cache"))) {
       delete allowed.tipo_bloqueio;
+      delete allowed.semanas_mes;
+      delete allowed.especialidades_permitidas;
       const retry1 = await supabaseAdmin
         .from("regras_agenda")
         .update(allowed)
@@ -945,6 +953,7 @@ export async function actionAtualizarRegraAgenda(id, regra) {
         data = retry1.data;
       }
     } else if (error) {
+      console.error("Erro ao atualizar regra de agenda:", error);
       return { success: false, error: error.message };
     }
 

@@ -24,7 +24,9 @@ import {
   ArrowUpDown,
   Activity,
   ShieldCheck,
-  RotateCcw
+  RotateCcw,
+  Check,
+  Calendar
 } from "lucide-react";
 import {
   fadeUp,
@@ -40,6 +42,24 @@ import {
   actionDeletarRegra
 } from "@/actions/adminData";
 import { playDopamineSound, triggerHaptic } from "@/lib/dopamine";
+
+
+export const formatarSemanasBadge = (semanas) => {
+  if (!semanas || !Array.isArray(semanas) || semanas.length === 0 || semanas.includes("todas")) {
+    return null;
+  }
+  const labels = [];
+  semanas.forEach((sem) => {
+    if (sem === "ultimas" || sem === "ultimas_1") labels.push("Última Semana");
+    else if (sem.startsWith("ultimas_")) labels.push(`${sem.replace("ultimas_", "")} Últimas Semanas`);
+    else if (sem === "primeiras_1") labels.push("1ª Semana");
+    else if (sem.startsWith("primeiras_")) labels.push(`${sem.replace("primeiras_", "")} Primeiras Semanas`);
+    else if (sem === "meio") labels.push("Semanas do Meio");
+    else if (/^\d+$/.test(sem)) labels.push(`${sem}ª Semana`);
+    else labels.push(sem);
+  });
+  return labels.join(", ");
+};
 
 const DIAS_SEMANA = [
   { id: 1, label: "Segunda", short: "Seg" },
@@ -79,6 +99,7 @@ export default function RestricoesView({
     especialidade: "",
     nome_grupo: "",
     especialidades_selecionadas: [],
+    restringir_especialidades: false,
     dias_semana: [],
     semanas_mes: ["todas"],
     hora_inicio: "08:00",
@@ -105,6 +126,15 @@ export default function RestricoesView({
     return [...setEsps].sort();
   }, [servicos]);
 
+  const profissionalSelecionado = useMemo(() => {
+    return (servicos || []).find((s) => s.id === formData.servico_id);
+  }, [servicos, formData.servico_id]);
+
+  const especialidadesDoProfissional = useMemo(() => {
+    if (!profissionalSelecionado?.especialidade) return [];
+    return profissionalSelecionado.especialidade.split(",").map((e) => e.trim()).filter(Boolean);
+  }, [profissionalSelecionado]);
+
   const activeView = subTab === "adicionar" ? "builder" : "lista";
 
   const resetForm = () => {
@@ -115,6 +145,7 @@ export default function RestricoesView({
       especialidade: "",
       nome_grupo: "",
       especialidades_selecionadas: [],
+      restringir_especialidades: false,
       dias_semana: [],
       semanas_mes: ["todas"],
       hora_inicio: "08:00",
@@ -157,11 +188,13 @@ export default function RestricoesView({
     if (permitidos.includes("particular")) modalidadeAtendimento = "particular";
     else if (permitidos.includes("convenio") || permitidos.includes("convênio")) modalidadeAtendimento = "convenio";
 
+    const hasRestricaoEsps = (Array.isArray(regra.especialidades_permitidas) && regra.especialidades_permitidas.length > 0) || (regra.servico_id && espsSelecionadas.length > 0);
     setFormData({
       servico_id: regra.servico_id || "",
       especialidade: regra.especialidade || "",
       nome_grupo: regra.especialidade && !listaEspecialidades.includes(regra.especialidade) ? regra.especialidade : "",
-      especialidades_selecionadas: espsSelecionadas,
+      especialidades_selecionadas: Array.isArray(regra.especialidades_permitidas) && regra.especialidades_permitidas.length > 0 ? regra.especialidades_permitidas : espsSelecionadas,
+      restringir_especialidades: hasRestricaoEsps,
       dias_semana: regra.dias_semana || [],
       semanas_mes: Array.isArray(regra.semanas_mes) && regra.semanas_mes.length > 0 ? regra.semanas_mes : ["todas"],
       hora_inicio: regra.hora_inicio?.slice(0, 5) || "08:00",
@@ -240,16 +273,25 @@ export default function RestricoesView({
       if (tipoRegra === "geral") {
         payload.servico_id = null;
         payload.especialidade = null;
+        payload.especialidades_permitidas = [];
       } else if (tipoRegra === "especialidade") {
         payload.servico_id = null;
         const esps = formData.especialidades_selecionadas.length > 0
           ? formData.especialidades_selecionadas
           : [formData.especialidade];
         tipos = [...esps];
+        payload.especialidades_permitidas = esps;
         payload.especialidade = formData.nome_grupo?.trim() || esps.join(", ");
       } else if (tipoRegra === "especifica") {
         payload.servico_id = formData.servico_id;
-        payload.especialidade = null;
+        if (formData.restringir_especialidades && formData.especialidades_selecionadas.length > 0) {
+          tipos = [...formData.especialidades_selecionadas];
+          payload.especialidades_permitidas = formData.especialidades_selecionadas;
+          payload.especialidade = formData.especialidades_selecionadas.join(", ");
+        } else {
+          payload.especialidades_permitidas = [];
+          payload.especialidade = null;
+        }
       }
 
       // Adiciona restrição de tipo de atendimento (Consulta / Exame / Retorno)
@@ -621,13 +663,109 @@ export default function RestricoesView({
                   )}
 
                   {tipoRegra === "especifica" && (
-                    <div className="pt-2">
+                    <div className="space-y-4 pt-2">
                       <CustomSelect
                         label="Qual o profissional afetado?"
                         value={formData.servico_id}
-                        onChange={(val) => setFormData({ ...formData, servico_id: val })}
+                        onChange={(val) => {
+                          const srv = (servicos || []).find((s) => s.id === val);
+                          const profEsps = srv?.especialidade
+                            ? srv.especialidade.split(",").map((e) => e.trim()).filter(Boolean)
+                            : [];
+                          setFormData((prev) => ({
+                            ...prev,
+                            servico_id: val,
+                            especialidades_selecionadas: prev.especialidades_selecionadas.length > 0
+                              ? prev.especialidades_selecionadas
+                              : profEsps
+                          }));
+                        }}
                         options={servicosOptions}
                       />
+
+                      {/* CONTROLE DE RESTRIÇÃO POR ESPECIALIDADES */}
+                      <div className="p-4 bg-zinc-50/80 dark:bg-zinc-900/60 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div>
+                            <label className="text-xs font-bold text-zinc-900 dark:text-white block">
+                              Especialidades Atendidas nesta Regra
+                            </label>
+                            <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                              Defina se este horário vale para todas as especialidades ou apenas procedimentos específicos (ex: na última semana atender apenas Colonoscopia).
+                            </p>
+                          </div>
+                          <ToggleSwitch
+                            checked={formData.restringir_especialidades}
+                            onChange={(v) =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                restringir_especialidades: v,
+                                especialidades_selecionadas: v
+                                  ? (prev.especialidades_selecionadas.length > 0
+                                      ? prev.especialidades_selecionadas
+                                      : especialidadesDoProfissional.length > 0
+                                      ? especialidadesDoProfissional
+                                      : [])
+                                  : []
+                              }))
+                            }
+                            label={
+                              formData.restringir_especialidades
+                                ? "Apenas Selecionadas"
+                                : "Todas as Especialidades"
+                            }
+                          />
+                        </div>
+
+                        {formData.restringir_especialidades && (
+                          <div className="pt-3 border-t border-zinc-200/60 dark:border-zinc-800 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-bold text-purple-900 dark:text-purple-300 uppercase tracking-wider">
+                                Selecione as especialidades válidas nesta regra:
+                              </span>
+                              <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400">
+                                {formData.especialidades_selecionadas.length} selecionada(s)
+                              </span>
+                            </div>
+
+                            <div className="flex flex-wrap gap-2">
+                              {listaEspecialidades.map((esp) => {
+                                const isSelected = formData.especialidades_selecionadas.includes(esp);
+                                const isDoMedico = especialidadesDoProfissional.includes(esp);
+                                return (
+                                  <button
+                                    key={esp}
+                                    type="button"
+                                    onClick={() => {
+                                      const current = formData.especialidades_selecionadas || [];
+                                      const updated = isSelected
+                                        ? current.filter((e) => e !== esp)
+                                        : [...current, esp];
+                                      setFormData((prev) => ({
+                                        ...prev,
+                                        especialidades_selecionadas: updated
+                                      }));
+                                    }}
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
+                                      isSelected
+                                        ? "bg-purple-600 text-white border-purple-600 shadow-sm"
+                                        : "bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-purple-300"
+                                    }`}
+                                  >
+                                    {isSelected ? <Check size={13} strokeWidth={2.5} /> : <Plus size={13} />}
+                                    <span>{esp}</span>
+                                    {isDoMedico && (
+                                      <span className={`text-[9px] px-1 py-0.2 rounded font-normal ${isSelected ? "bg-purple-700 text-purple-100" : "bg-zinc-100 dark:bg-zinc-700 text-zinc-400"}`}>
+                                        Cadastrada
+                                      </span>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </section>
@@ -1074,6 +1212,16 @@ export default function RestricoesView({
                               <p className="text-[11px] font-bold text-zinc-400 mt-1 uppercase tracking-widest flex items-center gap-1.5">
                                 <CalendarDays size={13} /> {diasNomes || "Nenhum dia"}
                               </p>
+                              {formatarSemanasBadge(regra.semanas_mes) && (
+                                <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200/50">
+                                  <Calendar size={10} /> {formatarSemanasBadge(regra.semanas_mes)}
+                                </span>
+                              )}
+                              {Array.isArray(regra.especialidades_permitidas) && regra.especialidades_permitidas.length > 0 && (
+                                <span className="inline-flex items-center gap-1 mt-1 ml-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300 border border-purple-200/50">
+                                  <Stethoscope size={10} /> Apenas: {regra.especialidades_permitidas.join(", ")}
+                                </span>
+                              )}
                             </div>
 
                             <div className="flex gap-1.5 shrink-0">
@@ -1257,7 +1405,19 @@ export default function RestricoesView({
                             className="hover:bg-zinc-50 dark:hover:bg-zinc-900/40 transition-colors"
                           >
                             <td className="p-3.5 font-bold text-zinc-950 dark:text-white">
-                              {tituloRegra}
+                              <div>{tituloRegra}</div>
+                              <div className="flex flex-wrap gap-1 mt-0.5">
+                                {formatarSemanasBadge(regra.semanas_mes) && (
+                                  <span className="inline-block px-2 py-0.2 rounded text-[9.5px] font-bold bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200/50">
+                                    📅 {formatarSemanasBadge(regra.semanas_mes)}
+                                  </span>
+                                )}
+                                {Array.isArray(regra.especialidades_permitidas) && regra.especialidades_permitidas.length > 0 && (
+                                  <span className="inline-block px-2 py-0.2 rounded text-[9.5px] font-bold bg-purple-50 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300 border border-purple-200/50">
+                                    🩺 Apenas: {regra.especialidades_permitidas.join(", ")}
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="p-3.5 font-semibold text-zinc-700 dark:text-zinc-300">
                               {diasNomes || "Nenhum"}
