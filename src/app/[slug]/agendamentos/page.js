@@ -769,7 +769,25 @@ function AgendamentoOrquestrador() {
             return Number(ruleMatch?.duracao_slot_minutos) || 30;
           };
 
+          const getIntervalForAppointment = (itemEsp, itemSub) => {
+            const iEsp = normalizeText(itemEsp);
+            const iSub = normalizeText(itemSub);
+            const found = confEsps.find((e) => {
+              const n = normalizeText(e.nome);
+              return n === iEsp || n === iSub || (iEsp && n.includes(iEsp)) || (iSub && n.includes(iSub));
+            });
+            if (found?.intervalo_minutos !== undefined && found?.intervalo_minutos !== null && Number(found.intervalo_minutos) >= 0) {
+              return Number(found.intervalo_minutos);
+            }
+            const ruleMatch = sharedRules.find((r) => r.intervalo_slot_minutos !== undefined && r.intervalo_slot_minutos !== null && Number(r.intervalo_slot_minutos) > 0);
+            if (ruleMatch) {
+              return Number(ruleMatch.intervalo_slot_minutos);
+            }
+            return Number(empresaDados?.config_campos?.intervalo_exames_padrao_minutos) || 0;
+          };
+
           const duracaoPacienteAtual = getDurationForAppointment(formData.especialidade, formData.subtipo_exame);
+          const intervaloPacienteAtual = getIntervalForAppointment(formData.especialidade, formData.subtipo_exame);
 
           const occupiedIntervals = [];
           const slots = [];
@@ -786,9 +804,11 @@ function AgendamentoOrquestrador() {
             if (matchProf || matchShared || (!profNorm && cleanPool.length === 0)) {
               const startMin = timeToMin(a.horario_agendamento);
               const dur = getDurationForAppointment(a.especialidade, a.subtipo_exame);
-              const endMin = startMin + dur;
+              const intervalo = getIntervalForAppointment(a.especialidade, a.subtipo_exame);
+              // O intervalo ocupado inclui a duração do exame + o intervalo/buffer pós-procedimento
+              const endMin = startMin + dur + intervalo;
               const formattedH = formatTime(a.horario_agendamento);
-              occupiedIntervals.push({ startMin, endMin, hora: formattedH });
+              occupiedIntervals.push({ startMin, endMin, hora: formattedH, duracao: dur, intervalo });
               slots.push(formattedH);
             }
           });
@@ -807,18 +827,27 @@ function AgendamentoOrquestrador() {
             if (matchProf || matchShared) {
               const startMin = timeToMin(b.horario);
               const dur = Number(sharedRules[0]?.duracao_slot_minutos) || 30;
-              const endMin = startMin + dur;
+              const intervalo = Number(sharedRules[0]?.intervalo_slot_minutos) || 0;
+              const endMin = startMin + dur + intervalo;
               const formattedH = formatTime(b.horario);
-              occupiedIntervals.push({ startMin, endMin, hora: formattedH });
+              occupiedIntervals.push({ startMin, endMin, hora: formattedH, duracao: dur, intervalo });
               slots.push(formattedH);
             }
           });
+
+          // Passo da grade de liberação dos horários (padrão de 15 em 15 minutos)
+          const ruleMatchGrade = sharedRules.find((r) => r.passo_grade_minutos !== undefined && r.passo_grade_minutos !== null);
+          const passoGrade = ruleMatchGrade?.passo_grade_minutos !== undefined
+            ? Number(ruleMatchGrade.passo_grade_minutos)
+            : Number(empresaDados?.config_campos?.passo_grade_liberacao_minutos) || 15;
 
           if (isMounted) {
             setAgenda({
               ocupados: [...new Set(slots)],
               occupiedIntervals,
               duracaoAtual: duracaoPacienteAtual,
+              intervaloAtual: intervaloPacienteAtual,
+              passoGrade,
               sharedPool: Array.from(poolEspecialidades),
               buscando: false,
               agora: requestStartedAt

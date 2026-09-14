@@ -516,6 +516,7 @@ export default function EquipeView({
   const [novaEspecialidadeCodigoUri, setNovaEspecialidadeCodigoUri] = useState("");
   const [novaEspecialidadeCat, setNovaEspecialidadeCat] = useState("Consultas");
   const [novaEspecialidadeDuracao, setNovaEspecialidadeDuracao] = useState(30);
+  const [novaEspecialidadeIntervalo, setNovaEspecialidadeIntervalo] = useState(0);
   const [filtroCategoria, setFiltroCategoria] = useState("Todas");
 
   // Modal para editar Especialidade
@@ -812,7 +813,8 @@ export default function EquipeView({
       nome: nomeLimpo,
       codigo_uri: novaEspecialidadeCodigoUri.trim() || null,
       categoria: novaEspecialidadeCat || "Consultas",
-      duracao_minutos: Number(novaEspecialidadeDuracao) || 30
+      duracao_minutos: Number(novaEspecialidadeDuracao) || 30,
+      intervalo_minutos: Number(novaEspecialidadeIntervalo) || 0
     };
     const updatedEsps = [...especialidadesCategorizadas, novaEsp];
     setEspecialidadesCategorizadas(updatedEsps);
@@ -830,7 +832,8 @@ export default function EquipeView({
           nome: editedData.nome.trim() || e.nome,
           codigo_uri: editedData.codigo_uri ? String(editedData.codigo_uri).trim() : null,
           categoria: editedData.categoria || e.categoria || "Consultas",
-          duracao_minutos: Number(editedData.duracao_minutos) || 30
+          duracao_minutos: Number(editedData.duracao_minutos) || 30,
+          intervalo_minutos: Number(editedData.intervalo_minutos) || 0
         };
       }
       return e;
@@ -866,6 +869,15 @@ export default function EquipeView({
     setEspecialidadesCategorizadas(updatedEsps);
     await persistirEspecialidades(updatedEsps);
     showToast(`Duração de "${espNome}" atualizada para ${novaDuracao} min.`);
+  };
+
+  const handleChangeEspecialidadeIntervalo = async (espNome, novoIntervalo) => {
+    const updatedEsps = especialidadesCategorizadas.map((e) =>
+      e.nome === espNome ? { ...e, intervalo_minutos: Number(novoIntervalo) || 0 } : e
+    );
+    setEspecialidadesCategorizadas(updatedEsps);
+    await persistirEspecialidades(updatedEsps);
+    showToast(`Intervalo pós-exame de "${espNome}" atualizado para ${novoIntervalo} min.`);
   };
 
   const handleRemoveEspecialidade = async (espNome) => {
@@ -1369,7 +1381,7 @@ export default function EquipeView({
 
                 {/* FORMULÁRIO DE NOVA ESPECIALIDADE */}
                 <div className="grid sm:grid-cols-12 gap-3 p-4 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl">
-                  <div className="sm:col-span-4">
+                  <div className="sm:col-span-3">
                     <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider block mb-1">
                       Nome da Especialidade / Exame *
                     </label>
@@ -1413,7 +1425,7 @@ export default function EquipeView({
 
                   <div className="sm:col-span-2">
                     <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider block mb-1">
-                      Duração (Tempo)
+                      Duração
                     </label>
                     <select
                       value={novaEspecialidadeDuracao}
@@ -1432,7 +1444,25 @@ export default function EquipeView({
                     </select>
                   </div>
 
-                  <div className="sm:col-span-2 flex items-end">
+                  <div className="sm:col-span-2">
+                    <label className="text-[9px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider block mb-1">
+                      Intervalo Pós-Exame
+                    </label>
+                    <select
+                      value={novaEspecialidadeIntervalo}
+                      onChange={(e) => setNovaEspecialidadeIntervalo(Number(e.target.value))}
+                      className="w-full px-2.5 py-2 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 rounded-xl text-xs outline-none text-purple-900 dark:text-purple-300 font-bold cursor-pointer"
+                    >
+                      <option value={0}>0 min (Sem Intervalo)</option>
+                      <option value={5}>+ 5 min</option>
+                      <option value={10}>+ 10 min</option>
+                      <option value={15}>+ 15 min</option>
+                      <option value={20}>+ 20 min</option>
+                      <option value={30}>+ 30 min</option>
+                    </select>
+                  </div>
+
+                  <div className="sm:col-span-1 flex items-end">
                     <ButtonPrimary
                       onClick={handleAddEspecialidade}
                       disabled={!novaEspecialidadeNome.trim()}
@@ -1531,6 +1561,29 @@ export default function EquipeView({
                                 <option value={60}>60 min (1h)</option>
                                 <option value={90}>90 min</option>
                                 <option value={120}>120 min (2h)</option>
+                              </select>
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider block">
+                                Intervalo Pós-Exame
+                              </label>
+                              <select
+                                value={editingEspecialidade.intervalo_minutos || 0}
+                                onChange={(e) =>
+                                  setEditingEspecialidade({
+                                    ...editingEspecialidade,
+                                    intervalo_minutos: Number(e.target.value)
+                                  })
+                                }
+                                className="w-full px-3 py-2 bg-purple-50/60 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded-xl text-xs font-bold outline-none text-purple-900 dark:text-purple-300"
+                              >
+                                <option value={0}>0 min (Sem Intervalo)</option>
+                                <option value={5}>+ 5 min</option>
+                                <option value={10}>+ 10 min</option>
+                                <option value={15}>+ 15 min</option>
+                                <option value={20}>+ 20 min</option>
+                                <option value={30}>+ 30 min</option>
                               </select>
                             </div>
                           </div>
@@ -1738,7 +1791,7 @@ export default function EquipeView({
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-2 pt-2 border-t border-zinc-100 dark:border-white/5">
+                        <div className="grid grid-cols-4 gap-2 pt-2 border-t border-zinc-100 dark:border-white/5">
                           <div>
                             <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider block mb-0.5">
                               Código URI
@@ -1788,6 +1841,26 @@ export default function EquipeView({
                               <option value={60}>60 min</option>
                               <option value={90}>90 min</option>
                               <option value={120}>120 min</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="text-[9px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider block mb-0.5">
+                              Intervalo
+                            </label>
+                            <select
+                              value={esp.intervalo_minutos || 0}
+                              onChange={(e) =>
+                                handleChangeEspecialidadeIntervalo(esp.nome, e.target.value)
+                              }
+                              className="w-full text-[10px] font-extrabold bg-purple-50/70 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 rounded-lg px-2 py-1 outline-none text-purple-900 dark:text-purple-300 cursor-pointer"
+                            >
+                              <option value={0}>0 min</option>
+                              <option value={5}>+5 min</option>
+                              <option value={10}>+10 min</option>
+                              <option value={15}>+15 min</option>
+                              <option value={20}>+20 min</option>
+                              <option value={30}>+30 min</option>
                             </select>
                           </div>
                         </div>

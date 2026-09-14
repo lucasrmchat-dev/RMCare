@@ -106,6 +106,8 @@ export default function RestricoesView({
     hora_fim: "18:00",
     ultimo_horario_agendamento: "17:30",
     duracao_slot_minutos: 0, // 0 = Desabilitada / Conforme cada especialidade
+    intervalo_slot_minutos: 0, // 0 = Conforme cada especialidade / Sem intervalo
+    passo_grade_minutos: 15, // Liberação em grade fixa de 15 em 15 minutos (:00, :15, :30, :45)
     ocupacao_sequencial: true,
     tipo_bloqueio: "total", // "total" = Bloqueio Total (todos os especialistas do grupo) | "parcial" = Bloqueio Parcial (apenas médico agendado)
     tipo_atendimento: "todos", // "todos" | "consulta" | "exame" | "retorno"
@@ -152,6 +154,8 @@ export default function RestricoesView({
       hora_fim: "18:00",
       ultimo_horario_agendamento: "17:30",
       duracao_slot_minutos: 0,
+      intervalo_slot_minutos: 0,
+      passo_grade_minutos: 15,
       ocupacao_sequencial: true,
       tipo_bloqueio: "total",
       tipo_atendimento: "todos",
@@ -201,6 +205,8 @@ export default function RestricoesView({
       hora_fim: regra.hora_fim?.slice(0, 5) || "18:00",
       ultimo_horario_agendamento: regra.ultimo_horario_agendamento?.slice(0, 5) || "17:30",
       duracao_slot_minutos: Number(regra.duracao_slot_minutos) || 0,
+      intervalo_slot_minutos: Number(regra.intervalo_slot_minutos) || 0,
+      passo_grade_minutos: regra.passo_grade_minutos !== undefined ? Number(regra.passo_grade_minutos) : 15,
       ocupacao_sequencial: Boolean(regra.ocupacao_sequencial),
       tipo_bloqueio: regra.tipo_bloqueio || "total",
       tipo_atendimento: tipoAtendimento,
@@ -263,6 +269,8 @@ export default function RestricoesView({
         hora_fim: formData.hora_fim,
         ultimo_horario_agendamento: formData.ultimo_horario_agendamento,
         duracao_slot_minutos: Number(formData.duracao_slot_minutos) || 0,
+        intervalo_slot_minutos: Number(formData.intervalo_slot_minutos) || 0,
+        passo_grade_minutos: Number(formData.passo_grade_minutos) >= 0 ? Number(formData.passo_grade_minutos) : 15,
         ocupacao_sequencial: Boolean(formData.ocupacao_sequencial),
         tipo_bloqueio: formData.tipo_bloqueio || "total",
         ativo: true
@@ -958,14 +966,14 @@ export default function RestricoesView({
                     />
                   </div>
 
-                  <div className="grid md:grid-cols-2 gap-6 p-4 bg-zinc-50/60 dark:bg-zinc-900/40 rounded-2xl border border-zinc-200/60 dark:border-zinc-800">
+                  <div className="grid md:grid-cols-3 gap-4 p-4 bg-zinc-50/60 dark:bg-zinc-900/40 rounded-2xl border border-zinc-200/60 dark:border-zinc-800">
                     <div className="space-y-1.5">
                       <CustomSelect
                         label="Duração do Slot da Agenda"
                         value={formData.duracao_slot_minutos}
                         onChange={(val) => setFormData({ ...formData, duracao_slot_minutos: Number(val) })}
                         options={[
-                          { value: 0, label: "Desabilitada (Respeitar Tempo de Cada Especialidade)" },
+                          { value: 0, label: "Desabilitada (Respeitar Especialidade)" },
                           { value: 10, label: "10 Minutos (Fixo)" },
                           { value: 15, label: "15 Minutos (Fixo)" },
                           { value: 20, label: "20 Minutos (Fixo)" },
@@ -979,20 +987,62 @@ export default function RestricoesView({
                       />
                       {formData.duracao_slot_minutos === 0 ? (
                         <p className="text-[10.5px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1 mt-1">
-                          <CheckCircle2 size={12} /> A agenda respeitará o tempo determinado de cada especialidade cadastrada.
+                          <CheckCircle2 size={12} /> Tempo determinado por especialidade.
                         </p>
                       ) : (
                         <p className="text-[10.5px] text-zinc-500 mt-1">
-                          Slots com intervalo fixo de {formData.duracao_slot_minutos} minutos para todos os atendimentos desta regra.
+                          Slot fixo de {formData.duracao_slot_minutos} min.
                         </p>
                       )}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <CustomSelect
+                        label="Intervalo pós-exame (Higienização)"
+                        value={formData.intervalo_slot_minutos || 0}
+                        onChange={(val) => setFormData({ ...formData, intervalo_slot_minutos: Number(val) })}
+                        options={[
+                          { value: 0, label: "Conforme Especialidade (Padrão)" },
+                          { value: 5, label: "+5 Minutos" },
+                          { value: 10, label: "+10 Minutos" },
+                          { value: 15, label: "+15 Minutos" },
+                          { value: 20, label: "+20 Minutos" },
+                          { value: 30, label: "+30 Minutos" }
+                        ]}
+                      />
+                      <p className="text-[10.5px] text-purple-600 dark:text-purple-400 font-semibold mt-1">
+                        {formData.intervalo_slot_minutos > 0
+                          ? `Libera o próximo horário ${formData.intervalo_slot_minutos} min após o término do exame.`
+                          : "Usa o intervalo cadastrado em cada especialidade."}
+                      </p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <CustomSelect
+                        label="Liberação da Grade (Horários)"
+                        value={formData.passo_grade_minutos !== undefined ? formData.passo_grade_minutos : 15}
+                        onChange={(val) => setFormData({ ...formData, passo_grade_minutos: Number(val) })}
+                        options={[
+                          { value: 15, label: "De 15 em 15 min (:00, :15, :30, :45)" },
+                          { value: 10, label: "De 10 em 10 min (:00, :10, :20, :30...)" },
+                          { value: 20, label: "De 20 em 20 min (:00, :20, :40)" },
+                          { value: 30, label: "De 30 em 30 min (:00, :30)" },
+                          { value: 5, label: "De 5 em 5 min" },
+                          { value: 0, label: "Minuto Exato de Término (Sem Grade)" }
+                        ]}
+                      />
+                      <p className="text-[10.5px] text-blue-600 dark:text-blue-400 font-semibold mt-1">
+                        {formData.passo_grade_minutos > 0
+                          ? `Próximo horário sempre alinhado de ${formData.passo_grade_minutos} em ${formData.passo_grade_minutos} min.`
+                          : "Libera exatamente no minuto em que o exame termina."}
+                      </p>
                     </div>
 
                     <div className="flex flex-col justify-center">
                       <ToggleSwitch
                         checked={formData.ocupacao_sequencial}
                         onChange={(val) => setFormData({ ...formData, ocupacao_sequencial: val })}
-                        label="Obrigatório Sequencial (Preencher 1º Vago)"
+                        label="Obrigatório Sequencial (1º Vago)"
                       />
                     </div>
                   </div>

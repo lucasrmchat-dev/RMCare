@@ -307,7 +307,8 @@ export default function ModuleAgenda() {
     endStr,
     duracaoMinutos,
     customLastAllowed,
-    intervals = []
+    intervals = [],
+    passoGrade = 15
   ) => {
     let slots = [];
     if (!startStr || !endStr) return slots;
@@ -315,6 +316,8 @@ export default function ModuleAgenda() {
     const startMin = timeToMin(startStr);
     const endMin = timeToMin(endStr);
     const dur = Math.max(parseInt(duracaoMinutos, 10) || 30, 10);
+    const candidatoIntervalo = Number(agenda?.intervaloAtual) || 0;
+    const gridStep = Number(passoGrade) > 0 ? Number(passoGrade) : 15;
 
     let lastAllowedMin = endMin - dur;
     if (customLastAllowed) {
@@ -325,15 +328,20 @@ export default function ModuleAgenda() {
     }
 
     const candidatePoints = new Set();
-    const step = dur <= 15 ? 15 : 10;
 
-    for (let m = startMin; m <= lastAllowedMin; m += step) {
+    // 1. Gera pontos alinhados estritamente à grade de liberação (ex: de 15 em 15 minutos: :00, :15, :30, :45)
+    const firstCandidate = Math.ceil(startMin / gridStep) * gridStep;
+    for (let m = firstCandidate; m <= lastAllowedMin; m += gridStep) {
       candidatePoints.add(m);
     }
 
+    // 2. Quando um exame/atendimento termina, arredonda para CIMA para o próximo múltiplo da grade
+    // Exemplo 1: Exame termina às 08:20 -> Próximo horário liberado na grade de 15 em 15: 08:30
+    // Exemplo 2: Exame termina às 09:10 -> Próximo horário liberado na grade de 15 em 15: 09:15
     intervals.forEach((iv) => {
-      if (iv.endMin >= startMin && iv.endMin <= lastAllowedMin) {
-        candidatePoints.add(iv.endMin);
+      const proximoLiberado = Math.ceil(iv.endMin / gridStep) * gridStep;
+      if (proximoLiberado >= startMin && proximoLiberado <= lastAllowedMin) {
+        candidatePoints.add(proximoLiberado);
       }
     });
 
@@ -342,8 +350,9 @@ export default function ModuleAgenda() {
     sortedCandidates.forEach((m) => {
       if (m < startMin || m > lastAllowedMin || m + dur > endMin) return;
 
+      // Verifica colisão: o exame pretendido não pode colidir com nenhum intervalo já ocupado
       const hasCollision = intervals.some((iv) => {
-        return Math.max(m, iv.startMin) < Math.min(m + dur, iv.endMin);
+        return Math.max(m, iv.startMin) < Math.min(m + dur + candidatoIntervalo, iv.endMin);
       });
 
       slots.push({
@@ -482,7 +491,8 @@ export default function ModuleAgenda() {
         j.endStr,
         j.duracao,
         j.ultimoHorario,
-        intervals
+        intervals,
+        j.passoGrade || agenda?.passoGrade || 15
       );
       slotsGerados.push(...gerados);
       if (j.ocupacaoSequencial) ocupacaoSeqAtiva = true;

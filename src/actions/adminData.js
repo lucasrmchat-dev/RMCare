@@ -845,6 +845,8 @@ export async function actionCriarRegraAgenda(regra) {
       ultimo_horario_agendamento: regra.ultimo_horario_agendamento || null,
       tipos_permitidos: Array.isArray(regra.tipos_permitidos) ? regra.tipos_permitidos : [],
       duracao_slot_minutos: Number(regra.duracao_slot_minutos) || 0,
+      intervalo_slot_minutos: Number(regra.intervalo_slot_minutos) || 0,
+      passo_grade_minutos: Number(regra.passo_grade_minutos) >= 0 ? Number(regra.passo_grade_minutos) : 15,
       ocupacao_sequencial: Boolean(regra.ocupacao_sequencial),
       tipo_bloqueio: regra.tipo_bloqueio || "total",
       ativo: regra.ativo !== false
@@ -901,6 +903,8 @@ export async function actionAtualizarRegraAgenda(id, regra) {
       ultimo_horario_agendamento: regra.ultimo_horario_agendamento,
       tipos_permitidos: Array.isArray(regra.tipos_permitidos) ? regra.tipos_permitidos : [],
       duracao_slot_minutos: Number(regra.duracao_slot_minutos) || 0,
+      intervalo_slot_minutos: Number(regra.intervalo_slot_minutos) || 0,
+      passo_grade_minutos: Number(regra.passo_grade_minutos) >= 0 ? Number(regra.passo_grade_minutos) : 15,
       ocupacao_sequencial: Boolean(regra.ocupacao_sequencial),
       tipo_bloqueio: regra.tipo_bloqueio || "total",
       ativo: regra.ativo !== false
