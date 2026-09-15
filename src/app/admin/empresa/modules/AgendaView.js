@@ -206,14 +206,10 @@ const renderOrigemBadge = (item) => {
   );
 };
 
-const renderAvatarMonograma = (nome) => {
-  const parts = (nome || "Paciente").trim().split(" ").filter(Boolean);
-  const initials = parts.length > 1
-    ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-    : (parts[0] ? parts[0].slice(0, 2).toUpperCase() : "PA");
+const renderAvatarMonograma = () => {
   return (
-    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-zinc-100 to-zinc-200 dark:from-zinc-800 dark:to-zinc-900 border border-black/[0.06] dark:border-white/[0.08] flex items-center justify-center font-bold text-xs text-zinc-700 dark:text-zinc-200 shadow-2xs shrink-0 select-none">
-      {initials}
+    <div className="w-10 h-10 rounded-xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.04] dark:border-white/[0.08] flex items-center justify-center text-zinc-500 dark:text-zinc-400 shadow-2xs shrink-0 select-none">
+      <User size={16} strokeWidth={1.8} />
     </div>
   );
 };
@@ -4110,8 +4106,8 @@ export default function AgendaView({
                               >
                                 {/* AVATAR & NOME PRINCIPAL */}
                                 <div className="flex items-start gap-4">
-                                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-zinc-100 to-zinc-200 dark:from-zinc-800 dark:to-zinc-900 border border-black/[0.06] dark:border-white/[0.08] flex items-center justify-center font-black text-base text-zinc-800 dark:text-zinc-200 shadow-2xs flex-shrink-0">
-                                    {iniciais}
+                                  <div className="w-12 h-12 rounded-2xl bg-black/[0.04] dark:bg-white/[0.06] border border-black/[0.06] dark:border-white/[0.08] flex items-center justify-center text-zinc-600 dark:text-zinc-300 shadow-2xs flex-shrink-0">
+                                    <User size={20} strokeWidth={1.8} />
                                   </div>
                                   <div className="min-w-0 flex-1">
                                     <h2 className="text-lg font-bold text-zinc-950 dark:text-white tracking-tight leading-snug">

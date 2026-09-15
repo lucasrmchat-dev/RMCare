@@ -96,11 +96,31 @@ export default function EmpresaAdmin() {
     setTimeout(() => setToast(null), 3500);
   };
 
+  const handleAuthOrExpiryError = (error) => {
+    const msg = error?.message || "";
+    if (
+      msg.includes("Sessão expirada") ||
+      msg.includes("não autenticado") ||
+      msg.includes("não existe mais") ||
+      msg.includes("expirado")
+    ) {
+      if (typeof window !== "undefined") {
+        document.cookie = "rmagenda_auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+        document.cookie = "rmcare_auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+        localStorage.removeItem("rmcare_session_expires_at");
+        window.location.replace("/login");
+      }
+      return true;
+    }
+    return false;
+  };
+
   const fetchBloqueios = async () => {
     try {
       const data = await fetchAdminBloqueios();
       setBloqueios(data);
     } catch (error) {
+      if (handleAuthOrExpiryError(error)) return;
       showToast("Erro ao carregar bloqueios.", "error");
     }
   };
@@ -110,6 +130,7 @@ export default function EmpresaAdmin() {
       const data = await fetchAdminAgendamentos();
       setAgendamentos(data);
     } catch (error) {
+      if (handleAuthOrExpiryError(error)) return;
       showToast(`Erro na consulta: ${error.message}`, "error");
     }
   };
@@ -119,6 +140,7 @@ export default function EmpresaAdmin() {
       const data = await fetchAdminServicos();
       setServicos(data);
     } catch (error) {
+      if (handleAuthOrExpiryError(error)) return;
       showToast("Erro ao carregar serviços.", "error");
     }
   };
@@ -128,6 +150,7 @@ export default function EmpresaAdmin() {
       const data = await fetchAdminPerguntas();
       setPerguntas(data);
     } catch (error) {
+      if (handleAuthOrExpiryError(error)) return;
       showToast("Erro ao carregar triagem.", "error");
     }
   };
@@ -137,6 +160,7 @@ export default function EmpresaAdmin() {
       const data = await fetchAdminRegras();
       setRegras(data || []);
     } catch (error) {
+      if (handleAuthOrExpiryError(error)) return;
       showToast("Erro ao carregar regras.", "error");
     }
   };
@@ -372,16 +396,17 @@ export default function EmpresaAdmin() {
         )}
       </AnimatePresence>
 
-      <div className="flex flex-1 overflow-hidden relative">
+      <div className="flex flex-1 overflow-hidden relative p-3 sm:p-4 pt-2.5 sm:pt-3 gap-3 sm:gap-4 max-w-[1760px] w-full mx-auto">
+        {/* SIDEBAR FLUTUANTE ESTILO APPLE LIQUID GLASS (MACOS SONOMA PALETTE) */}
         <aside
-          className={`absolute md:relative z-40 h-full bg-white/80 dark:bg-[#161618]/80 backdrop-blur-3xl border-r border-black/[0.06] dark:border-white/[0.08] flex flex-col py-4 px-3 transition-all duration-300 ease-out ${
+          className={`absolute md:relative z-40 h-[calc(100%-4px)] my-auto bg-white/85 dark:bg-[#161618]/85 backdrop-blur-3xl border border-black/[0.06] dark:border-white/[0.08] rounded-3xl shadow-[0_10px_35px_rgba(0,0,0,0.04)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.65)] flex flex-col py-4 px-2.5 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
             isMobileMenuOpen
-              ? "translate-x-0 w-[240px] shadow-2xl"
+              ? "translate-x-0 w-[240px] shadow-2xl left-3 top-3 bottom-3"
               : "-translate-x-full md:translate-x-0"
           } ${isSidebarCollapsed ? "md:w-[64px]" : "md:w-[240px]"}`}
         >
           {/* TOPO DA SIDEBAR */}
-          <div className="flex items-center justify-between mb-3 px-1">
+          <div className="flex items-center justify-between mb-3 px-1.5">
             {!isSidebarCollapsed && (
               <div className="overflow-hidden">
                 <span className="text-[9px] font-extrabold text-zinc-400 uppercase tracking-widest block">
@@ -399,7 +424,7 @@ export default function EmpresaAdmin() {
                 setIsSidebarCollapsed(!isSidebarCollapsed);
               }}
               title={isSidebarCollapsed ? "Expandir menu lateral" : "Recolher menu lateral"}
-              className="hidden md:flex p-1.5 rounded-lg text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors ml-auto cursor-pointer"
+              className="hidden md:flex p-1.5 rounded-xl text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors ml-auto cursor-pointer"
             >
               <ChevronLeft
                 size={16}
@@ -410,7 +435,7 @@ export default function EmpresaAdmin() {
             </button>
           </div>
 
-          {/* NAVEGAÇÃO APPLE DESIGN */}
+          {/* NAVEGAÇÃO APPLE DESIGN COM ORQUESTRAÇÃO FLUIDA */}
           <LayoutGroup>
             <nav className="flex flex-col gap-1 flex-1 overflow-y-auto custom-scrollbar pr-0.5">
               {menuStructure.map((item) => {
@@ -426,17 +451,17 @@ export default function EmpresaAdmin() {
                       title={isSidebarCollapsed ? item.label : undefined}
                       className={`group relative flex items-center w-full min-h-[38px] rounded-2xl text-xs transition-colors duration-150 cursor-pointer z-10 ${
                         isMainActive
-                          ? "text-zinc-950 dark:text-white font-bold"
+                          ? "text-white dark:text-black font-bold"
                           : isExpanded
-                          ? "text-zinc-900 dark:text-white font-semibold"
+                          ? "text-zinc-950 dark:text-white font-semibold"
                           : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white font-medium"
                       } ${isSidebarCollapsed ? "justify-center px-0" : "px-3 justify-between"}`}
                     >
                       {isMainActive && (
                         <motion.div
                           layoutId="sidebar-active-indicator"
-                          className="absolute inset-0 bg-black/[0.06] dark:bg-white/[0.1] rounded-2xl shadow-2xs -z-10"
-                          transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                          className="absolute inset-0 bg-zinc-950 dark:bg-white rounded-2xl shadow-sm -z-10"
+                          transition={{ type: "spring", stiffness: 480, damping: 34 }}
                         />
                       )}
                       <div className="flex items-center gap-2.5 min-w-0">
@@ -445,7 +470,7 @@ export default function EmpresaAdmin() {
                           strokeWidth={isMainActive ? 2.2 : 1.75}
                           className={`shrink-0 transition-colors ${
                             isMainActive
-                              ? "text-zinc-950 dark:text-white"
+                              ? "text-white dark:text-black"
                               : "text-zinc-400 group-hover:text-zinc-700 dark:group-hover:text-zinc-300"
                           }`}
                         />
@@ -455,11 +480,11 @@ export default function EmpresaAdmin() {
                       </div>
 
                       {!isSidebarCollapsed && hasSub && (
-                        <div className="text-zinc-400 ml-1 shrink-0">
+                        <div className={`ml-1 shrink-0 ${isMainActive ? "text-white/80 dark:text-black/80" : "text-zinc-400"}`}>
                           <ChevronRight
                             size={13}
                             className={`transition-transform duration-200 ${
-                              isExpanded ? "rotate-90 text-zinc-900 dark:text-white" : ""
+                              isExpanded ? "rotate-90 text-current font-bold" : ""
                             }`}
                           />
                         </div>
@@ -474,7 +499,7 @@ export default function EmpresaAdmin() {
                           animate={{ opacity: 1, height: "auto" }}
                           exit={{ opacity: 0, height: 0 }}
                           transition={{ type: "spring", stiffness: 450, damping: 32 }}
-                          className="relative pl-3 ml-4.5 my-1 border-l border-zinc-200/90 dark:border-zinc-800 space-y-0.5 overflow-hidden"
+                          className="relative pl-3 ml-4 my-1 border-l border-black/[0.08] dark:border-white/[0.1] space-y-0.5 overflow-hidden"
                         >
                           {item.subItems.map((sub) => {
                             const isSubActive = isMainActive && activeSubView === sub.id;
@@ -482,16 +507,16 @@ export default function EmpresaAdmin() {
                               <button
                                 key={sub.id}
                                 onClick={() => handleSubMenuClick(item.id, sub.id)}
-                                className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[11.5px] transition-all min-h-[30px] flex items-center gap-2 group cursor-pointer ${
+                                className={`w-full text-left px-2.5 py-1.5 rounded-xl text-[11.5px] transition-all min-h-[30px] flex items-center gap-2 group cursor-pointer ${
                                   isSubActive
-                                    ? "bg-zinc-900/[0.06] dark:bg-white/10 text-zinc-950 dark:text-white font-bold shadow-[inset_0_0.5px_0_rgba(255,255,255,0.6)] dark:shadow-[inset_0_0.5px_0_rgba(255,255,255,0.08)]"
+                                    ? "bg-black/[0.06] dark:bg-white/[0.1] text-zinc-950 dark:text-white font-bold shadow-2xs"
                                     : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white hover:bg-black/[0.03] dark:hover:bg-white/[0.04] font-medium"
                                 }`}
                               >
                                 <span
                                   className={`w-1.5 h-1.5 rounded-full shrink-0 transition-colors ${
                                     isSubActive
-                                      ? "bg-[#34C759] dark:bg-[#30D158]"
+                                      ? "bg-[#34C759] dark:bg-[#30D158] shadow-[0_0_6px_#34C759]"
                                       : "bg-zinc-300 dark:bg-zinc-700 opacity-50 group-hover:opacity-100"
                                   }`}
                                 />
@@ -519,7 +544,8 @@ export default function EmpresaAdmin() {
           />
         )}
 
-        <main className="flex-1 flex flex-col relative overflow-hidden bg-[#F5F5F7] dark:bg-[#000000]">
+        {/* CANVAS PRINCIPAL FLUTUANTE COM VIDRO LIQUIDO APPLE */}
+        <main className="flex-1 flex flex-col relative overflow-hidden rounded-3xl bg-white/80 dark:bg-[#121214]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-[0_10px_35px_rgba(0,0,0,0.03)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.5)]">
           <AnimatePresence mode="wait">
             {activeView === "agenda" && (
               <AgendaView
