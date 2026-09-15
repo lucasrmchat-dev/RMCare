@@ -563,7 +563,7 @@ export default function MetricasView({
       className="flex-1 flex flex-col h-full overflow-hidden w-full max-w-7xl mx-auto p-4 md:p-6 lg:p-8"
     >
       {/* CABEÇALHO EXECUTIVO E BARRA DE FILTROS RÁPIDOS */}
-      <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-200/80 dark:border-white/10 pb-4">
+      <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-black/[0.06] dark:border-white/[0.08] pb-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-zinc-950 dark:bg-white text-white dark:text-black flex items-center justify-center shrink-0 shadow-sm">
             <BarChart3 size={20} strokeWidth={2} />
@@ -620,7 +620,7 @@ export default function MetricasView({
       </div>
 
       {/* BARRA DE FILTROS & PESQUISA RÁPIDA */}
-      <div className="mb-5 bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-4 rounded-2xl shadow-sm space-y-3">
+      <div className="mb-5 bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] p-4 rounded-2xl shadow-sm space-y-3">
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <span className="text-xs font-black text-zinc-900 dark:text-white uppercase tracking-wider">
@@ -638,17 +638,17 @@ export default function MetricasView({
               value={buscaPaciente}
               onChange={(e) => setBuscaPaciente(e.target.value)}
               placeholder="Buscar por paciente ou CPF..."
-              className="w-full pl-9 pr-3 py-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs outline-none focus:border-[#9FC131]"
+              className="w-full pl-9 pr-3 py-2 bg-[#F8F8FA] dark:bg-[#222225] border border-black/[0.08] dark:border-white/[0.1] rounded-2xl text-xs outline-none focus:border-black/30 dark:focus:border-white/30 focus:ring-4 focus:ring-black/5 dark:focus:ring-white/10"
             />
           </div>
         </div>
 
         {/* LINHA DE FILTROS SECUNDÁRIOS */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2 border-t border-zinc-100 dark:border-white/5">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2 border-t border-black/[0.04] dark:border-white/[0.06]">
           <select
             value={filtroEspecialidade}
             onChange={(e) => setFiltroEspecialidade(e.target.value)}
-            className="w-full px-3 py-2 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs font-bold text-zinc-800 dark:text-zinc-200 outline-none"
+            className="w-full px-3 py-2 bg-[#F8F8FA] dark:bg-[#222225] border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs font-bold text-zinc-800 dark:text-zinc-200 outline-none"
           >
             {especialidadesOpcoes.map((esp) => (
               <option key={esp} value={esp}>
@@ -660,7 +660,7 @@ export default function MetricasView({
           <select
             value={filtroEspecialista}
             onChange={(e) => setFiltroEspecialista(e.target.value)}
-            className="w-full px-3 py-2 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs font-bold text-zinc-800 dark:text-zinc-200 outline-none"
+            className="w-full px-3 py-2 bg-[#F8F8FA] dark:bg-[#222225] border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs font-bold text-zinc-800 dark:text-zinc-200 outline-none"
           >
             {especialistasOpcoes.map((prof) => (
               <option key={prof} value={prof}>
@@ -672,7 +672,7 @@ export default function MetricasView({
           <select
             value={filtroModalidade}
             onChange={(e) => setFiltroModalidade(e.target.value)}
-            className="w-full px-3 py-2 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs font-bold text-zinc-800 dark:text-zinc-200 outline-none"
+            className="w-full px-3 py-2 bg-[#F8F8FA] dark:bg-[#222225] border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs font-bold text-zinc-800 dark:text-zinc-200 outline-none"
           >
             {modalidadesOpcoes.map((mod) => (
               <option key={mod} value={mod}>
@@ -684,7 +684,7 @@ export default function MetricasView({
           <select
             value={filtroStatus}
             onChange={(e) => setFiltroStatus(e.target.value)}
-            className="w-full px-3 py-2 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs font-bold text-zinc-800 dark:text-zinc-200 outline-none"
+            className="w-full px-3 py-2 bg-[#F8F8FA] dark:bg-[#222225] border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs font-bold text-zinc-800 dark:text-zinc-200 outline-none"
           >
             <option value="Todos">Todos os Status</option>
             <option value="confirmados">Confirmados / Ativos</option>
@@ -699,7 +699,7 @@ export default function MetricasView({
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
-            className="grid sm:grid-cols-2 gap-3 pt-2 border-t border-zinc-100 dark:border-white/5"
+            className="grid sm:grid-cols-2 gap-3 pt-2 border-t border-black/[0.04] dark:border-white/[0.06]"
           >
             <div>
               <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
@@ -734,7 +734,7 @@ export default function MetricasView({
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
             {/* GRID DE CARDS KPI EXECUTIVOS */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="p-5 rounded-3xl bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 shadow-sm space-y-2">
+              <div className="p-5 rounded-3xl bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] shadow-sm space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-400">
                     Total Agendamentos
@@ -751,7 +751,7 @@ export default function MetricasView({
                 </div>
               </div>
 
-              <div className="p-5 rounded-3xl bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 shadow-sm space-y-2">
+              <div className="p-5 rounded-3xl bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] shadow-sm space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-400">
                     Faturamento Estimado
@@ -768,7 +768,7 @@ export default function MetricasView({
                 </div>
               </div>
 
-              <div className="p-5 rounded-3xl bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 shadow-sm space-y-2">
+              <div className="p-5 rounded-3xl bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] shadow-sm space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-400">
                     Taxa Comparecimento
@@ -785,7 +785,7 @@ export default function MetricasView({
                 </div>
               </div>
 
-              <div className="p-5 rounded-3xl bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 shadow-sm space-y-2">
+              <div className="p-5 rounded-3xl bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] shadow-sm space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-400">
                     Tempo Médio Jornada
@@ -805,8 +805,8 @@ export default function MetricasView({
 
             {/* SEÇÃO: ESPECIALIDADES MAIS DEMANDADAS & DISTRIBUIÇÃO */}
             <div className="grid lg:grid-cols-12 gap-6">
-              <div className="lg:col-span-7 bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 rounded-[2rem] shadow-sm space-y-4">
-                <div className="flex items-center justify-between border-b border-zinc-100 dark:border-white/5 pb-3">
+              <div className="lg:col-span-7 bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] p-6 rounded-3xl shadow-sm space-y-4">
+                <div className="flex items-center justify-between border-b border-black/[0.04] dark:border-white/[0.06] pb-3">
                   <h3 className="text-sm font-bold text-zinc-950 dark:text-white flex items-center gap-2">
                     <TrendingUp size={16} className="text-emerald-500" /> Especialidades com Maior Demanda
                   </h3>
@@ -843,8 +843,8 @@ export default function MetricasView({
                 </div>
               </div>
 
-              <div className="lg:col-span-5 bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 rounded-[2rem] shadow-sm space-y-4">
-                <div className="flex items-center justify-between border-b border-zinc-100 dark:border-white/5 pb-3">
+              <div className="lg:col-span-5 bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] p-6 rounded-3xl shadow-sm space-y-4">
+                <div className="flex items-center justify-between border-b border-black/[0.04] dark:border-white/[0.06] pb-3">
                   <h3 className="text-sm font-bold text-zinc-950 dark:text-white flex items-center gap-2">
                     <PieChart size={16} className="text-blue-500" /> Cobertura & Modalidades
                   </h3>
@@ -855,7 +855,7 @@ export default function MetricasView({
                   {metricasCalculadas.distribuicaoModalidades.map((m) => (
                     <div
                       key={m.nome}
-                      className="p-3.5 rounded-2xl bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/70 dark:border-zinc-800 flex items-center justify-between"
+                      className="p-3.5 rounded-2xl bg-[#F8F8FA] dark:bg-[#222225] border border-black/[0.04] dark:border-white/[0.06] flex items-center justify-between"
                     >
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-xl bg-white dark:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-700 flex items-center justify-center font-bold text-xs">
@@ -885,7 +885,7 @@ export default function MetricasView({
         {currentTab === "financeiro" && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
             <div className="grid sm:grid-cols-3 gap-4">
-              <div className="p-6 rounded-3xl bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 shadow-sm space-y-2">
+              <div className="p-6 rounded-3xl bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] shadow-sm space-y-2">
                 <span className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-400">
                   Faturamento Total (Bruto)
                 </span>
@@ -895,7 +895,7 @@ export default function MetricasView({
                 <p className="text-xs text-zinc-500">Volume total gerado no período selecionado.</p>
               </div>
 
-              <div className="p-6 rounded-3xl bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 shadow-sm space-y-2">
+              <div className="p-6 rounded-3xl bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] shadow-sm space-y-2">
                 <span className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-400">
                   Ticket Médio por Consulta
                 </span>
@@ -905,7 +905,7 @@ export default function MetricasView({
                 <p className="text-xs text-zinc-500">Média de valor recebido por atendimento realizado.</p>
               </div>
 
-              <div className="p-6 rounded-3xl bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 shadow-sm space-y-2">
+              <div className="p-6 rounded-3xl bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] shadow-sm space-y-2">
                 <span className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-400">
                   Pagamento Antecipado (Pix/Cartão)
                 </span>
@@ -917,8 +917,8 @@ export default function MetricasView({
             </div>
 
             {/* TABELA DE FATURAMENTO POR MODALIDADE */}
-            <div className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm space-y-4">
-              <div className="flex items-center justify-between border-b border-zinc-100 dark:border-white/5 pb-3">
+            <div className="bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-black/[0.04] dark:border-white/[0.06] pb-3">
                 <h3 className="text-base font-bold text-zinc-950 dark:text-white">
                   Desempenho Financeiro por Modalidade & Forma de Pagamento
                 </h3>
@@ -930,7 +930,7 @@ export default function MetricasView({
               <div className="overflow-x-auto rounded-2xl border border-zinc-200/80 dark:border-zinc-800">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="border-b border-zinc-200/80 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-900/60 font-bold uppercase tracking-wider text-zinc-400 text-[10px]">
+                    <tr className="border-b border-zinc-200/80 dark:border-zinc-800 bg-[#F8F8FA] dark:bg-[#222225] font-bold uppercase tracking-wider text-zinc-400 text-[10px]">
                       <th className="p-3.5">Modalidade</th>
                       <th className="p-3.5">Agendamentos</th>
                       <th className="p-3.5">% do Volume</th>
@@ -968,7 +968,7 @@ export default function MetricasView({
         {currentTab === "pacientes" && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
             <div className="grid sm:grid-cols-4 gap-4">
-              <div className="p-5 rounded-3xl bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 shadow-sm space-y-1.5">
+              <div className="p-5 rounded-3xl bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] shadow-sm space-y-1.5">
                 <span className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-400">
                   Idade Média
                 </span>
@@ -978,7 +978,7 @@ export default function MetricasView({
                 <p className="text-[11px] text-zinc-500">Média calculada da data de nascimento.</p>
               </div>
 
-              <div className="p-5 rounded-3xl bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 shadow-sm space-y-1.5">
+              <div className="p-5 rounded-3xl bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] shadow-sm space-y-1.5">
                 <span className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-400">
                   Novos Pacientes
                 </span>
@@ -988,7 +988,7 @@ export default function MetricasView({
                 <p className="text-[11px] text-zinc-500">1º atendimento registrado.</p>
               </div>
 
-              <div className="p-5 rounded-3xl bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 shadow-sm space-y-1.5">
+              <div className="p-5 rounded-3xl bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] shadow-sm space-y-1.5">
                 <span className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-400">
                   Pacientes Recorrentes
                 </span>
@@ -998,7 +998,7 @@ export default function MetricasView({
                 <p className="text-[11px] text-zinc-500">Mais de 1 atendimento/retorno.</p>
               </div>
 
-              <div className="p-5 rounded-3xl bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 shadow-sm space-y-1.5">
+              <div className="p-5 rounded-3xl bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] shadow-sm space-y-1.5">
                 <span className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-400">
                   Retornos Realizados
                 </span>
@@ -1011,8 +1011,8 @@ export default function MetricasView({
 
             {/* GRÁFICO DE FAIXAS ETÁRIAS & ENFERMIDADES FREQUENTES */}
             <div className="grid lg:grid-cols-12 gap-6">
-              <div className="lg:col-span-6 bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 rounded-[2rem] shadow-sm space-y-4">
-                <div className="border-b border-zinc-100 dark:border-white/5 pb-3">
+              <div className="lg:col-span-6 bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] p-6 rounded-3xl shadow-sm space-y-4">
+                <div className="border-b border-black/[0.04] dark:border-white/[0.06] pb-3">
                   <h3 className="text-sm font-bold text-zinc-950 dark:text-white flex items-center gap-2">
                     <Users size={16} className="text-blue-500" /> Distribuição por Faixa Etária
                   </h3>
@@ -1039,8 +1039,8 @@ export default function MetricasView({
                 </div>
               </div>
 
-              <div className="lg:col-span-6 bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 rounded-[2rem] shadow-sm space-y-4">
-                <div className="border-b border-zinc-100 dark:border-white/5 pb-3">
+              <div className="lg:col-span-6 bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] p-6 rounded-3xl shadow-sm space-y-4">
+                <div className="border-b border-black/[0.04] dark:border-white/[0.06] pb-3">
                   <h3 className="text-sm font-bold text-zinc-950 dark:text-white flex items-center gap-2">
                     <HeartPulse size={16} className="text-rose-500" /> Condições Clínicas Mais Frequentes
                   </h3>
@@ -1056,7 +1056,7 @@ export default function MetricasView({
                     metricasCalculadas.rankingEnfermidades.slice(0, 6).map((enf) => (
                       <div
                         key={enf.nome}
-                        className="p-3 rounded-2xl bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 flex items-center justify-between"
+                        className="p-3 rounded-2xl bg-[#F8F8FA] dark:bg-[#222225] border border-zinc-200/80 dark:border-zinc-800 flex items-center justify-between"
                       >
                         <span className="font-bold text-xs text-zinc-900 dark:text-white">
                           {enf.nome}
@@ -1076,8 +1076,8 @@ export default function MetricasView({
         {/* SUB-ABA 4: ESPECIALIDADES & CORPO CLÍNICO */}
         {currentTab === "especialidades" && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-            <div className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm space-y-4">
-              <div className="flex items-center justify-between border-b border-zinc-100 dark:border-white/5 pb-3">
+            <div className="bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-black/[0.04] dark:border-white/[0.06] pb-3">
                 <div>
                   <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">
                     <Award size={18} className="text-purple-500" /> Produtividade por Especialista / Médico
@@ -1091,7 +1091,7 @@ export default function MetricasView({
               <div className="overflow-x-auto rounded-2xl border border-zinc-200/80 dark:border-zinc-800">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="border-b border-zinc-200/80 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-900/60 font-bold uppercase tracking-wider text-zinc-400 text-[10px]">
+                    <tr className="border-b border-zinc-200/80 dark:border-zinc-800 bg-[#F8F8FA] dark:bg-[#222225] font-bold uppercase tracking-wider text-zinc-400 text-[10px]">
                       <th className="p-3.5">Especialista</th>
                       <th className="p-3.5">Agendamentos</th>
                       <th className="p-3.5">% da Demanda</th>
@@ -1128,8 +1128,8 @@ export default function MetricasView({
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
             <div className="grid lg:grid-cols-12 gap-6">
               {/* HORÁRIOS MAIS CONCORRIDOS */}
-              <div className="lg:col-span-7 bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 rounded-[2rem] shadow-sm space-y-4">
-                <div className="border-b border-zinc-100 dark:border-white/5 pb-3">
+              <div className="lg:col-span-7 bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] p-6 rounded-3xl shadow-sm space-y-4">
+                <div className="border-b border-black/[0.04] dark:border-white/[0.06] pb-3">
                   <h3 className="text-sm font-bold text-zinc-950 dark:text-white flex items-center gap-2">
                     <Clock size={16} className="text-sky-500" /> Concentração de Horários de Pico (08h às 18h)
                   </h3>
@@ -1145,7 +1145,7 @@ export default function MetricasView({
                     metricasCalculadas.distribuicaoHorarios.map((h) => (
                       <div
                         key={h.hora}
-                        className="p-3 rounded-2xl bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 flex items-center justify-between"
+                        className="p-3 rounded-2xl bg-[#F8F8FA] dark:bg-[#222225] border border-zinc-200/80 dark:border-zinc-800 flex items-center justify-between"
                       >
                         <span className="font-bold text-xs font-mono text-zinc-900 dark:text-white">
                           {h.hora}
@@ -1160,8 +1160,8 @@ export default function MetricasView({
               </div>
 
               {/* DIAS DA SEMANA */}
-              <div className="lg:col-span-5 bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 rounded-[2rem] shadow-sm space-y-4">
-                <div className="border-b border-zinc-100 dark:border-white/5 pb-3">
+              <div className="lg:col-span-5 bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] p-6 rounded-3xl shadow-sm space-y-4">
+                <div className="border-b border-black/[0.04] dark:border-white/[0.06] pb-3">
                   <h3 className="text-sm font-bold text-zinc-950 dark:text-white flex items-center gap-2">
                     <CalendarDays size={16} className="text-amber-500" /> Dias da Semana Mais Procurados
                   </h3>
@@ -1172,7 +1172,7 @@ export default function MetricasView({
                   {metricasCalculadas.distribuicaoDiasSemana.map((d) => (
                     <div
                       key={d.dia}
-                      className="p-3 rounded-2xl bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 flex items-center justify-between"
+                      className="p-3 rounded-2xl bg-[#F8F8FA] dark:bg-[#222225] border border-zinc-200/80 dark:border-zinc-800 flex items-center justify-between"
                     >
                       <span className="font-bold text-xs text-zinc-900 dark:text-white">{d.dia}</span>
                       <span className="font-mono text-xs font-extrabold text-zinc-500">{d.count} agendamento(s)</span>

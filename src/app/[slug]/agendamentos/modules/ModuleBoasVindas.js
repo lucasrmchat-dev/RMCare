@@ -53,7 +53,7 @@ export default function ModuleBoasVindas() {
             variants={{ hidden: { scale: 0.85, opacity: 0 }, show: { scale: 1, opacity: 1 } }}
             className="relative flex items-center justify-center"
           >
-            <div className={`relative ${shapeClass} overflow-hidden shadow-[0_12px_30px_rgba(0,0,0,0.08)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.6)] border border-zinc-200/80 dark:border-white/10 bg-white dark:bg-[#111116] flex items-center justify-center`}>
+            <div className={`relative ${shapeClass} overflow-hidden shadow-[0_12px_30px_rgba(0,0,0,0.08)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.6)] border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#161618] flex items-center justify-center`}>
               <img
                 src={logoUrl}
                 alt={nomeClinica}
@@ -95,7 +95,7 @@ export default function ModuleBoasVindas() {
         {/* 3 CARDS DE BENEFÍCIOS */}
         <motion.div variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }} className="w-full max-w-md">
           <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full my-2 sm:my-3 text-center">
-            <div className="p-2.5 sm:p-3.5 rounded-2xl bg-white/70 dark:bg-white/[0.04] border border-zinc-200/80 dark:border-white/[0.08] backdrop-blur-xl shadow-sm flex flex-col items-center">
+            <div className="p-2.5 sm:p-3.5 rounded-2xl bg-white/70 dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.08] backdrop-blur-xl shadow-sm flex flex-col items-center">
               <div className="w-7 h-7 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-1">
                 <Clock size={15} strokeWidth={2} />
               </div>
@@ -103,7 +103,7 @@ export default function ModuleBoasVindas() {
               <span className="text-[9.5px] text-zinc-400 mt-0.5">Sem filas</span>
             </div>
 
-            <div className="p-2.5 sm:p-3.5 rounded-2xl bg-white/70 dark:bg-white/[0.04] border border-zinc-200/80 dark:border-white/[0.08] backdrop-blur-xl shadow-sm flex flex-col items-center">
+            <div className="p-2.5 sm:p-3.5 rounded-2xl bg-white/70 dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.08] backdrop-blur-xl shadow-sm flex flex-col items-center">
               <div className="w-7 h-7 rounded-xl bg-[#9FC131]/15 text-[#86a621] dark:text-[#9FC131] flex items-center justify-center mb-1">
                 <Calendar size={15} strokeWidth={2} />
               </div>
@@ -111,7 +111,7 @@ export default function ModuleBoasVindas() {
               <span className="text-[9.5px] text-zinc-400 mt-0.5">Tempo real</span>
             </div>
 
-            <div className="p-2.5 sm:p-3.5 rounded-2xl bg-white/70 dark:bg-white/[0.04] border border-zinc-200/80 dark:border-white/[0.08] backdrop-blur-xl shadow-sm flex flex-col items-center">
+            <div className="p-2.5 sm:p-3.5 rounded-2xl bg-white/70 dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.08] backdrop-blur-xl shadow-sm flex flex-col items-center">
               <div className="w-7 h-7 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-1">
                 <ShieldCheck size={15} strokeWidth={2} />
               </div>

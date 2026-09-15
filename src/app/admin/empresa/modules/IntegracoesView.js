@@ -242,7 +242,7 @@ const ApiDocumentationModal = ({ isOpen, onClose, originUrl, secret, showToast }
         initial={{ opacity: 0, scale: 0.95, y: 15 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 15 }}
-        className="relative w-full max-w-4xl max-h-[90vh] bg-white dark:bg-[#0e0e12] border border-zinc-200 dark:border-white/10 rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden"
+        className="relative w-full max-w-4xl max-h-[90vh] bg-white dark:bg-[#0e0e12] border border-zinc-200 dark:border-white/10 rounded-3xl shadow-2xl flex flex-col overflow-hidden"
       >
         {/* CABEÇALHO DO MODAL */}
         <div className="p-6 border-b border-zinc-200 dark:border-white/10 flex items-center justify-between bg-zinc-50 dark:bg-black/40">
@@ -709,7 +709,7 @@ export default function IntegracoesView({ bloqueios = [], servicos = [], fetchBl
     <motion.div key="integracoes" {...fadeUp} className="flex-1 flex flex-col h-full overflow-hidden w-full max-w-7xl mx-auto p-4 md:p-6 lg:p-8">
       
       {/* CABEÇALHO UNIFICADO */}
-      <div className="mb-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-zinc-200/80 dark:border-white/10 pb-4">
+      <div className="mb-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-black/[0.06] dark:border-white/[0.08] pb-4">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center flex-shrink-0 shadow-sm border border-indigo-200/40">
             <Webhook size={22} />
@@ -799,7 +799,7 @@ export default function IntegracoesView({ bloqueios = [], servicos = [], fetchBl
             <motion.div key="sub-painel" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={spring} className="space-y-6">
               
               {/* CARD WEBHOOKS E FLUXOS INTELIGENTES */}
-              <div className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2.5rem] shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+              <div className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                 <div className="flex items-start gap-4">
                   <div className="w-14 h-14 rounded-2xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center flex-shrink-0 border border-amber-200/40">
                     <Zap size={28} />
@@ -837,7 +837,7 @@ export default function IntegracoesView({ bloqueios = [], servicos = [], fetchBl
               </div>
 
               {/* CARD MEDICALSYS */}
-              <div className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2.5rem] shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+              <div className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                 <div className="flex items-start gap-4">
                   <div className="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0 border border-blue-200/40">
                     <Server size={28} />
@@ -874,7 +874,7 @@ export default function IntegracoesView({ bloqueios = [], servicos = [], fetchBl
               </div>
 
               {/* CARD MERCADO PAGO */}
-              <div className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2.5rem] shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+              <div className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                 <div className="flex items-start gap-4">
                   <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center flex-shrink-0 border border-indigo-200/40">
                     <CreditCard size={28} />
@@ -935,8 +935,8 @@ export default function IntegracoesView({ bloqueios = [], servicos = [], fetchBl
               </div>
 
               {/* SEÇÃO 1: URL DE DISPARO EXTERNO (OUTGOING) & SECRET */}
-              <div className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2.5rem] shadow-sm space-y-6">
-                <div className="flex items-center gap-3 border-b border-zinc-100 dark:border-white/5 pb-4">
+              <div className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-6">
+                <div className="flex items-center gap-3 border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
                   <div className="w-10 h-10 rounded-2xl bg-amber-50 dark:bg-amber-950/40 text-amber-500 flex items-center justify-center">
                     <Zap size={20} />
                   </div>
@@ -1025,8 +1025,8 @@ export default function IntegracoesView({ bloqueios = [], servicos = [], fetchBl
               </div>
 
               {/* SEÇÃO 2: URL INBOUND DE RECEPÇÃO / RESPOSTAS DA API */}
-              <div className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2.5rem] shadow-sm space-y-5">
-                <div className="flex items-center gap-3 border-b border-zinc-100 dark:border-white/5 pb-4">
+              <div className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-5">
+                <div className="flex items-center gap-3 border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
                   <div className="w-10 h-10 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 flex items-center justify-center">
                     <Bot size={20} />
                   </div>
@@ -1150,8 +1150,8 @@ export default function IntegracoesView({ bloqueios = [], servicos = [], fetchBl
               </div>
 
               {/* SEÇÃO 3: AUTOMAÇÃO DE PRESENÇA / BAIXA AUTOMÁTICA PÓS-HORÁRIO */}
-              <div className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2.5rem] shadow-sm space-y-6">
-                <div className="flex items-center gap-3 border-b border-zinc-100 dark:border-white/5 pb-4">
+              <div className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-6">
+                <div className="flex items-center gap-3 border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
                   <div className="w-10 h-10 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 flex items-center justify-center">
                     <CalendarCheck size={20} />
                   </div>
@@ -1268,7 +1268,7 @@ export default function IntegracoesView({ bloqueios = [], servicos = [], fetchBl
               )}
 
               {/* TRAVA DE SEGURANÇA E ENVIOS */}
-              <div className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2.5rem] shadow-sm space-y-8">
+              <div className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-8">
                 <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-4">
                   <h3 className="text-lg font-black text-zinc-950 dark:text-white flex items-center gap-2">
                     <ShieldAlert size={20} className="text-amber-500" /> Controle de Inclusão de Agendamentos na API
@@ -1329,7 +1329,7 @@ export default function IntegracoesView({ bloqueios = [], servicos = [], fetchBl
           {/* SUB-ABA 4: MERCADO PAGO */}
           {subTab === "mercadopago" && (
             <motion.div key="sub-mercadopago" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={spring} className="space-y-6">
-              <div className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2.5rem] shadow-sm space-y-6">
+              <div className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-6">
                 <div className="flex items-center gap-3 border-b border-zinc-100 dark:border-zinc-800 pb-4">
                   <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-500 flex items-center justify-center">
                     <CreditCard size={20} />
@@ -1377,8 +1377,8 @@ export default function IntegracoesView({ bloqueios = [], servicos = [], fetchBl
           {subTab === "exportacao" && (
             <motion.div key="sub-exportacao" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={spring} className="space-y-6">
               
-              <div className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2.5rem] shadow-sm space-y-6">
-                <div className="flex items-center gap-3 border-b border-zinc-100 dark:border-white/5 pb-4">
+              <div className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-6">
+                <div className="flex items-center gap-3 border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
                   <div className="w-10 h-10 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 flex items-center justify-center">
                     <FileSpreadsheet size={20} />
                   </div>
@@ -1479,7 +1479,7 @@ export default function IntegracoesView({ bloqueios = [], servicos = [], fetchBl
                 </div>
 
                 {/* BOTÃO EXPORTAR PACOTE COMPLETO */}
-                <div className="pt-4 border-t border-zinc-100 dark:border-white/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-emerald-500/[0.04] p-5 rounded-2xl border border-emerald-500/20">
+                <div className="pt-4 border-t border-black/[0.04] dark:border-white/[0.06] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-emerald-500/[0.04] p-5 rounded-2xl border border-emerald-500/20">
                   <div>
                     <h4 className="font-extrabold text-sm text-zinc-950 dark:text-white flex items-center gap-2">
                       <Sparkles size={16} className="text-emerald-500" /> Baixar Pacote Completo de Migração (Todas as Planilhas)

@@ -16,16 +16,16 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import { playDopamineSound, triggerHaptic } from '@/lib/dopamine';
 
-const sidebarSpring = { type: 'spring', stiffness: 320, damping: 30, mass: 0.9 };
-const itemSpring = { type: 'spring', stiffness: 420, damping: 28 };
+const sidebarSpring = { type: 'spring', stiffness: 450, damping: 32 };
+const itemSpring = { type: 'spring', stiffness: 450, damping: 32 };
 
 const Tooltip = ({ children, text, isVisible }) => (
   <div className="relative flex items-center group/tooltip w-full">
     {children}
     {isVisible && (
-      <div className="absolute left-[calc(100%+12px)] px-3 py-1.5 bg-zinc-900/95 dark:bg-white/95 backdrop-blur-md text-white dark:text-black text-[10px] font-bold tracking-wider uppercase rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-150 shadow-md whitespace-nowrap z-[99999] pointer-events-none flex items-center gap-1.5 border border-white/10 dark:border-black/10">
+      <div className="absolute left-[calc(100%+10px)] px-2.5 py-1 bg-black/90 dark:bg-white/95 backdrop-blur-xl text-white dark:text-black text-[10px] font-bold tracking-wider uppercase rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-150 shadow-md whitespace-nowrap z-[99999] pointer-events-none flex items-center gap-1.5 border border-white/10 dark:border-black/10">
         <span>{text}</span>
-        <div className="absolute top-1/2 -left-1 -translate-y-1/2 w-2 h-2 bg-zinc-900/95 dark:bg-white/95 rotate-45 rounded-sm" />
+        <div className="absolute top-1/2 -left-1 -translate-y-1/2 w-2 h-2 bg-black/90 dark:bg-white/95 rotate-45 rounded-xs" />
       </div>
     )}
   </div>
@@ -44,20 +44,27 @@ const SidebarItem = ({ href, icon: Icon, label, isExpanded }) => {
           playDopamineSound('click');
           triggerHaptic('light');
         }}
-        className={`relative flex items-center w-full transition-all duration-200 outline-none group min-h-[46px] rounded-2xl mx-2 w-[calc(100%-16px)] ${
+        className={`relative flex items-center w-full transition-all duration-200 outline-none group min-h-[44px] rounded-2xl mx-2 w-[calc(100%-16px)] cursor-pointer ${
           isAtivo
-            ? 'bg-zinc-100 dark:bg-white/[0.08] text-zinc-950 dark:text-white font-bold'
-            : 'hover:bg-zinc-100/60 dark:hover:bg-white/[0.03] text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white font-medium'
+            ? 'text-zinc-950 dark:text-white font-bold'
+            : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-black/[0.03] dark:hover:bg-white/[0.04] font-medium'
         }`}
       >
-        <div className="flex items-center justify-center w-[52px] h-[46px] shrink-0">
+        {isAtivo && (
+          <motion.div
+            layoutId="sidebar-premium-active"
+            className="absolute inset-0 bg-black/[0.05] dark:bg-white/[0.08] rounded-2xl -z-10 shadow-2xs border border-black/[0.03] dark:border-white/[0.05]"
+            transition={itemSpring}
+          />
+        )}
+        <div className="flex items-center justify-center w-[48px] h-[44px] shrink-0">
           <Icon
             size={18}
-            strokeWidth={isAtivo ? 1.75 : 1.35}
+            strokeWidth={isAtivo ? 2 : 1.5}
             className={`transition-colors duration-200 ${
               isAtivo
                 ? 'text-zinc-950 dark:text-white'
-                : 'text-zinc-400 group-hover:text-zinc-800 dark:group-hover:text-zinc-200'
+                : 'text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-800 dark:group-hover:text-zinc-200'
             }`}
           />
         </div>
@@ -69,7 +76,7 @@ const SidebarItem = ({ href, icon: Icon, label, isExpanded }) => {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -6 }}
               transition={{ duration: 0.15 }}
-              className="flex-1 overflow-hidden pr-4"
+              className="flex-1 overflow-hidden pr-3"
             >
               <span className="text-xs tracking-tight whitespace-nowrap truncate block">
                 {label}
@@ -149,12 +156,12 @@ export default function SidebarPremium({ isExpanded, setIsExpanded }) {
   return (
     <motion.aside
       initial={false}
-      animate={{ width: isExpanded ? 240 : 68 }}
+      animate={{ width: isExpanded ? 230 : 64 }}
       transition={sidebarSpring}
       aria-label="Barra Lateral da Plataforma"
-      className="hidden md:flex flex-col fixed inset-y-0 left-0 z-[99999] bg-white/80 dark:bg-[#08080a]/85 backdrop-blur-3xl saturate-150 border-r border-zinc-200/70 dark:border-white/[0.08] shadow-[10px_0_40px_rgba(0,0,0,0.02)] dark:shadow-[10px_0_40px_rgba(0,0,0,0.4)] overflow-visible"
+      className="hidden md:flex flex-col fixed inset-y-0 left-0 z-[99999] bg-white/80 dark:bg-[#161618]/80 backdrop-blur-3xl border-r border-black/[0.06] dark:border-white/[0.08] shadow-[4px_0_24px_rgba(0,0,0,0.02)] dark:shadow-[4px_0_24px_rgba(0,0,0,0.4)] overflow-visible"
     >
-      <div className="absolute top-8 -right-3 z-[999999]">
+      <div className="absolute top-7 -right-3 z-[999999]">
         <motion.button
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
@@ -164,7 +171,7 @@ export default function SidebarPremium({ isExpanded, setIsExpanded }) {
             triggerHaptic('light');
             setIsExpanded(!isExpanded);
           }}
-          className="w-6 h-6 bg-white dark:bg-[#111111] border border-zinc-200 dark:border-zinc-800 rounded-full flex items-center justify-center text-zinc-400 hover:text-zinc-900 dark:hover:text-white shadow-sm hover:shadow-md transition-all outline-none focus-visible:ring-2 focus-visible:ring-[#9FC131]"
+          className="w-6 h-6 bg-white dark:bg-[#222225] border border-black/[0.08] dark:border-white/[0.1] rounded-full flex items-center justify-center text-zinc-400 hover:text-zinc-900 dark:hover:text-white shadow-xs hover:shadow-sm transition-all outline-none cursor-pointer"
         >
           <motion.div
             animate={{ rotate: isExpanded ? 0 : 180 }}
@@ -175,22 +182,22 @@ export default function SidebarPremium({ isExpanded, setIsExpanded }) {
         </motion.button>
       </div>
 
-      <div className="mt-6 mb-6 flex items-center h-12 w-full px-2">
+      <div className="mt-5 mb-5 flex items-center h-12 w-full px-2">
         <Link href="/" className="flex items-center group w-full outline-none">
-          <div className="w-[52px] flex justify-center shrink-0">
+          <div className="w-[48px] flex justify-center shrink-0">
             {empresaLogo ? (
-              <div className="w-11 h-11 rounded-full overflow-hidden flex items-center justify-center group-hover:scale-105 transition-transform shadow-md">
+              <div className="w-10 h-10 rounded-2xl overflow-hidden flex items-center justify-center group-hover:scale-105 transition-transform shadow-xs border border-black/[0.06] dark:border-white/[0.08]">
                 <img
                   src={empresaLogo}
                   alt={empresaNome}
-                  className="w-full h-full object-cover rounded-full"
+                  className="w-full h-full object-cover"
                 />
               </div>
             ) : (
-              <div className="w-11 h-11 bg-zinc-950 dark:bg-white rounded-full flex items-center justify-center shadow-md transition-transform duration-300 group-hover:scale-105">
+              <div className="w-10 h-10 bg-zinc-950 dark:bg-white rounded-2xl flex items-center justify-center shadow-xs transition-transform duration-250 group-hover:scale-105">
                 <Activity
                   className="text-white dark:text-zinc-900"
-                  size={20}
+                  size={18}
                   strokeWidth={2}
                 />
               </div>
@@ -203,12 +210,12 @@ export default function SidebarPremium({ isExpanded, setIsExpanded }) {
                 initial={{ opacity: 0, x: -6 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -6 }}
-                className="flex flex-col whitespace-nowrap overflow-hidden flex-1 pr-3 pl-1"
+                className="flex flex-col whitespace-nowrap overflow-hidden flex-1 pr-3 pl-1.5"
               >
                 <span className="font-bold text-xs tracking-tight text-zinc-900 dark:text-white leading-none mb-0.5 truncate">
                   {empresaNome.toUpperCase()}
                 </span>
-                <span className="text-[8px] font-bold tracking-widest text-zinc-400 uppercase">
+                <span className="text-[8px] font-bold tracking-widest text-zinc-400 dark:text-zinc-500 uppercase">
                   RMAgenda
                 </span>
               </motion.div>
@@ -233,14 +240,14 @@ export default function SidebarPremium({ isExpanded, setIsExpanded }) {
         />
       </nav>
 
-      <div className="pb-5 pt-3 w-full flex flex-col items-center border-t border-zinc-200/60 dark:border-white/[0.06] px-2">
-        <Tooltip text={isDark ? 'Tema Claro' : 'Tema Escuro'} isVisible={!isExpanded}>
+      <div className="pb-5 pt-3 w-full flex flex-col items-center border-t border-black/[0.06] dark:border-white/[0.08] px-2">
+        <Tooltip text={isDark ? 'Tema Claro' : 'Tema Noturno'} isVisible={!isExpanded}>
           <button
             onClick={toggleTheme}
             aria-label={isDark ? 'Ativar modo claro' : 'Ativar modo escuro'}
-            className="flex items-center w-full min-h-[42px] rounded-xl hover:bg-zinc-100/70 dark:hover:bg-white/[0.04] transition-colors outline-none text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+            className="flex items-center w-full min-h-[40px] rounded-2xl hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors outline-none text-zinc-500 hover:text-zinc-900 dark:hover:text-white cursor-pointer"
           >
-            <div className="w-[52px] flex justify-center shrink-0">
+            <div className="w-[48px] flex justify-center shrink-0">
               {isDark ? (
                 <Sun
                   className="text-amber-400"

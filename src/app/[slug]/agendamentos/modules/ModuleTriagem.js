@@ -58,7 +58,7 @@ export default function ModuleTriagem() {
             <motion.div
               key={pergunta.id}
               variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}
-              className="p-5 sm:p-6 bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-xl border border-zinc-200/80 dark:border-white/10 rounded-3xl shadow-sm space-y-4"
+              className="p-5 sm:p-6 bg-white/80 dark:bg-[#161618]/80 backdrop-blur-xl border border-black/[0.06] dark:border-white/[0.08] rounded-3xl shadow-sm space-y-4"
             >
               <div className="flex items-start gap-3">
                 <span className="w-6 h-6 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">

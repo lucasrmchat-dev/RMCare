@@ -42,7 +42,7 @@ export default function PoliciesView({ showToast }) {
     <motion.div key="policies" {...fadeUp} className="flex-1 flex flex-col h-full overflow-hidden w-full max-w-5xl mx-auto p-4 md:p-6 lg:p-8">
       
       {/* CABEÇALHO COM BOTÃO SALVAR */}
-      <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-200/80 dark:border-white/10 pb-4">
+      <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-black/[0.06] dark:border-white/[0.08] pb-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0 shadow-sm">
             <FileQuestion size={20} strokeWidth={1.5} />
@@ -68,10 +68,10 @@ export default function PoliciesView({ showToast }) {
       </div>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar space-y-6 pb-24 pr-1">
-        <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm space-y-6">
+        <section className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-6">
           
           <div className="space-y-4">
-            <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2 border-b border-zinc-100 dark:border-white/5 pb-3">
+            <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2 border-b border-black/[0.04] dark:border-white/[0.06] pb-3">
               <Clock size={18} strokeWidth={1.5} className="text-blue-500" /> Regras para Consulta de Retorno
             </h3>
 
@@ -84,7 +84,7 @@ export default function PoliciesView({ showToast }) {
                 onChange={(e) => setConfig({ ...config, retorno_prazo_dias: e.target.value })}
               />
 
-              <div className="p-4 rounded-2xl bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 flex items-center justify-between">
+              <div className="p-4 rounded-2xl bg-[#F8F8FA] dark:bg-[#222225] border border-zinc-200/80 dark:border-zinc-800 flex items-center justify-between">
                 <ToggleSwitch
                   checked={Boolean(config.retorno_exige_pagamento)}
                   onChange={(v) => setConfig({ ...config, retorno_exige_pagamento: v })}
@@ -94,8 +94,8 @@ export default function PoliciesView({ showToast }) {
             </div>
           </div>
 
-          <div className="space-y-4 pt-3 border-t border-zinc-100 dark:border-white/5">
-            <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2 border-b border-zinc-100 dark:border-white/5 pb-3">
+          <div className="space-y-4 pt-3 border-t border-black/[0.04] dark:border-white/[0.06]">
+            <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2 border-b border-black/[0.04] dark:border-white/[0.06] pb-3">
               <ShieldCheck size={18} strokeWidth={1.5} className="text-indigo-500" /> Confirmação e Trava
             </h3>
 

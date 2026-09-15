@@ -205,7 +205,7 @@ export default function TriagemView({
       className="p-4 md:p-8 mx-auto w-full max-w-6xl overflow-y-auto h-full custom-scrollbar pb-32 space-y-8"
     >
       {/* CABEÇALHO UNIFICADO */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-200/80 dark:border-white/10 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-black/[0.06] dark:border-white/[0.08] pb-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-sm">
             <ClipboardCheck size={20} strokeWidth={1.5} />
@@ -232,8 +232,8 @@ export default function TriagemView({
       </div>
 
       {/* SEÇÃO 1: CATÁLOGO GERAL DE ENFERMIDADES */}
-      <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm space-y-5">
-        <div className="border-b border-zinc-100 dark:border-white/5 pb-3">
+      <section className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-5">
+        <div className="border-b border-black/[0.04] dark:border-white/[0.06] pb-3">
           <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">
             <HeartPulse size={18} className="text-rose-500" strokeWidth={1.5} /> Catálogo de Enfermidades & Condições Clínicas
           </h3>
@@ -248,7 +248,7 @@ export default function TriagemView({
             value={novaEnfermidade}
             onChange={(e) => setNovaEnfermidade(e.target.value)}
             placeholder="Ex: Refluxo Gastroesofágico, Gastrite, Diabetes, Hérnia de Hiato..."
-            className="flex-1 px-4 py-2.5 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs outline-none focus:border-[#9FC131]"
+            className="flex-1 px-4 py-2.5 bg-[#F8F8FA] dark:bg-[#222225] border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs outline-none focus:border-[#9FC131]"
             onKeyDown={(e) => e.key === "Enter" && handleAddEnfermidade()}
           />
           <ButtonPrimary
@@ -288,9 +288,9 @@ export default function TriagemView({
             initial={{ opacity: 0, height: 0, y: -10 }}
             animate={{ opacity: 1, height: "auto", y: 0 }}
             exit={{ opacity: 0, height: 0, y: -10 }}
-            className="bg-white dark:bg-[#0c0c0e] border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-xl space-y-6"
+            className="bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-xl space-y-6"
           >
-            <div className="flex justify-between items-center border-b border-zinc-100 dark:border-white/5 pb-4">
+            <div className="flex justify-between items-center border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
               <div>
                 <h3 className="font-bold text-lg text-zinc-950 dark:text-white">
                   Nova Pergunta Clínica
@@ -320,7 +320,7 @@ export default function TriagemView({
                 </p>
               </div>
 
-              <div className="space-y-2 p-4 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl flex flex-col justify-between">
+              <div className="space-y-2 p-4 bg-[#F8F8FA] dark:bg-[#222225] border border-zinc-200/80 dark:border-zinc-800 rounded-2xl flex flex-col justify-between">
                 <div>
                   <h4 className="text-xs font-bold text-zinc-900 dark:text-white uppercase tracking-wider">
                     Exigência de Resposta
@@ -353,7 +353,7 @@ export default function TriagemView({
             </div>
 
             {/* OPÇÕES DE RESPOSTA */}
-            <div className="bg-zinc-50/70 dark:bg-zinc-900/60 p-5 border border-zinc-200/60 dark:border-zinc-800 rounded-2xl space-y-4">
+            <div className="bg-[#F8F8FA] dark:bg-[#222225] p-5 border border-zinc-200/60 dark:border-zinc-800 rounded-2xl space-y-4">
               <h4 className="text-xs font-bold uppercase text-zinc-400 tracking-wider ml-1">
                 Opções de Resposta e Bloqueio de Dias
               </h4>
@@ -460,7 +460,7 @@ export default function TriagemView({
             <motion.div
               variants={staggerItem}
               key={perg.id}
-              className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 rounded-[2rem] shadow-sm relative group flex flex-col justify-between h-full space-y-4"
+              className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 rounded-3xl shadow-sm relative group flex flex-col justify-between h-full space-y-4"
             >
               <button
                 onClick={() => apagarTriagem(perg.id)}
@@ -496,11 +496,11 @@ export default function TriagemView({
               </div>
 
               {/* OPÇÕES DE RESPOSTA */}
-              <div className="grid gap-1.5 pt-2 border-t border-zinc-100 dark:border-white/5">
+              <div className="grid gap-1.5 pt-2 border-t border-black/[0.04] dark:border-white/[0.06]">
                 {perg.opcoes.map((op) => (
                   <div
                     key={op.id}
-                    className="flex justify-between items-center p-2.5 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-100 dark:border-zinc-800 rounded-xl text-xs"
+                    className="flex justify-between items-center p-2.5 bg-[#F8F8FA] dark:bg-[#222225] border border-zinc-100 dark:border-zinc-800 rounded-xl text-xs"
                   >
                     <span className="font-bold text-zinc-700 dark:text-zinc-300">
                       {op.texto_opcao}

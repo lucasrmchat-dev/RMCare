@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import { playDopamineSound, triggerConfetti, triggerHaptic } from "@/lib/dopamine";
 
+const appleSpring = { type: "spring", stiffness: 450, damping: 32 };
+
 export default function CommandPalette() {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
@@ -208,18 +210,18 @@ export default function CommandPalette() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[999999] bg-black/60 backdrop-blur-md flex items-start justify-center pt-20 sm:pt-28 px-4"
+            className="fixed inset-0 z-[999999] bg-black/40 backdrop-blur-md flex items-start justify-center pt-20 sm:pt-28 px-4"
             onClick={() => setIsOpen(false)}
           >
             <motion.div
-              initial={{ scale: 0.95, y: -16, opacity: 0 }}
+              initial={{ scale: 0.96, y: -12, opacity: 0 }}
               animate={{ scale: 1, y: 0, opacity: 1 }}
-              exit={{ scale: 0.95, y: -16, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 450, damping: 32 }}
-              className="w-full max-w-xl bg-white/90 dark:bg-[#0c0c0e]/90 backdrop-blur-3xl saturate-150 border border-zinc-200/80 dark:border-white/10 rounded-[2rem] shadow-[0_30px_90px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.8)] dark:shadow-[0_30px_90px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.08)] overflow-hidden flex flex-col max-h-[75vh]"
+              exit={{ scale: 0.96, y: -12, opacity: 0 }}
+              transition={appleSpring}
+              className="w-full max-w-xl bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-3xl saturate-150 border border-black/[0.08] dark:border-white/[0.1] rounded-3xl shadow-[0_30px_90px_rgba(0,0,0,0.2)] dark:shadow-[0_30px_90px_rgba(0,0,0,0.7)] overflow-hidden flex flex-col max-h-[75vh]"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center px-5 py-4 border-b border-zinc-200/60 dark:border-white/5 gap-3">
+              <div className="flex items-center px-5 py-4 border-b border-black/[0.06] dark:border-white/[0.08] gap-3">
                 <Search size={18} className="text-zinc-400 shrink-0" />
                 <input
                   ref={inputRef}
@@ -236,17 +238,17 @@ export default function CommandPalette() {
                 {query && (
                   <button
                     onClick={() => setQuery("")}
-                    className="p-1 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-full"
+                    className="p-1 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-full cursor-pointer"
                   >
                     <X size={16} />
                   </button>
                 )}
-                <kbd className="hidden sm:inline-flex items-center gap-0.5 px-2 py-1 text-[10px] font-bold text-zinc-400 bg-zinc-100 dark:bg-zinc-800 rounded-md border border-zinc-200 dark:border-zinc-700">
+                <kbd className="hidden sm:inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px] font-bold text-zinc-400 bg-black/[0.04] dark:bg-white/[0.06] rounded-md border border-black/[0.04] dark:border-white/[0.06]">
                   ESC
                 </kbd>
               </div>
 
-              <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-1">
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
                 {filteredActions.length === 0 ? (
                   <div className="py-12 text-center text-zinc-400 text-xs font-medium">
                     Nenhum comando ou atalho correspondente.
@@ -260,27 +262,27 @@ export default function CommandPalette() {
                         key={action.id}
                         onClick={() => handleSelectAction(action)}
                         onMouseEnter={() => setSelectedIndex(idx)}
-                        className={`w-full flex items-center justify-between p-3.5 rounded-2xl text-left transition-all ${
+                        className={`w-full flex items-center justify-between p-3 rounded-2xl text-left transition-all cursor-pointer ${
                           isSelected
-                            ? "bg-zinc-900 text-white dark:bg-white dark:text-black shadow-md scale-[1.01] font-semibold"
-                            : "hover:bg-zinc-100/70 dark:hover:bg-zinc-900/60 text-zinc-700 dark:text-zinc-300"
+                            ? "bg-black/[0.06] dark:bg-white/10 text-zinc-950 dark:text-white font-semibold"
+                            : "hover:bg-black/[0.03] dark:hover:bg-white/[0.05] text-zinc-700 dark:text-zinc-300"
                         }`}
                       >
-                        <div className="flex items-center gap-3.5 min-w-0">
+                        <div className="flex items-center gap-3 min-w-0">
                           <div
-                            className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                            className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
                               isSelected
-                                ? "bg-white/20 text-white dark:bg-black/20 dark:text-black"
-                                : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400"
+                                ? "bg-zinc-950 text-white dark:bg-white dark:text-black"
+                                : "bg-black/[0.04] dark:bg-white/[0.06] text-zinc-500 dark:text-zinc-400"
                             }`}
                           >
-                            <Icon size={18} />
+                            <Icon size={16} />
                           </div>
                           <div className="truncate">
-                            <p className="text-xs md:text-sm font-bold truncate">{action.title}</p>
+                            <p className="text-xs md:text-sm font-semibold truncate">{action.title}</p>
                             <p
                               className={`text-[11px] truncate ${
-                                isSelected ? "text-zinc-300 dark:text-zinc-600" : "text-zinc-400"
+                                isSelected ? "text-zinc-500 dark:text-zinc-400" : "text-zinc-400"
                               }`}
                             >
                               {action.desc}
@@ -290,18 +292,18 @@ export default function CommandPalette() {
 
                         <div className="flex items-center gap-2 shrink-0 ml-3">
                           <span
-                            className={`text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md ${
+                            className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
                               isSelected
-                                ? "bg-white/20 dark:bg-black/20 text-white dark:text-black"
-                                : "bg-zinc-100 dark:bg-zinc-800 text-zinc-400"
+                                ? "bg-black/10 dark:bg-white/15 text-zinc-900 dark:text-white"
+                                : "bg-black/[0.04] dark:bg-white/[0.06] text-zinc-400"
                             }`}
                           >
                             {action.category}
                           </span>
                           <ArrowRight
-                            size={14}
+                            size={13}
                             className={`transition-transform ${
-                              isSelected ? "translate-x-1 opacity-100" : "opacity-0"
+                              isSelected ? "translate-x-0.5 opacity-100" : "opacity-0"
                             }`}
                           />
                         </div>
@@ -311,23 +313,23 @@ export default function CommandPalette() {
                 )}
               </div>
 
-              <div className="px-5 py-3 border-t border-zinc-200/60 dark:border-white/5 bg-zinc-50/50 dark:bg-zinc-950/40 flex items-center justify-between text-[11px] text-zinc-400">
+              <div className="px-5 py-2.5 border-t border-black/[0.06] dark:border-white/[0.08] bg-black/[0.02] dark:bg-white/[0.02] flex items-center justify-between text-[11px] text-zinc-400">
                 <div className="flex items-center gap-4">
                   <span className="flex items-center gap-1.5">
-                    <kbd className="px-1.5 py-0.5 rounded bg-zinc-200/60 dark:bg-zinc-800 font-mono text-[9px] font-bold">
+                    <kbd className="px-1.5 py-0.5 rounded bg-black/[0.04] dark:bg-white/[0.08] font-mono text-[9px] font-bold">
                       ↑↓
                     </kbd>
                     Navegar
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <kbd className="px-1.5 py-0.5 rounded bg-zinc-200/60 dark:bg-zinc-800 font-mono text-[9px] font-bold">
+                    <kbd className="px-1.5 py-0.5 rounded bg-black/[0.04] dark:bg-white/[0.08] font-mono text-[9px] font-bold">
                       ENTER
                     </kbd>
                     Executar
                   </span>
                 </div>
-                <div className="flex items-center gap-1 font-semibold text-zinc-500 dark:text-zinc-400">
-                  <Command size={12} /> RMAgenda Quick Actions
+                <div className="flex items-center gap-1 font-semibold text-zinc-400 dark:text-zinc-500 text-[10px]">
+                  <Command size={11} /> Quick Actions
                 </div>
               </div>
             </motion.div>

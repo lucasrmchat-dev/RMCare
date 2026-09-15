@@ -66,7 +66,7 @@ export default function ModuleModalidade() {
       </div>
 
       {formData.tipo_servico === "Retorno" ? (
-        <div className="p-7 sm:p-8 border border-zinc-200/80 dark:border-white/10 rounded-3xl bg-white/70 dark:bg-white/[0.04] backdrop-blur-xl shadow-sm text-center">
+        <div className="p-7 sm:p-8 border border-black/[0.06] dark:border-white/[0.08] rounded-3xl bg-white/70 dark:bg-white/[0.04] backdrop-blur-xl shadow-sm text-center">
           <div className="w-14 h-14 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto mb-4 border border-emerald-200/50">
             <ShieldCheck size={28} strokeWidth={2} />
           </div>
@@ -89,7 +89,7 @@ export default function ModuleModalidade() {
                 className={`border rounded-3xl overflow-hidden transition-all backdrop-blur-xl cursor-pointer ${
                   isSelected
                     ? "border-zinc-950 bg-zinc-50/90 dark:border-white dark:bg-white/[0.08] shadow-lg ring-2 ring-[#9FC131]"
-                    : "border-zinc-200/80 dark:border-white/10 hover:border-zinc-400 bg-white/80 dark:bg-[#0c0c0e]/80 shadow-sm"
+                    : "border-black/[0.06] dark:border-white/[0.08] hover:border-zinc-400 bg-white/80 dark:bg-[#161618]/80 shadow-sm"
                 }`}
               >
                 <AnimatePresence mode="wait">

@@ -331,7 +331,7 @@ export default function EmpresaAdmin() {
   // Enquanto valida autenticação, exibe tela de carregamento protegida sem flash
   if (isLoadingAuth) {
     return (
-      <div className="h-screen w-screen bg-[#F8FAFC] dark:bg-[#060A12] flex flex-col items-center justify-center font-sans space-y-3">
+      <div className="h-screen w-screen bg-[#F5F5F7] dark:bg-[#000000] flex flex-col items-center justify-center font-sans space-y-3">
         <CapsuleSpinner size="xl" />
         <p className="text-xs font-bold text-zinc-500 dark:text-zinc-400">
           Autenticando sessão e permissões...
@@ -341,7 +341,7 @@ export default function EmpresaAdmin() {
   }
 
   return (
-    <div className="h-screen w-screen bg-[#F8FAFC] dark:bg-[#060A12] flex flex-col font-sans overflow-hidden text-zinc-900 dark:text-white">
+    <div className="h-screen w-screen bg-[#F5F5F7] dark:bg-[#000000] flex flex-col font-sans overflow-hidden text-zinc-900 dark:text-white">
       <AdminSessionBar />
 
       <motion.button
@@ -374,11 +374,11 @@ export default function EmpresaAdmin() {
 
       <div className="flex flex-1 overflow-hidden relative">
         <aside
-          className={`absolute md:relative z-40 h-full bg-white/80 dark:bg-[#08080a]/85 backdrop-blur-3xl saturate-180 border-r border-zinc-200/70 dark:border-white/[0.08] flex flex-col py-4 px-3 transition-all duration-300 ease-out ${
+          className={`absolute md:relative z-40 h-full bg-white/80 dark:bg-[#161618]/80 backdrop-blur-3xl border-r border-black/[0.06] dark:border-white/[0.08] flex flex-col py-4 px-3 transition-all duration-300 ease-out ${
             isMobileMenuOpen
-              ? "translate-x-0 w-[250px] shadow-2xl"
+              ? "translate-x-0 w-[240px] shadow-2xl"
               : "-translate-x-full md:translate-x-0"
-          } ${isSidebarCollapsed ? "md:w-[68px]" : "md:w-[250px]"}`}
+          } ${isSidebarCollapsed ? "md:w-[64px]" : "md:w-[240px]"}`}
         >
           {/* TOPO DA SIDEBAR */}
           <div className="flex items-center justify-between mb-3 px-1">
@@ -484,7 +484,7 @@ export default function EmpresaAdmin() {
                                 <span
                                   className={`w-1.5 h-1.5 rounded-full shrink-0 transition-colors ${
                                     isSubActive
-                                      ? "bg-[#9FC131] shadow-[0_0_6px_rgba(159,193,49,0.8)]"
+                                      ? "bg-[#34C759] dark:bg-[#30D158]"
                                       : "bg-zinc-300 dark:bg-zinc-700 opacity-50 group-hover:opacity-100"
                                   }`}
                                 />
@@ -512,7 +512,7 @@ export default function EmpresaAdmin() {
           />
         )}
 
-        <main className="flex-1 flex flex-col relative overflow-hidden bg-[#F8FAFC] dark:bg-[#060A12]">
+        <main className="flex-1 flex flex-col relative overflow-hidden bg-[#F5F5F7] dark:bg-[#000000]">
           <AnimatePresence mode="wait">
             {activeView === "agenda" && (
               <AgendaView

@@ -156,7 +156,7 @@ export default function ModuleEspecialidade() {
           <h3 className="text-xl font-bold text-zinc-950 dark:text-white">Verificação de Agendamento</h3>
           <p className="text-zinc-500 text-xs sm:text-sm mt-1">Você selecionou previamente:</p>
 
-          <div className="my-6 bg-white/70 dark:bg-white/[0.04] backdrop-blur-xl border border-zinc-200/80 dark:border-white/10 px-8 py-5 rounded-3xl w-full shadow-sm">
+          <div className="my-6 bg-white/70 dark:bg-white/[0.04] backdrop-blur-xl border border-black/[0.06] dark:border-white/[0.08] px-8 py-5 rounded-3xl w-full shadow-sm">
             <span className="block font-extrabold text-lg text-zinc-900 dark:text-white">
               {formData.medico_profissional}
             </span>
@@ -233,7 +233,7 @@ export default function ModuleEspecialidade() {
                     value={filterSearch}
                     onChange={(e) => setFilterSearch(e.target.value)}
                     placeholder="Filtrar por especialidade ou procedimento..."
-                    className="w-full min-h-[46px] pl-11 pr-4 py-2.5 bg-white/70 dark:bg-white/[0.04] backdrop-blur-xl border border-zinc-200/80 dark:border-white/10 rounded-2xl text-xs sm:text-sm font-medium outline-none focus:border-[#9FC131] transition-all"
+                    className="w-full min-h-[46px] pl-11 pr-4 py-2.5 bg-white/70 dark:bg-white/[0.04] backdrop-blur-xl border border-black/[0.06] dark:border-white/[0.08] rounded-2xl text-xs sm:text-sm font-medium outline-none focus:border-[#9FC131] transition-all"
                   />
                 </div>
               )}
@@ -247,7 +247,7 @@ export default function ModuleEspecialidade() {
                       whileTap={{ scale: 0.97 }}
                       key={esp.nome}
                       onClick={() => handleSelectEspecialidade(esp)}
-                      className="min-h-[64px] p-4 sm:p-5 border rounded-2xl flex items-center justify-between text-left transition-all border-zinc-200/80 dark:border-white/10 hover:border-[#9FC131] bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-xl shadow-sm hover:shadow-md group cursor-pointer"
+                      className="min-h-[64px] p-4 sm:p-5 border rounded-2xl flex items-center justify-between text-left transition-all border-black/[0.06] dark:border-white/[0.08] hover:border-[#9FC131] bg-white/80 dark:bg-[#161618]/80 backdrop-blur-xl shadow-sm hover:shadow-md group cursor-pointer"
                     >
                       <div className="flex items-center gap-3.5 min-w-0">
                         <div className="w-11 h-11 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 border border-blue-500/20 group-hover:bg-[#9FC131]/20 group-hover:text-[#86a621] dark:group-hover:text-[#9FC131] transition-colors">
@@ -303,7 +303,7 @@ export default function ModuleEspecialidade() {
                   className="text-center max-w-lg mx-auto py-4 space-y-6"
                 >
                   <div className="relative mx-auto w-20 h-20">
-                    <div className="w-20 h-20 rounded-[2rem] bg-gradient-to-br from-emerald-500 to-green-600 text-white flex items-center justify-center shadow-xl shadow-emerald-500/25 border border-white/20">
+                    <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-emerald-500 to-green-600 text-white flex items-center justify-center shadow-xl shadow-emerald-500/25 border border-white/20">
                       <MessageCircle size={38} strokeWidth={2.2} />
                     </div>
                     <motion.div
@@ -327,7 +327,7 @@ export default function ModuleEspecialidade() {
                     </p>
                   </div>
 
-                  <div className="p-5 sm:p-6 rounded-3xl bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 text-left space-y-3.5 shadow-sm">
+                  <div className="p-5 sm:p-6 rounded-3xl bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] text-left space-y-3.5 shadow-sm">
                     <div className="flex justify-between items-center text-xs">
                       <span className="text-zinc-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
                         <User size={14} className="text-purple-500" /> Profissional
@@ -337,7 +337,7 @@ export default function ModuleEspecialidade() {
                       </span>
                     </div>
 
-                    <div className="flex justify-between items-center text-xs border-t border-zinc-100 dark:border-white/5 pt-3">
+                    <div className="flex justify-between items-center text-xs border-t border-black/[0.04] dark:border-white/[0.06] pt-3">
                       <span className="text-zinc-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
                         <Stethoscope size={14} className="text-emerald-500" /> Especialidade
                       </span>
@@ -348,7 +348,7 @@ export default function ModuleEspecialidade() {
 
                     {/* EXIBIÇÃO DA MODALIDADE ESCOLHIDA (SE PREVIAMENTE SELECIONADA OU PASSADA) */}
                     {formData.modalidade && (
-                      <div className="flex justify-between items-center text-xs border-t border-zinc-100 dark:border-white/5 pt-3">
+                      <div className="flex justify-between items-center text-xs border-t border-black/[0.04] dark:border-white/[0.06] pt-3">
                         <span className="text-zinc-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
                           <ShieldCheck size={14} className="text-blue-500" /> Modalidade / Cobertura
                         </span>
@@ -359,7 +359,7 @@ export default function ModuleEspecialidade() {
                     )}
 
                     {formData.nome && (
-                      <div className="flex justify-between items-center text-xs border-t border-zinc-100 dark:border-white/5 pt-3">
+                      <div className="flex justify-between items-center text-xs border-t border-black/[0.04] dark:border-white/[0.06] pt-3">
                         <span className="text-zinc-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
                           <User size={14} className="text-blue-500" /> Paciente
                         </span>
@@ -436,7 +436,7 @@ export default function ModuleEspecialidade() {
                             ? "border-zinc-950 bg-zinc-50/90 dark:border-white dark:bg-white/[0.08] shadow-md ring-2 ring-[#9FC131]"
                             : isWppRedirect
                             ? "border-purple-200/80 dark:border-purple-900/40 hover:border-purple-400 bg-purple-50/20 dark:bg-purple-950/10 backdrop-blur-xl"
-                            : "border-zinc-200/80 dark:border-white/10 hover:border-zinc-400 bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-xl shadow-sm"
+                            : "border-black/[0.06] dark:border-white/[0.08] hover:border-zinc-400 bg-white/80 dark:bg-[#161618]/80 backdrop-blur-xl shadow-sm"
                         }`}
                       >
                         <div className="flex items-center gap-3.5 min-w-0">

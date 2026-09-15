@@ -83,7 +83,7 @@ export default function ModuleConcluido() {
         className="relative mb-5"
       >
         <div
-          className={`w-20 h-20 sm:w-22 sm:h-22 rounded-[2rem] ${
+          className={`w-20 h-20 sm:w-22 sm:h-22 rounded-3xl ${
             pixData
               ? "bg-gradient-to-br from-blue-600 to-indigo-600 shadow-blue-500/25"
               : "bg-gradient-to-br from-[#9FC131] to-[#86a621] shadow-[#9FC131]/30"
@@ -131,7 +131,7 @@ export default function ModuleConcluido() {
 
       {/* PIX QR CODE & COPY */}
       {pixData && (
-        <div className="mt-6 p-6 rounded-3xl border border-zinc-200/80 dark:border-white/10 w-full text-center bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl shadow-sm space-y-4">
+        <div className="mt-6 p-6 rounded-3xl border border-black/[0.06] dark:border-white/[0.08] w-full text-center bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl shadow-sm space-y-4">
           <h3 className="text-[11px] font-extrabold uppercase text-zinc-400 tracking-widest">
             Escaneie o QR Code Pix
           </h3>
@@ -164,7 +164,7 @@ export default function ModuleConcluido() {
               </button>
             </div>
 
-            <div className="p-4 bg-zinc-50/70 dark:bg-zinc-900/60 rounded-2xl border border-zinc-200/60 dark:border-zinc-800 flex items-center justify-between">
+            <div className="p-4 bg-[#F8F8FA] dark:bg-[#222225] rounded-2xl border border-zinc-200/60 dark:border-zinc-800 flex items-center justify-between">
               <span className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5">
                 {timeLeft > 0 && <RefreshCw size={12} className="animate-spin text-[#9FC131]" />}
                 Verificação Automática
@@ -179,7 +179,7 @@ export default function ModuleConcluido() {
       )}
 
       {/* RESUMO COMPLETO DO ATENDIMENTO COM ESPECIALIDADE E PROFISSIONAL */}
-      <div className="mt-6 p-5 sm:p-6 rounded-3xl border border-zinc-200/80 dark:border-white/10 w-full text-left bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl shadow-sm space-y-3.5">
+      <div className="mt-6 p-5 sm:p-6 rounded-3xl border border-black/[0.06] dark:border-white/[0.08] w-full text-left bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl shadow-sm space-y-3.5">
         <div className="flex justify-between items-center text-xs">
           <span className="text-zinc-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
             <User size={14} className="text-blue-500" /> Paciente
@@ -189,7 +189,7 @@ export default function ModuleConcluido() {
           </span>
         </div>
 
-        <div className="flex justify-between items-center text-xs border-t border-zinc-100 dark:border-white/5 pt-3">
+        <div className="flex justify-between items-center text-xs border-t border-black/[0.04] dark:border-white/[0.06] pt-3">
           <span className="text-zinc-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
             <Stethoscope size={14} className="text-emerald-500" /> Procedimento / Especialidade
           </span>
@@ -198,7 +198,7 @@ export default function ModuleConcluido() {
           </span>
         </div>
 
-        <div className="flex justify-between items-center text-xs border-t border-zinc-100 dark:border-white/5 pt-3">
+        <div className="flex justify-between items-center text-xs border-t border-black/[0.04] dark:border-white/[0.06] pt-3">
           <span className="text-zinc-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
             <User size={14} className="text-purple-500" /> Profissional
           </span>
@@ -207,7 +207,7 @@ export default function ModuleConcluido() {
           </span>
         </div>
 
-        <div className="flex justify-between items-center text-xs border-t border-zinc-100 dark:border-white/5 pt-3">
+        <div className="flex justify-between items-center text-xs border-t border-black/[0.04] dark:border-white/[0.06] pt-3">
           <span className="text-zinc-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
             <Calendar size={14} className="text-[#86a621] dark:text-[#9FC131]" /> Data & Horário
           </span>
@@ -217,7 +217,7 @@ export default function ModuleConcluido() {
         </div>
 
         {formData.modalidade && (
-          <div className="flex justify-between items-center text-xs border-t border-zinc-100 dark:border-white/5 pt-3">
+          <div className="flex justify-between items-center text-xs border-t border-black/[0.04] dark:border-white/[0.06] pt-3">
             <span className="text-zinc-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
               <Shield size={14} className="text-amber-500" /> Modalidade
             </span>
@@ -227,7 +227,7 @@ export default function ModuleConcluido() {
           </div>
         )}
 
-        <div className="flex justify-between items-center text-xs border-t border-zinc-100 dark:border-white/5 pt-3">
+        <div className="flex justify-between items-center text-xs border-t border-black/[0.04] dark:border-white/[0.06] pt-3">
           <span className="text-zinc-400 font-bold uppercase tracking-wider">Status do Agendamento</span>
           <span className="font-extrabold px-2.5 py-0.5 rounded-md text-[10px] uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
             {pixData ? "Aguardando Pix" : "Confirmado no Sistema"}

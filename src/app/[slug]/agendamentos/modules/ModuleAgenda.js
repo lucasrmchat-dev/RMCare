@@ -589,7 +589,7 @@ export default function ModuleAgenda() {
         className="flex flex-col md:flex-row gap-5 md:gap-8"
       >
         {/* CALENDÁRIO MENSAL */}
-        <div className="w-full md:w-1/2 rounded-[2rem] border border-zinc-200/80 dark:border-white/10 p-5 md:p-6 bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl shadow-sm">
+        <div className="w-full md:w-1/2 rounded-3xl border border-black/[0.06] dark:border-white/[0.08] p-5 md:p-6 bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl shadow-sm">
           <div className="flex justify-between items-center mb-6">
             <button
               onClick={() => {
@@ -711,12 +711,12 @@ export default function ModuleAgenda() {
 
         {/* GRADE DE HORÁRIOS DISPONÍVEIS */}
         <div
-          className="w-full md:w-1/2 rounded-[2rem] border border-zinc-200/80 dark:border-white/10 p-5 md:p-6 bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl shadow-sm flex flex-col justify-between scroll-mt-24"
+          className="w-full md:w-1/2 rounded-3xl border border-black/[0.06] dark:border-white/[0.08] p-5 md:p-6 bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl shadow-sm flex flex-col justify-between scroll-mt-24"
           ref={timeSlotsRef}
         >
           {formData.data_agendamento ? (
             <div>
-              <div className="flex justify-between items-center border-b border-zinc-200/80 dark:border-white/10 pb-4 mb-4">
+              <div className="flex justify-between items-center border-b border-black/[0.06] dark:border-white/[0.08] pb-4 mb-4">
                 <h4 className="font-extrabold text-sm flex items-center gap-2 text-zinc-900 dark:text-white">
                   <Clock3 size={16} className="text-[#9FC131]" /> Horários Disponíveis
                 </h4>
@@ -757,7 +757,7 @@ export default function ModuleAgenda() {
                             ? "opacity-25 cursor-not-allowed bg-zinc-100 dark:bg-zinc-900 text-zinc-400 line-through"
                             : isSel
                             ? "bg-[#9FC131] text-black shadow-lg shadow-[#9FC131]/25 font-black ring-2 ring-[#9FC131] scale-105"
-                            : "bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 hover:border-[#9FC131] text-zinc-800 dark:text-zinc-200"
+                            : "bg-[#F8F8FA] dark:bg-[#222225] border border-zinc-200/80 dark:border-zinc-800 hover:border-[#9FC131] text-zinc-800 dark:text-zinc-200"
                         }`}
                       >
                         {h}

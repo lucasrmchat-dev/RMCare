@@ -39,7 +39,7 @@ const ServicoCard = ({ srv, onEdit }) => {
     <motion.div
       variants={staggerItem}
       layoutId={`card-${srv.id}`}
-      className="bg-white dark:bg-[#111] border border-zinc-200/80 dark:border-zinc-800 p-7 rounded-[2.5rem] shadow-sm hover:shadow-xl hover:border-zinc-300 dark:hover:border-zinc-700 transition-all duration-500 flex flex-col justify-between group relative overflow-hidden"
+      className="bg-white dark:bg-[#111] border border-zinc-200/80 dark:border-zinc-800 p-7 rounded-3xl shadow-sm hover:shadow-xl hover:border-zinc-300 dark:hover:border-zinc-700 transition-all duration-500 flex flex-col justify-between group relative overflow-hidden"
     >
       <button
         onClick={() => onEdit(srv)}
@@ -144,7 +144,7 @@ const ServicoForm = ({ initialData, onSave, onCancel, loading, especialidadesLis
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.96, y: 20 }}
       transition={spring}
-      className="bg-white dark:bg-[#111] border border-zinc-200/80 dark:border-zinc-800 rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-w-3xl mx-auto w-full relative z-50"
+      className="bg-white dark:bg-[#111] border border-zinc-200/80 dark:border-zinc-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-w-3xl mx-auto w-full relative z-50"
     >
       <div className="flex justify-between items-center px-8 md:px-10 py-8 border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/30">
         <div>
@@ -487,7 +487,7 @@ export default function FinanceiroView({ subTab = "corpo", setSubTab, servicos =
 
             {filteredServicos.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-center">
-                <div className="w-20 h-20 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[2rem] flex items-center justify-center text-zinc-300 dark:text-zinc-700 mb-6 shadow-sm">
+                <div className="w-20 h-20 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl flex items-center justify-center text-zinc-300 dark:text-zinc-700 mb-6 shadow-sm">
                   <Stethoscope size={28} />
                 </div>
                 <h4 className="text-lg font-bold text-zinc-900 dark:text-white mb-2">Nenhum profissional cadastrado</h4>
@@ -540,7 +540,7 @@ export default function FinanceiroView({ subTab = "corpo", setSubTab, servicos =
         {/* SUB-ABA 2: ESPECIALIDADES */}
         {subTab === "especialidades" && (
           <motion.div key="especialidades" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={spring} className="max-w-2xl mx-auto">
-            <div className="bg-white dark:bg-[#111] p-8 border border-zinc-200/80 dark:border-zinc-800 rounded-[2.5rem] shadow-sm">
+            <div className="bg-white dark:bg-[#111] p-8 border border-zinc-200/80 dark:border-zinc-800 rounded-3xl shadow-sm">
               <div className="flex items-center gap-3 mb-8">
                 <div className="w-12 h-12 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-500 flex items-center justify-center">
                   <Layers size={20} />
@@ -583,7 +583,7 @@ export default function FinanceiroView({ subTab = "corpo", setSubTab, servicos =
         {/* SUB-ABA 3: PAUSAS POR ESPECIALISTA */}
         {subTab === "pausas" && (
           <motion.div key="pausas" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={spring} className="max-w-4xl mx-auto space-y-6">
-            <div className="bg-white dark:bg-[#111] p-8 border border-zinc-200/80 dark:border-zinc-800 rounded-[2.5rem] shadow-sm">
+            <div className="bg-white dark:bg-[#111] p-8 border border-zinc-200/80 dark:border-zinc-800 rounded-3xl shadow-sm">
               <div className="flex items-center gap-3 mb-6">
                 <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 flex items-center justify-center">
                   <PauseCircle size={24} />

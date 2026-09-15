@@ -2725,6 +2725,48 @@ export async function actionAdicionarObservacaoAgendamento({ agendamentoId, paci
       } catch (eAud) {}
 
       return { success: true, novaNota, historico };
+    } else {
+      const { data: bq } = await supabaseAdmin
+        .from("bloqueios_horarios")
+        .select("id, observacoes, historico_observacoes, nome_paciente")
+        .eq("id", agendamentoId)
+        .eq("empresa_id", admin.empresa_id)
+        .maybeSingle();
+
+      if (bq) {
+        let historico = Array.isArray(bq.historico_observacoes) ? bq.historico_observacoes : [];
+        historico = [novaNota, ...historico];
+        const obsTextoAtual = bq.observacoes
+          ? `${bq.observacoes}\n\n[${new Date().toLocaleString("pt-BR")} - ${autorEfetivo}]: ${texto.trim()}`
+          : `[${new Date().toLocaleString("pt-BR")} - ${autorEfetivo}]: ${texto.trim()}`;
+
+        let { error: updateErr } = await supabaseAdmin
+          .from("bloqueios_horarios")
+          .update({
+            observacoes: obsTextoAtual,
+            historico_observacoes: historico
+          })
+          .eq("id", agendamentoId);
+
+        if (updateErr) {
+          await supabaseAdmin
+            .from("bloqueios_horarios")
+            .update({ observacoes: obsTextoAtual })
+            .eq("id", agendamentoId);
+        }
+
+        try {
+          await actionRegistrarAuditoria({
+            modulo: "agenda",
+            acao: "Nova Observação Clínica (ERP)",
+            detalhes: `Anotação inserida na ficha do agendamento ERP #${agendamentoId} (${bq.nome_paciente || "Paciente"}) por ${autorEfetivo}: "${texto.trim()}".`,
+            novo: { nova_nota: novaNota },
+            alterado_por: autorEfetivo
+          });
+        } catch (eAud) {}
+
+        return { success: true, novaNota, historico };
+      }
     }
   }
 

@@ -161,7 +161,7 @@ export default function ConsultarAgendamentosPage() {
     : [];
 
   return (
-    <div className="flex min-h-[100dvh] bg-[#F8FAFC] dark:bg-[#060A12] text-zinc-950 dark:text-white transition-colors duration-400 font-sans antialiased">
+    <div className="flex min-h-[100dvh] bg-[#F5F5F7] dark:bg-[#000000] text-zinc-950 dark:text-white transition-colors duration-400 font-sans antialiased">
       <SidebarPremium isExpanded={sidebar} setIsExpanded={setSidebar} />
       <Navbar />
 
@@ -190,7 +190,7 @@ export default function ConsultarAgendamentosPage() {
 
           <form
             onSubmit={search}
-            className="grid sm:grid-cols-[1fr_1fr_auto] gap-3.5 bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-4 md:p-5 rounded-3xl shadow-[0_15px_35px_rgba(0,0,0,0.04)] dark:shadow-[0_20px_40px_rgba(0,0,0,0.4)]"
+            className="grid sm:grid-cols-[1fr_1fr_auto] gap-3.5 bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] p-4 md:p-5 rounded-3xl shadow-[0_15px_35px_rgba(0,0,0,0.04)] dark:shadow-[0_20px_40px_rgba(0,0,0,0.4)]"
           >
             <label className="space-y-1.5">
               <span className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest ml-1">
@@ -202,7 +202,7 @@ export default function ConsultarAgendamentosPage() {
                 placeholder="000.000.000-00"
                 maxLength={14}
                 required
-                className="w-full min-h-[48px] rounded-2xl bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 px-4 text-sm font-medium outline-none focus:border-[#9FC131] dark:focus:border-[#9FC131] transition-all"
+                className="w-full min-h-[48px] rounded-2xl bg-[#F8F8FA] dark:bg-[#222225] border border-black/[0.08] dark:border-white/[0.1] px-4 text-sm font-medium outline-none focus:border-black/30 dark:focus:border-white/30 focus:ring-4 focus:ring-black/5 dark:focus:ring-white/10 transition-all"
               />
             </label>
 
@@ -215,7 +215,7 @@ export default function ConsultarAgendamentosPage() {
                 value={credentials.dataNascimento}
                 onChange={(e) => setCredentials({ ...credentials, dataNascimento: e.target.value })}
                 required
-                className="w-full min-h-[48px] rounded-2xl bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 px-4 text-sm font-medium outline-none focus:border-[#9FC131] dark:focus:border-[#9FC131] transition-all"
+                className="w-full min-h-[48px] rounded-2xl bg-[#F8F8FA] dark:bg-[#222225] border border-black/[0.08] dark:border-white/[0.1] px-4 text-sm font-medium outline-none focus:border-black/30 dark:focus:border-white/30 focus:ring-4 focus:ring-black/5 dark:focus:ring-white/10 transition-all"
               />
             </label>
 

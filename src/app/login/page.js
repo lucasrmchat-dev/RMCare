@@ -262,9 +262,9 @@ export default function LoginUnificado() {
       <div className="absolute top-[-15%] left-[-10%] w-[550px] h-[550px] rounded-full bg-[#9FC131]/15 blur-[140px] pointer-events-none" />
       <div className="absolute bottom-[-15%] right-[-10%] w-[550px] h-[550px] rounded-full bg-blue-600/10 blur-[140px] pointer-events-none" />
 
-      <div className="w-full max-w-[440px] bg-white/[0.06] dark:bg-[#0c0f17]/70 backdrop-blur-3xl saturate-150 border border-white/10 rounded-[2.5rem] shadow-[0_40px_100px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.1)] p-7 sm:p-9 relative z-10 space-y-6">
+      <div className="w-full max-w-[440px] bg-white/[0.06] dark:bg-[#0c0f17]/70 backdrop-blur-3xl saturate-150 border border-white/10 rounded-3xl shadow-[0_40px_100px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.1)] p-7 sm:p-9 relative z-10 space-y-6">
         <div className="flex justify-center mb-1">
-          <div className="w-14 h-14 bg-gradient-to-br from-[#9FC131] to-[#7a9622] rounded-2xl flex items-center justify-center shadow-lg shadow-[#9FC131]/25 border border-white/20">
+          <div className="w-14 h-14 bg-white text-black rounded-2xl flex items-center justify-center shadow-md border border-white/20">
             {step === 3 ? (
               <KeyRound size={26} className="text-black" strokeWidth={2.5} />
             ) : (
@@ -322,7 +322,7 @@ export default function LoginUnificado() {
                   value={identificador}
                   onChange={(e) => setIdentificador(e.target.value)}
                   placeholder="Digite seu login ou CPF..."
-                  className="w-full min-h-[48px] px-4 py-3.5 bg-black/50 border border-white/10 rounded-2xl font-medium outline-none focus:border-[#9FC131] focus:ring-2 focus:ring-[#9FC131]/20 text-white text-sm transition-all placeholder:text-zinc-600"
+                  className="w-full min-h-[48px] px-4 py-3.5 bg-black/50 border border-white/10 rounded-2xl font-medium outline-none focus:border-white/40 focus:ring-4 focus:ring-white/10 text-white text-sm transition-all placeholder:text-zinc-600"
                 />
               </div>
 
@@ -372,7 +372,7 @@ export default function LoginUnificado() {
                     type="date"
                     value={birthDate}
                     onChange={(e) => setBirthDate(e.target.value)}
-                    className="w-full min-h-[48px] px-4 py-3.5 bg-black/50 border border-white/10 rounded-2xl font-medium outline-none focus:border-[#9FC131] focus:ring-2 focus:ring-[#9FC131]/20 text-white text-sm transition-all [color-scheme:dark]"
+                    className="w-full min-h-[48px] px-4 py-3.5 bg-black/50 border border-white/10 rounded-2xl font-medium outline-none focus:border-white/40 focus:ring-4 focus:ring-white/10 text-white text-sm transition-all [color-scheme:dark]"
                   />
                 </div>
               )}
@@ -388,7 +388,7 @@ export default function LoginUnificado() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full min-h-[48px] px-4 py-3.5 pr-12 bg-black/50 border border-white/10 rounded-2xl font-medium outline-none focus:border-[#9FC131] focus:ring-2 focus:ring-[#9FC131]/20 text-white text-sm transition-all placeholder:text-zinc-600 tracking-wider"
+                    className="w-full min-h-[48px] px-4 py-3.5 pr-12 bg-black/50 border border-white/10 rounded-2xl font-medium outline-none focus:border-white/40 focus:ring-4 focus:ring-white/10 text-white text-sm transition-all placeholder:text-zinc-600 tracking-wider"
                   />
                   <button
                     type="button"
@@ -494,7 +494,7 @@ export default function LoginUnificado() {
                       value={resetNewPass}
                       onChange={(e) => setResetNewPass(e.target.value)}
                       placeholder="Crie uma senha forte..."
-                      className="w-full min-h-[46px] px-4 py-3 pr-12 bg-black/50 border border-white/10 rounded-2xl font-medium outline-none focus:border-[#9FC131] focus:ring-2 focus:ring-[#9FC131]/20 text-white text-sm transition-all placeholder:text-zinc-600 tracking-wider"
+                      className="w-full min-h-[46px] px-4 py-3 pr-12 bg-black/50 border border-white/10 rounded-2xl font-medium outline-none focus:border-white/40 focus:ring-4 focus:ring-white/10 text-white text-sm transition-all placeholder:text-zinc-600 tracking-wider"
                     />
                     <button
                       type="button"
@@ -517,7 +517,7 @@ export default function LoginUnificado() {
                       value={resetConfirmPass}
                       onChange={(e) => setResetConfirmPass(e.target.value)}
                       placeholder="Repita a nova senha..."
-                      className="w-full min-h-[46px] px-4 py-3 pr-12 bg-black/50 border border-white/10 rounded-2xl font-medium outline-none focus:border-[#9FC131] focus:ring-2 focus:ring-[#9FC131]/20 text-white text-sm transition-all placeholder:text-zinc-600 tracking-wider"
+                      className="w-full min-h-[46px] px-4 py-3 pr-12 bg-black/50 border border-white/10 rounded-2xl font-medium outline-none focus:border-white/40 focus:ring-4 focus:ring-white/10 text-white text-sm transition-all placeholder:text-zinc-600 tracking-wider"
                     />
                     <button
                       type="button"

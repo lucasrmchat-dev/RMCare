@@ -329,8 +329,8 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
       <div className="flex-1 overflow-y-auto custom-scrollbar pb-24 space-y-6 pr-1">
         {/* SUB-VIEW 1: MINHAS CREDENCIAIS */}
         {currentView === "credenciais" && (
-          <div className="max-w-xl bg-white/80 dark:bg-[#0f0f13]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
-            <div className="flex items-center gap-3 pb-4 border-b border-zinc-100 dark:border-white/5">
+          <div className="max-w-xl bg-white/80 dark:bg-[#0f0f13]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
+            <div className="flex items-center gap-3 pb-4 border-b border-black/[0.04] dark:border-white/[0.06]">
               <div className="w-12 h-12 rounded-2xl bg-[#9FC131]/15 text-[#86a621] dark:text-[#9FC131] flex items-center justify-center">
                 <KeyRound size={24} strokeWidth={2.2} />
               </div>
@@ -361,7 +361,7 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
                 placeholder="Digite sua senha atual"
               />
 
-              <div className="grid sm:grid-cols-2 gap-3 pt-2 border-t border-zinc-100 dark:border-white/5">
+              <div className="grid sm:grid-cols-2 gap-3 pt-2 border-t border-black/[0.04] dark:border-white/[0.06]">
                 <TextInput
                   label="Nova Senha (Opcional)"
                   type="password"
@@ -445,7 +445,7 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
                   return (
                     <div
                       key={u.id}
-                      className="p-5 rounded-3xl bg-white/80 dark:bg-[#0f0f13]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 shadow-sm flex flex-col justify-between space-y-4 hover:border-zinc-300 dark:hover:border-white/20 transition-all"
+                      className="p-5 rounded-3xl bg-white/80 dark:bg-[#0f0f13]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-sm flex flex-col justify-between space-y-4 hover:border-zinc-300 dark:hover:border-white/20 transition-all"
                     >
                       <div className="space-y-3">
                         <div className="flex items-start justify-between">
@@ -483,7 +483,7 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
                         </div>
 
                         {/* TAGS DE PERMISSÃO */}
-                        <div className="pt-2 border-t border-zinc-100 dark:border-white/5">
+                        <div className="pt-2 border-t border-black/[0.04] dark:border-white/[0.06]">
                           <span className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-400 block mb-1.5">
                             Permissões Ativas ({perms.length})
                           </span>
@@ -506,7 +506,7 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
                       </div>
 
                       {/* AÇÕES */}
-                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-white/5">
+                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-black/[0.04] dark:border-white/[0.06]">
                         <button
                           type="button"
                           onClick={() => handleAbrirEdicao(u)}
@@ -536,7 +536,7 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
         {/* SUB-VIEW 3: AUDITORIA DO SISTEMA */}
         {currentView === "auditoria" && (
           <div className="space-y-4">
-            <div className="p-5 rounded-3xl bg-white/80 dark:bg-[#0f0f13]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 shadow-sm space-y-4">
+            <div className="p-5 rounded-3xl bg-white/80 dark:bg-[#0f0f13]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-sm space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-extrabold uppercase tracking-widest text-zinc-400 flex items-center gap-1.5">
                   <Filter size={13} /> Filtros de Auditoria
@@ -614,7 +614,7 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
             </div>
 
             {loadingAuditoria ? (
-              <div className="p-12 text-center bg-white/80 dark:bg-[#0f0f13]/80 rounded-3xl border border-zinc-200/80 dark:border-white/10">
+              <div className="p-12 text-center bg-white/80 dark:bg-[#0f0f13]/80 rounded-3xl border border-black/[0.06] dark:border-white/[0.08]">
                 <CapsuleSpinner size="lg" className="mx-auto text-zinc-400" />
                 <p className="text-xs text-zinc-500 mt-2 font-medium">Buscando registros de auditoria...</p>
               </div>
@@ -625,7 +625,7 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
                 <p className="text-xs text-zinc-500">Nenhuma ação corresponde aos filtros aplicados.</p>
               </div>
             ) : (
-              <div className="bg-white/80 dark:bg-[#0f0f13]/80 border border-zinc-200/80 dark:border-white/10 rounded-3xl overflow-hidden shadow-sm">
+              <div className="bg-white/80 dark:bg-[#0f0f13]/80 border border-black/[0.06] dark:border-white/[0.08] rounded-3xl overflow-hidden shadow-sm">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
@@ -708,7 +708,7 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
               onClick={(e) => e.stopPropagation()}
               className="bg-white dark:bg-[#111116] border border-zinc-200/90 dark:border-zinc-800 rounded-3xl p-6 sm:p-7 max-w-lg w-full shadow-2xl space-y-5 text-left"
             >
-              <div className="flex items-center justify-between border-b border-zinc-100 dark:border-white/5 pb-4">
+              <div className="flex items-center justify-between border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center">
                     <User size={20} strokeWidth={2.2} />
@@ -756,7 +756,7 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
                 />
 
                 {/* SELETOR DE PERMISSÕES - DESIGN MODERNO SEM FUNDO PRETO */}
-                <div className="pt-2 border-t border-zinc-100 dark:border-white/5 space-y-2">
+                <div className="pt-2 border-t border-black/[0.04] dark:border-white/[0.06] space-y-2">
                   <div className="flex items-center justify-between">
                     <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
                       Permissões de Acesso às Abas
@@ -808,7 +808,7 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
                 </div>
               </div>
 
-              <div className="flex gap-2 pt-3 border-t border-zinc-100 dark:border-white/5">
+              <div className="flex gap-2 pt-3 border-t border-black/[0.04] dark:border-white/[0.06]">
                 <button
                   type="button"
                   onClick={() => setModalNovoUsuario(false)}

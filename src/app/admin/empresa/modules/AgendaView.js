@@ -49,7 +49,9 @@ import {
   Stethoscope,
   Building2,
   DollarSign,
-  ArrowRight
+  ArrowRight,
+  ArrowLeft,
+  Copy
 } from "lucide-react";
 import {
   getHojeLocal,
@@ -144,6 +146,77 @@ const normalizeText = (t) =>
     .toLowerCase()
     .trim();
 
+// Helper para separar e estruturar observações importadas e manuais da clínica
+const getIniciais = (nome) => {
+  if (!nome) return "PA";
+  const partes = String(nome).trim().split(" ").filter(Boolean);
+  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
+  return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase();
+};
+
+const extrairObservacoes = (item) => {
+  if (!item) return { obsImportada: "", ehImportado: false, notasManuais: [] };
+
+  const rawObs = String(
+    item.rawItem?.observacoes ||
+    item.observacoes ||
+    item.rawItem?.observacao ||
+    item.rawItem?.obs ||
+    ""
+  ).trim();
+
+  const historico = Array.isArray(item.rawItem?.historico_observacoes)
+    ? item.rawItem.historico_observacoes
+    : [];
+
+  const ehImportado =
+    item.tipo === "medicalsys" ||
+    Boolean(item.medicalsysId) ||
+    Boolean(item.rawItem?.medicalsys_id) ||
+    item.rawItem?.status === "importado";
+
+  let obsImportada = "";
+  const notasManuais = [...historico];
+
+  if (rawObs) {
+    const regexLinhas = /\[(\d{1,2}\/\d{1,2}\/\d{4}[^\]]*)\]:\s*([\s\S]*?)(?=(\[\d{1,2}\/\d{1,2}\/\d{4}|$))/g;
+    let match;
+    const extraidasDoTexto = [];
+
+    while ((match = regexLinhas.exec(rawObs)) !== null) {
+      const cabecalho = match[1] || "";
+      const corpo = (match[2] || "").trim();
+      const partes = cabecalho.split(" - ");
+      const dataHora = partes[0]?.trim() || "";
+      const autor = partes[1]?.trim() || "Equipe Clínica";
+
+      if (corpo) {
+        extraidasDoTexto.push({
+          id: `texto_${dataHora}_${autor}_${extraidasDoTexto.length}`,
+          texto: corpo,
+          autor,
+          data_hora_str: dataHora
+        });
+      }
+    }
+
+    if (extraidasDoTexto.length > 0) {
+      obsImportada = rawObs.split(/\[\d{1,2}\/\d{1,2}\/\d{4}/)[0]?.trim();
+      if (notasManuais.length === 0) {
+        extraidasDoTexto.forEach((n) => notasManuais.push(n));
+      }
+    } else {
+      obsImportada = rawObs;
+    }
+  }
+
+  return {
+    obsImportada,
+    ehImportado,
+    notasManuais
+  };
+};
+
 export default function AgendaView({
   subTab = "calendario",
   setSubTab,
@@ -154,7 +227,8 @@ export default function AgendaView({
   fetchBloqueios,
   showToast,
   permissoes = [],
-  isOwner = false
+  isOwner = false,
+  loggedAdmin = null
 }) {
   const [viewMode, setViewMode] = useState("cards");
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -163,6 +237,15 @@ export default function AgendaView({
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [novaObsTexto, setNovaObsTexto] = useState("");
   const [isSavingObs, setIsSavingObs] = useState(false);
+  const [copiedCpf, setCopiedCpf] = useState(false);
+
+  const handleCopyCpf = (cpf) => {
+    if (!cpf) return;
+    navigator.clipboard.writeText(cpf);
+    setCopiedCpf(true);
+    playDopamineSound("click");
+    setTimeout(() => setCopiedCpf(false), 2000);
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -932,11 +1015,12 @@ export default function AgendaView({
       const agId = sensitiveModalItem.id;
       const pacId = sensitiveModalItem.pacienteId;
       const autorNome = loggedAdmin?.nome || loggedAdmin?.usuario || loggedAdmin?.email || "Atendente";
+      const textoSalvo = novaObsTexto.trim();
 
       const res = await actionAdicionarObservacaoAgendamento({
         agendamentoId: agId,
         pacienteId: pacId,
-        texto: novaObsTexto.trim(),
+        texto: textoSalvo,
         autor: autorNome
       });
 
@@ -944,31 +1028,36 @@ export default function AgendaView({
         if (showToast) showToast("Observação adicionada com sucesso!");
         setNovaObsTexto("");
         if (fetchAgendamentos) await fetchAgendamentos();
+        if (fetchBloqueios) await fetchBloqueios();
 
-        if (res.novaNota) {
-          setSensitiveModalItem((prev) => {
-            if (!prev) return prev;
-            const currentHistorico = Array.isArray(prev.rawItem?.historico_observacoes)
-              ? prev.rawItem.historico_observacoes
-              : [];
-            const newHistorico = [res.novaNota, ...currentHistorico];
-            const currentObs = prev.rawItem?.observacoes || "";
-            const newObs = currentObs
-              ? `${currentObs}
+        const notaCriada = res.novaNota || {
+          id: `nota_${Date.now()}`,
+          texto: textoSalvo,
+          autor: autorNome,
+          data_hora: new Date().toISOString()
+        };
 
-[${new Date().toLocaleString("pt-BR")} - ${autorNome}]: ${novaObsTexto.trim()}`
-              : `[${new Date().toLocaleString("pt-BR")} - ${autorNome}]: ${novaObsTexto.trim()}`;
+        setSensitiveModalItem((prev) => {
+          if (!prev) return prev;
+          const currentHistorico = Array.isArray(prev.rawItem?.historico_observacoes)
+            ? prev.rawItem.historico_observacoes
+            : [];
+          const newHistorico = [notaCriada, ...currentHistorico];
+          const currentObs = prev.rawItem?.observacoes || prev.observacoes || "";
+          const newObs = currentObs
+            ? `${currentObs}\n\n[${new Date().toLocaleString("pt-BR")} - ${autorNome}]: ${textoSalvo}`
+            : `[${new Date().toLocaleString("pt-BR")} - ${autorNome}]: ${textoSalvo}`;
 
-            return {
-              ...prev,
-              rawItem: {
-                ...prev.rawItem,
-                observacoes: newObs,
-                historico_observacoes: newHistorico
-              }
-            };
-          });
-        }
+          return {
+            ...prev,
+            observacoes: newObs,
+            rawItem: {
+              ...prev.rawItem,
+              observacoes: newObs,
+              historico_observacoes: newHistorico
+            }
+          };
+        });
       }
     } catch (err) {
       console.error("Erro ao salvar observação:", err);
@@ -1463,9 +1552,9 @@ export default function AgendaView({
       {...fadeUp}
       className="flex-1 flex flex-col h-full overflow-hidden w-full max-w-7xl mx-auto p-4 md:p-6 lg:p-8"
     >
-      <div className="bg-white/85 dark:bg-[#0c0c0e]/85 backdrop-blur-3xl saturate-150 rounded-[2.5rem] border border-zinc-200/80 dark:border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.04)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.4)] flex flex-col h-full overflow-hidden">
+      <div className="bg-white dark:bg-[#161618] rounded-3xl border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col h-full overflow-hidden">
         {/* CABEÇALHO, AÇÃO NOVO AGENDAMENTO & FILTROS */}
-        <div className="px-6 md:px-8 pt-6 pb-5 border-b border-zinc-100 dark:border-white/5 bg-zinc-50/50 dark:bg-zinc-900/20 flex flex-col gap-5">
+        <div className="px-6 md:px-8 pt-5 pb-4 border-b border-black/[0.06] dark:border-white/[0.08] bg-black/[0.01] dark:bg-white/[0.01] flex flex-col gap-4">
           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
             <div className="flex items-center gap-3.5">
               <div className="w-12 h-12 rounded-2xl bg-[#9FC131]/10 text-[#86a621] dark:text-[#9FC131] border border-[#9FC131]/25 flex items-center justify-center shrink-0 shadow-sm">
@@ -1572,7 +1661,7 @@ export default function AgendaView({
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="Nome, CPF..."
-                  className="w-full min-h-[44px] pl-9 pr-4 py-2 bg-white/90 dark:bg-zinc-900/90 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl text-xs font-semibold text-zinc-900 dark:text-white outline-none focus:border-[#9FC131] transition-all"
+                  className="w-full min-h-[44px] pl-9 pr-4 py-2 bg-[#F8F8FA] dark:bg-[#222225] border border-black/[0.08] dark:border-white/[0.1] rounded-2xl text-xs font-medium text-zinc-900 dark:text-white outline-none focus:border-black/30 dark:focus:border-white/30 focus:ring-4 focus:ring-black/5 dark:focus:ring-white/10 transition-all"
                 />
                 {searchTerm && (
                   <button
@@ -1671,7 +1760,7 @@ export default function AgendaView({
                 className="flex flex-col md:flex-row h-full overflow-hidden"
               >
                 {/* CALENDÁRIO MENSAL */}
-                <div className="w-full md:w-[320px] border-r border-zinc-100 dark:border-white/5 p-6 flex flex-col overflow-y-auto bg-white/40 dark:bg-[#0a0a0d]/40">
+                <div className="w-full md:w-[320px] border-r border-black/[0.06] dark:border-white/[0.08] p-5 flex flex-col overflow-y-auto bg-black/[0.01] dark:bg-white/[0.01]">
                   <div className="flex justify-between items-center mb-6">
                     <span className="font-bold capitalize text-zinc-950 dark:text-white text-base">
                       {currentDate.toLocaleString("pt-BR", { month: "long", year: "numeric" })}
@@ -1748,8 +1837,8 @@ export default function AgendaView({
                 </div>
 
                 {/* LISTA DO DIA SELECIONADO */}
-                <div className="flex-1 p-6 md:p-8 overflow-y-auto custom-scrollbar bg-zinc-50/40 dark:bg-black/20">
-                  <div className="flex justify-between items-center mb-6 pb-4 border-b border-zinc-200/60 dark:border-white/5">
+                <div className="flex-1 p-5 md:p-6 overflow-y-auto custom-scrollbar bg-transparent">
+                  <div className="flex justify-between items-center mb-6 pb-4 border-b border-black/[0.04] dark:border-white/[0.06]">
                     <div>
                       <h3 className="text-base sm:text-lg font-bold text-zinc-950 dark:text-white flex items-center gap-2">
                         <CalendarDays size={18} className="text-[#9FC131]" />
@@ -1852,7 +1941,7 @@ export default function AgendaView({
 
                   {eventosAgendaMistaDiaria.length === 0 ? (
                     <div className="mt-16 text-center flex flex-col items-center justify-center p-8 border border-dashed rounded-3xl border-zinc-200 dark:border-zinc-800 bg-white/40 dark:bg-white/[0.02]">
-                      <div className="w-16 h-16 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[2rem] flex items-center justify-center text-zinc-400 mb-4 shadow-sm">
+                      <div className="w-16 h-16 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl flex items-center justify-center text-zinc-400 mb-4 shadow-sm">
                         <User size={26} />
                       </div>
                       <p className="text-zinc-600 dark:text-zinc-400 text-sm font-semibold">
@@ -1878,7 +1967,7 @@ export default function AgendaView({
                             className={`p-5 rounded-2xl border ${
                               isCanceled
                                 ? "bg-zinc-50/50 border-zinc-200/60 opacity-60"
-                                : "bg-white dark:bg-[#111116] border-zinc-200/80 dark:border-white/10 shadow-sm hover:shadow-md"
+                                : "bg-white dark:bg-[#111116] border-black/[0.06] dark:border-white/[0.08] shadow-sm hover:shadow-md"
                             } transition-all flex flex-col md:flex-row md:items-center justify-between gap-4`}
                           >
                             <div className="flex items-start md:items-center gap-4">
@@ -2291,7 +2380,7 @@ export default function AgendaView({
                 transition={spring}
                 className="p-6 md:p-8 h-full overflow-y-auto custom-scrollbar"
               >
-                <div className="flex justify-between items-center mb-6 pb-4 border-b border-zinc-200/60 dark:border-white/5">
+                <div className="flex justify-between items-center mb-6 pb-4 border-b border-black/[0.04] dark:border-white/[0.06]">
                   <div>
                     <h3 className="text-lg font-bold text-zinc-950 dark:text-white">
                       Lista Geral de Todos os Atendimentos
@@ -2432,7 +2521,7 @@ export default function AgendaView({
                           className={`p-5 rounded-2xl border ${
                             isCanceled
                               ? "bg-zinc-50/50 border-zinc-200/60 opacity-60"
-                              : "bg-white dark:bg-[#111116] border-zinc-200/80 dark:border-white/10 shadow-sm"
+                              : "bg-white dark:bg-[#111116] border-black/[0.06] dark:border-white/[0.08] shadow-sm"
                           } flex flex-col md:flex-row md:items-center justify-between gap-4`}
                         >
                           <div className="flex items-start md:items-center gap-4">
@@ -2795,9 +2884,9 @@ export default function AgendaView({
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white/95 dark:bg-[#121216]/95 backdrop-blur-3xl rounded-[2.5rem] p-6 md:p-8 max-w-2xl w-full shadow-2xl border border-zinc-200/80 dark:border-white/10 space-y-5 max-h-[90vh] overflow-y-auto custom-scrollbar"
+              className="bg-white/95 dark:bg-[#121216]/95 backdrop-blur-3xl rounded-3xl p-6 md:p-8 max-w-2xl w-full shadow-2xl border border-black/[0.06] dark:border-white/[0.08] space-y-5 max-h-[90vh] overflow-y-auto custom-scrollbar"
             >
-              <div className="flex justify-between items-start border-b border-zinc-100 dark:border-white/5 pb-4">
+              <div className="flex justify-between items-start border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shadow-sm">
                     <RotateCcw size={24} />
@@ -2830,7 +2919,7 @@ export default function AgendaView({
               {/* CALENDÁRIO INTERATIVO & SLOTS */}
               <div className="grid md:grid-cols-2 gap-5">
                 {/* CALENDÁRIO MENSAL */}
-                <div className="p-4 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-900/60">
+                <div className="p-4 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 bg-[#F8F8FA] dark:bg-[#222225]">
                   <div className="flex justify-between items-center mb-4">
                     <button
                       type="button"
@@ -2935,7 +3024,7 @@ export default function AgendaView({
                 </div>
 
                 {/* HORÁRIOS DISPONÍVEIS */}
-                <div className="p-4 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-900/60 flex flex-col">
+                <div className="p-4 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 bg-[#F8F8FA] dark:bg-[#222225] flex flex-col">
                   <div className="flex justify-between items-center border-b border-zinc-200/60 dark:border-zinc-800 pb-2 mb-3">
                     <span className="text-xs font-extrabold text-zinc-900 dark:text-white flex items-center gap-1.5">
                       <Clock3 size={14} className="text-[#9FC131]" /> Horários Livres
@@ -2987,7 +3076,7 @@ export default function AgendaView({
               </div>
 
               {/* BOTÕES DE AÇÃO */}
-              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-zinc-100 dark:border-white/5">
+              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-black/[0.04] dark:border-white/[0.06]">
                 <button
                   type="button"
                   onClick={() => setRescheduleModalItem(null)}
@@ -3028,9 +3117,9 @@ export default function AgendaView({
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white/95 dark:bg-[#121216]/95 backdrop-blur-3xl rounded-[2.5rem] p-6 md:p-8 max-w-3xl w-full shadow-2xl border border-zinc-200/80 dark:border-white/10 space-y-6 max-h-[92vh] overflow-y-auto custom-scrollbar"
+              className="bg-white/95 dark:bg-[#121216]/95 backdrop-blur-3xl rounded-3xl p-6 md:p-8 max-w-3xl w-full shadow-2xl border border-black/[0.06] dark:border-white/[0.08] space-y-6 max-h-[92vh] overflow-y-auto custom-scrollbar"
             >
-              <div className="flex justify-between items-start border-b border-zinc-100 dark:border-white/5 pb-4">
+              <div className="flex justify-between items-start border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-sm">
                     <CalendarPlus size={24} />
@@ -3342,7 +3431,7 @@ export default function AgendaView({
               </div>
 
               {/* BOTÕES SALVAR */}
-              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-zinc-100 dark:border-white/5">
+              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-black/[0.04] dark:border-white/[0.06]">
                 <button
                   type="button"
                   onClick={() => setIsNovoAgendamentoOpen(false)}
@@ -3390,7 +3479,7 @@ export default function AgendaView({
               onClick={(e) => e.stopPropagation()}
               className="bg-white dark:bg-[#111116] border border-zinc-200/90 dark:border-zinc-800 rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl space-y-5 text-left"
             >
-              <div className="flex items-center justify-between border-b border-zinc-100 dark:border-white/5 pb-4">
+              <div className="flex items-center justify-between border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
                     <CheckCircle2 size={20} strokeWidth={2.5} />
@@ -3413,7 +3502,7 @@ export default function AgendaView({
                 </button>
               </div>
 
-              <div className="p-4 bg-zinc-50 dark:bg-zinc-900/60 rounded-2xl border border-zinc-200/60 dark:border-white/5 space-y-2 text-xs">
+              <div className="p-4 bg-zinc-50 dark:bg-zinc-900/60 rounded-2xl border border-black/[0.04] dark:border-white/[0.06] space-y-2 text-xs">
                 <div className="flex justify-between">
                   <span className="text-zinc-400 font-bold uppercase tracking-wider text-[10px]">Paciente</span>
                   <span className="font-extrabold text-zinc-900 dark:text-white truncate max-w-[220px]">
@@ -3423,7 +3512,7 @@ export default function AgendaView({
                       "Paciente"}
                   </span>
                 </div>
-                <div className="flex justify-between border-t border-zinc-100 dark:border-white/5 pt-2">
+                <div className="flex justify-between border-t border-black/[0.04] dark:border-white/[0.06] pt-2">
                   <span className="text-zinc-400 font-bold uppercase tracking-wider text-[10px]">Atendimento</span>
                   <span className="font-semibold text-zinc-800 dark:text-zinc-200 truncate max-w-[220px]">
                     {confirmApproveModalItem.medico_profissional ||
@@ -3433,7 +3522,7 @@ export default function AgendaView({
                       "Atendimento"}
                   </span>
                 </div>
-                <div className="flex justify-between border-t border-zinc-100 dark:border-white/5 pt-2">
+                <div className="flex justify-between border-t border-black/[0.04] dark:border-white/[0.06] pt-2">
                   <span className="text-zinc-400 font-bold uppercase tracking-wider text-[10px]">Data & Horário</span>
                   <span className="font-bold text-zinc-800 dark:text-zinc-200">
                     {(confirmApproveModalItem.data_agendamento || confirmApproveModalItem.data)?.split("-").reverse().join("/")} às {confirmApproveModalItem.horario_agendamento || confirmApproveModalItem.horario}h
@@ -3445,7 +3534,7 @@ export default function AgendaView({
                 Deseja confirmar a aprovação do pagamento deste atendimento? O agendamento será marcado como pago e as mensagens de confirmação (push/WhatsApp) serão enviadas ao paciente.
               </p>
 
-              <div className="flex gap-2 pt-2 border-t border-zinc-100 dark:border-white/5">
+              <div className="flex gap-2 pt-2 border-t border-black/[0.04] dark:border-white/[0.06]">
                 <button
                   type="button"
                   onClick={() => setConfirmApproveModalItem(null)}
@@ -3489,7 +3578,7 @@ export default function AgendaView({
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white/95 dark:bg-[#121216]/95 backdrop-blur-3xl rounded-[2.5rem] p-6 md:p-8 max-w-md w-full shadow-2xl border border-zinc-200/80 dark:border-white/10 space-y-5"
+              className="bg-white/95 dark:bg-[#121216]/95 backdrop-blur-3xl rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl border border-black/[0.06] dark:border-white/[0.08] space-y-5"
             >
               <div className="flex justify-between items-start">
                 <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-600 flex items-center justify-center shadow-sm">
@@ -3615,7 +3704,7 @@ export default function AgendaView({
               onClick={(e) => e.stopPropagation()}
               className="bg-white dark:bg-[#111116] border border-zinc-200/90 dark:border-zinc-800 rounded-3xl p-6 sm:p-7 max-w-lg w-full shadow-2xl space-y-5 text-left animate-in fade-in zoom-in-95 duration-200"
             >
-              <div className="flex items-center justify-between border-b border-zinc-100 dark:border-white/5 pb-4">
+              <div className="flex items-center justify-between border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 flex items-center justify-center">
                     <X size={20} strokeWidth={2.5} />
@@ -3638,7 +3727,7 @@ export default function AgendaView({
                 </button>
               </div>
 
-              <div className="p-4 bg-zinc-50 dark:bg-zinc-900/60 rounded-2xl border border-zinc-200/60 dark:border-white/5 space-y-2 text-xs">
+              <div className="p-4 bg-zinc-50 dark:bg-zinc-900/60 rounded-2xl border border-black/[0.04] dark:border-white/[0.06] space-y-2 text-xs">
                 <div className="flex justify-between">
                   <span className="text-zinc-400 font-bold uppercase tracking-wider text-[10px]">Paciente</span>
                   <span className="font-extrabold text-zinc-950 dark:text-white">
@@ -3648,7 +3737,7 @@ export default function AgendaView({
                       "Paciente"}
                   </span>
                 </div>
-                <div className="flex justify-between border-t border-zinc-100 dark:border-white/5 pt-2">
+                <div className="flex justify-between border-t border-black/[0.04] dark:border-white/[0.06] pt-2">
                   <span className="text-zinc-400 font-bold uppercase tracking-wider text-[10px]">Data & Horário</span>
                   <span className="font-bold text-zinc-800 dark:text-zinc-200">
                     {(rejectModalItem.data_agendamento || rejectModalItem.data)?.split("-").reverse().join("/")} às{" "}
@@ -3670,7 +3759,7 @@ export default function AgendaView({
                 />
               </div>
 
-              <div className="space-y-2 pt-2 border-t border-zinc-100 dark:border-white/5">
+              <div className="space-y-2 pt-2 border-t border-black/[0.04] dark:border-white/[0.06]">
                 <div className="flex items-center justify-between">
                   <label className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-400">
                     Enviar Mensagem de Não Aprovação no WhatsApp
@@ -3694,7 +3783,7 @@ export default function AgendaView({
                 )}
               </div>
 
-              <div className="flex gap-2 pt-2 border-t border-zinc-100 dark:border-white/5">
+              <div className="flex gap-2 pt-2 border-t border-black/[0.04] dark:border-white/[0.06]">
                 <button
                   type="button"
                   onClick={() => setRejectModalItem(null)}
@@ -3716,61 +3805,80 @@ export default function AgendaView({
           </div>
         )}
 
-      {/* MODAL: FICHA CLÍNICA, DADOS SENSÍVEIS & FILA DE MENSAGENS DO WHATSAPP */}
+      {/* TELA COMPLETA ESTILO APPLE: FICHA CLÍNICA, DADOS DO PACIENTE, OBSERVAÇÕES & MENSAGENS */}
       <AnimatePresence>
         {sensitiveModalItem && temPermissaoSigiloClinico && (
-          <div
-            className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-md p-4 flex items-center justify-center"
-            onClick={() => setSensitiveModalItem(null)}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.992 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.992 }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            className="fixed inset-0 z-[99999] bg-[#F5F5F7] dark:bg-[#000000] text-zinc-900 dark:text-zinc-100 flex flex-col overflow-hidden font-sans antialiased selection:bg-zinc-900 selection:text-white dark:selection:bg-white dark:selection:text-black"
           >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white/95 dark:bg-[#0c0c0e]/95 backdrop-blur-3xl rounded-[2.5rem] p-6 md:p-8 max-w-3xl w-full shadow-2xl border border-zinc-200/80 dark:border-white/10 space-y-6 max-h-[90vh] overflow-y-auto custom-scrollbar flex flex-col"
-            >
-              {/* CABEÇALHO DO MODAL COM ABAS */}
-              <div className="flex flex-col gap-4 border-b border-zinc-100 dark:border-white/5 pb-4">
-                <div className="flex justify-between items-start">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center shadow-sm border border-blue-200/40">
-                      <ShieldCheck size={24} strokeWidth={1.75} />
-                    </div>
-                    <div>
-                      <h3 className="font-black text-xl md:text-2xl text-zinc-950 dark:text-white tracking-tight flex items-center gap-2">
-                        <span>Ficha do Paciente & Atendimento</span>
-                      </h3>
-                      <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                        {sensitiveModalItem.nomePaciente} • {sensitiveModalItem.especialidade} (
-                        {sensitiveModalItem.medicoProfissional})
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setSensitiveModalItem(null)}
-                    className="p-2 text-zinc-400 hover:text-zinc-950 dark:hover:text-white rounded-full cursor-pointer transition-colors"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
+            {/* 1. BARRA SUPERIOR TRANSLÚCIDA (macOS / iOS Navigation Bar) */}
+            <header className="sticky top-0 z-30 bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border-b border-black/[0.06] dark:border-white/[0.08] px-4 md:px-8 py-3 flex items-center justify-between transition-colors">
+              {/* ESQUERDA: VOLTAR & BREADCRUMB */}
+              <div className="flex items-center gap-3 min-w-0">
+                <motion.button
+                  whileHover={{ x: -2 }}
+                  whileTap={{ scale: 0.96 }}
+                  onClick={() => setSensitiveModalItem(null)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/[0.04] hover:bg-black/[0.08] dark:bg-white/[0.06] dark:hover:bg-white/[0.12] text-zinc-700 dark:text-zinc-200 text-xs font-semibold transition-all cursor-pointer flex-shrink-0"
+                >
+                  <ChevronLeft size={16} strokeWidth={2.5} />
+                  <span>Agenda</span>
+                </motion.button>
 
-                <div className="flex p-1.5 bg-zinc-100/80 dark:bg-zinc-900/80 rounded-2xl border border-zinc-200/70 dark:border-zinc-800 gap-1.5">
+                <div className="h-4 w-px bg-black/[0.08] dark:bg-white/[0.1] hidden sm:block flex-shrink-0" />
+
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500/10 to-indigo-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center border border-blue-500/20 flex-shrink-0 shadow-2xs">
+                    <ShieldCheck size={16} strokeWidth={2.2} />
+                  </div>
+                  <div className="min-w-0 flex items-center gap-2">
+                    <span className="text-xs text-zinc-400 hidden md:inline">Prontuário /</span>
+                    <h1 className="text-sm md:text-base font-bold text-zinc-950 dark:text-white tracking-tight truncate">
+                      {sensitiveModalItem.nomePaciente || "Ficha do Paciente"}
+                    </h1>
+                    {sensitiveModalItem.tipo === "medicalsys" ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-800 dark:text-amber-300 border border-amber-500/20 flex-shrink-0">
+                        <Tag size={10} /> ERP MedicalSYS
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/20 flex-shrink-0">
+                        <Tag size={10} /> RMCare
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* CENTRO: SEGMENTED CONTROL ESTILO APPLE (TABS DESLIZANTES) */}
+              <div className="hidden lg:flex items-center justify-center">
+                <div className="inline-flex p-1 bg-black/[0.04] dark:bg-white/[0.06] backdrop-blur-xl rounded-full border border-black/[0.04] dark:border-white/[0.06] relative">
                   <button
                     type="button"
                     onClick={() => {
                       playDopamineSound("click");
                       setFichaSubTab("dados");
                     }}
-                    className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                    className={`relative px-4 py-1.5 text-xs font-semibold rounded-full transition-colors z-10 flex items-center gap-1.5 cursor-pointer ${
                       fichaSubTab === "dados"
-                        ? "bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white shadow-sm ring-1 ring-zinc-200/50 dark:ring-zinc-700/50"
+                        ? "text-zinc-950 dark:text-white"
                         : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
                     }`}
                   >
-                    <HeartPulse size={15} className="text-rose-500" />
-                    <span>Ficha & Enfermidades</span>
+                    {fichaSubTab === "dados" && (
+                      <motion.div
+                        layoutId="apple-segmented-pill"
+                        className="absolute inset-0 bg-white dark:bg-[#2C2C2E] rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.06)] dark:shadow-[0_2px_12px_rgba(0,0,0,0.5)] border border-black/[0.04] dark:border-white/[0.08] -z-10"
+                        transition={{ type: "spring", stiffness: 480, damping: 36 }}
+                      />
+                    )}
+                    <HeartPulse size={14} className={fichaSubTab === "dados" ? "text-rose-500" : "text-zinc-400"} />
+                    <span>Ficha & Observações</span>
                   </button>
+
                   <button
                     type="button"
                     onClick={() => {
@@ -3778,450 +3886,684 @@ export default function AgendaView({
                       setFichaSubTab("mensagens");
                       carregarMensagensPaciente(sensitiveModalItem);
                     }}
-                    className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                    className={`relative px-4 py-1.5 text-xs font-semibold rounded-full transition-colors z-10 flex items-center gap-1.5 cursor-pointer ${
                       fichaSubTab === "mensagens"
-                        ? "bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white shadow-sm ring-1 ring-zinc-200/50 dark:ring-zinc-700/50"
+                        ? "text-zinc-950 dark:text-white"
                         : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
                     }`}
                   >
-                    <MessageSquare size={15} className="text-emerald-500" />
-                    <span>Mensagens do WhatsApp ({statsMensagensAgendamento.total})</span>
-                    {statsMensagensAgendamento.pendentes > 0 && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-black">
-                        {statsMensagensAgendamento.pendentes} pendente(s)
+                    {fichaSubTab === "mensagens" && (
+                      <motion.div
+                        layoutId="apple-segmented-pill"
+                        className="absolute inset-0 bg-white dark:bg-[#2C2C2E] rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.06)] dark:shadow-[0_2px_12px_rgba(0,0,0,0.5)] border border-black/[0.04] dark:border-white/[0.08] -z-10"
+                        transition={{ type: "spring", stiffness: 480, damping: 36 }}
+                      />
+                    )}
+                    <MessageSquare size={14} className={fichaSubTab === "mensagens" ? "text-emerald-500" : "text-zinc-400"} />
+                    <span>WhatsApp</span>
+                    {statsMensagensAgendamento.total > 0 && (
+                      <span className="ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-black/10 dark:bg-white/10 text-zinc-700 dark:text-zinc-200">
+                        {statsMensagensAgendamento.total}
                       </span>
                     )}
                   </button>
                 </div>
               </div>
 
-              {/* CONTEÚDO DA ABA 1: FICHA CLÍNICA & ENFERMIDADES */}
-              {fichaSubTab === "dados" && (
-                <div className="space-y-6">
-                  <div className="p-5 bg-zinc-50/80 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl space-y-3 text-xs">
-                    <div className="grid sm:grid-cols-2 gap-3">
-                      <div>
-                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
-                  {/* CARD DESTACADO DE OBSERVAÇÕES DO ATENDIMENTO & PACIENTE */}
-                  <div className="p-5 rounded-3xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/30 dark:border-amber-500/40 space-y-3 shadow-xs mb-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-black uppercase tracking-widest text-amber-900 dark:text-amber-300 flex items-center gap-2">
-                        <FileText size={15} className="text-amber-600 dark:text-amber-400" />
-                        Observações do Atendimento & Paciente
-                      </span>
-                      {sensitiveModalItem.tipo === "medicalsys" && (
-                        <span className="text-[10px] font-mono font-bold px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-950 dark:text-amber-200 border border-amber-500/30">
-                          Importado do ERP MedicalSYS
-                        </span>
-                      )}
-                    </div>
-                    <div className="p-4 bg-white/95 dark:bg-zinc-900/95 rounded-2xl border border-amber-500/20 text-xs text-zinc-800 dark:text-zinc-200 font-medium whitespace-pre-wrap leading-relaxed min-h-[56px] shadow-2xs">
-                      {sensitiveModalItem.rawItem?.observacoes ||
-                        sensitiveModalItem.rawItem?.observacao ||
-                        sensitiveModalItem.observacoes ||
-                        sensitiveModalItem.rawItem?.obs ||
-                        "Nenhuma observação informada para este atendimento."}
-                    </div>
-                  </div>
+              {/* DIREITA: ATALHOS RÁPIDOS & FECHAR */}
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {sensitiveModalItem.telefonePaciente && (
+                  <motion.a
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.97 }}
+                    href={`https://wa.me/${formatarTelefoneEnvio(sensitiveModalItem.telefonePaciente)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs font-semibold transition-all cursor-pointer"
+                  >
+                    <Phone size={13} className="text-emerald-600 dark:text-emerald-400" />
+                    <span className="hidden sm:inline">WhatsApp</span>
+                  </motion.a>
+                )}
 
-                          Nome Completo
-                        </span>
-                        <span className="font-extrabold text-sm text-zinc-950 dark:text-white block mt-0.5">
-                          {sensitiveModalItem.nomePaciente}
-                        </span>
-                      </div>
+                <motion.button
+                  whileHover={{ scale: 1.08 }}
+                  whileTap={{ scale: 0.92 }}
+                  onClick={() => setSensitiveModalItem(null)}
+                  className="w-8 h-8 rounded-full bg-black/[0.04] hover:bg-black/[0.08] dark:bg-white/[0.06] dark:hover:bg-white/[0.12] text-zinc-500 hover:text-zinc-950 dark:hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+                  title="Fechar (Esc)"
+                >
+                  <X size={15} strokeWidth={2.2} />
+                </motion.button>
+              </div>
+            </header>
 
-                      <div>
-                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
-                          Documento CPF
-                        </span>
-                        <span className="font-bold text-zinc-800 dark:text-zinc-200 block mt-0.5 font-mono">
-                          {sensitiveModalItem.cpfPaciente || "Não informado"}
-                        </span>
-                      </div>
-                    </div>
+            {/* SEGMENTED CONTROL MOBILE */}
+            <div className="lg:hidden bg-white/70 dark:bg-[#161618]/70 backdrop-blur-xl border-b border-black/[0.06] dark:border-white/[0.08] px-4 py-2 flex justify-center">
+              <div className="inline-flex p-1 bg-black/[0.04] dark:bg-white/[0.06] rounded-full border border-black/[0.04] dark:border-white/[0.06] w-full max-w-sm">
+                <button
+                  type="button"
+                  onClick={() => {
+                    playDopamineSound("click");
+                    setFichaSubTab("dados");
+                  }}
+                  className={`flex-1 py-1.5 text-xs font-semibold rounded-full transition-all text-center ${
+                    fichaSubTab === "dados"
+                      ? "bg-white dark:bg-[#2C2C2E] text-zinc-950 dark:text-white shadow-xs"
+                      : "text-zinc-500"
+                  }`}
+                >
+                  Ficha & Observações
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    playDopamineSound("click");
+                    setFichaSubTab("mensagens");
+                    carregarMensagensPaciente(sensitiveModalItem);
+                  }}
+                  className={`flex-1 py-1.5 text-xs font-semibold rounded-full transition-all text-center ${
+                    fichaSubTab === "mensagens"
+                      ? "bg-white dark:bg-[#2C2C2E] text-zinc-950 dark:text-white shadow-xs"
+                      : "text-zinc-500"
+                  }`}
+                >
+                  WhatsApp ({statsMensagensAgendamento.total})
+                </button>
+              </div>
+            </div>
 
-                    <div className="grid sm:grid-cols-2 gap-3 pt-2 border-t border-zinc-200/60 dark:border-zinc-800">
-                      <div>
-                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
-                          Nascimento & Idade
-                        </span>
-                        <span className="font-bold text-zinc-800 dark:text-zinc-200 block mt-0.5">
-                          {sensitiveModalItem.dataNascimento
-                            ? `${sensitiveModalItem.dataNascimento
-                                .split("-")
-                                .reverse()
-                                .join("/")} (${
-                                calcularIdadeDataNasc(sensitiveModalItem.dataNascimento) || "--"
-                              } anos)`
-                            : "Não informado"}
-                        </span>
-                      </div>
-
-                      <div>
-                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
-                          WhatsApp / Celular
-                        </span>
-                        {sensitiveModalItem.telefonePaciente ? (
-                          <a
-                            href={`https://wa.me/${formatarTelefoneEnvio(sensitiveModalItem.telefonePaciente)}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="font-bold text-emerald-600 dark:text-emerald-400 hover:underline inline-flex items-center gap-1 mt-0.5"
-                            title={`WhatsApp: ${formatarTelefoneExibicao(sensitiveModalItem.telefonePaciente)}`}
-                          >
-                            <Phone size={11} /> {formatarTelefoneExibicao(sensitiveModalItem.telefonePaciente)}{" "}
-                            <ExternalLink size={10} />
-                          </a>
-                        ) : (
-                          <span className="text-zinc-400">Não informado</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                                    {/* OBSERVAÇÕES DO ATENDIMENTO & PACIENTE */}
-                  <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/25 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
-                        <FileText size={13} /> Observações do Atendimento & Paciente
-                      </span>
-                      {sensitiveModalItem.tipo === "medicalsys" && (
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-900 dark:text-amber-200">
-                          Importado ERP MedicalSYS
-                        </span>
-                      )}
-                    </div>
-                    <div className="p-3 bg-white/90 dark:bg-zinc-900/90 rounded-xl border border-amber-500/20 text-xs text-zinc-800 dark:text-zinc-200 font-medium whitespace-pre-wrap leading-relaxed min-h-[44px]">
-                      {sensitiveModalItem.rawItem?.observacoes ||
-                        sensitiveModalItem.rawItem?.observacao ||
-                        sensitiveModalItem.observacoes ||
-                        sensitiveModalItem.rawItem?.obs ||
-                        "Nenhuma observação informada para este atendimento."}
-                    </div>
-                  </div>
-
-                  {/* OBSERVAÇÕES DO ATENDIMENTO & PACIENTE */}
-                  <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/25 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
-                        <FileText size={13} /> Observações do Atendimento & Paciente
-                      </span>
-                      {sensitiveModalItem.tipo === "medicalsys" && (
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-900 dark:text-amber-200">
-                          Importado ERP MedicalSYS
-                        </span>
-                      )}
-                    </div>
-                    <div className="p-3 bg-white/90 dark:bg-zinc-900/90 rounded-xl border border-amber-500/20 text-xs text-zinc-800 dark:text-zinc-200 font-medium whitespace-pre-wrap leading-relaxed min-h-[44px]">
-                      {sensitiveModalItem.rawItem?.observacoes ||
-                        sensitiveModalItem.rawItem?.observacao ||
-                        sensitiveModalItem.observacoes ||
-                        sensitiveModalItem.rawItem?.obs ||
-                        "Nenhuma observação informada para este atendimento."}
-                    </div>
-                  </div>
-
-                  {/* SEÇÃO ENFERMIDADES */}
-                  <div className="space-y-3.5">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-900 dark:text-white flex items-center gap-1.5">
-                        <HeartPulse size={15} className="text-rose-500" /> Enfermidades do Paciente
-                      </h4>
-                      <span className="text-[10px] text-zinc-400 font-bold">
-                        {enfermidadesPaciente.length} vinculada(s)
-                      </span>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2 min-h-[38px] p-3 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl">
-                      {enfermidadesPaciente.length === 0 ? (
-                        <p className="text-xs text-zinc-400 italic py-0.5">
-                          Nenhuma enfermidade vinculada a este paciente.
-                        </p>
-                      ) : (
-                        enfermidadesPaciente.map((enf) => (
-                          <div
-                            key={enf}
-                            className="px-3 py-1 bg-rose-50 dark:bg-rose-950/40 border border-rose-200/60 dark:border-rose-900/40 text-rose-900 dark:text-rose-200 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm"
-                          >
-                            <HeartPulse size={12} className="text-rose-500" />
-                            <span>{enf}</span>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveEnfermidadeFromPatient(enf)}
-                              className="text-rose-400 hover:text-red-600 transition-colors p-0.5 cursor-pointer"
-                            >
-                              <X size={12} />
-                            </button>
-                          </div>
-                        ))
-                      )}
-                    </div>
-
-                    <div className="relative space-y-1">
-                      <div className="relative">
-                        <Search
-                          size={15}
-                          className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400"
-                        />
-                        <input
-                          type="text"
-                          value={searchEnfermidade}
-                          onChange={(e) => setSearchEnfermidade(e.target.value)}
-                          placeholder="Buscar ou cadastrar enfermidade..."
-                          className="w-full pl-9 pr-4 py-2.5 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none focus:border-[#9FC131]"
-                        />
-                      </div>
-
-                      {searchEnfermidade.trim() && (
-                        <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white dark:bg-[#15151a] border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xl p-2 space-y-1 max-h-48 overflow-y-auto custom-scrollbar">
-                          {sugestoesEnfermidades.map((sug) => (
-                            <button
-                              key={sug}
-                              type="button"
-                              onClick={() => handleAddEnfermidadeToPatient(sug)}
-                              className="w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-zinc-800 dark:text-zinc-200 hover:bg-rose-50 dark:hover:bg-rose-950/30 flex items-center justify-between transition-colors cursor-pointer"
-                            >
-                              <span className="flex items-center gap-2">
-                                <HeartPulse size={13} className="text-rose-500" />
-                                {sug}
-                              </span>
-                              <span className="text-[10px] text-zinc-400 uppercase font-bold">
-                                + Vincular
-                              </span>
-                            </button>
-                          ))}
-
-                          {!exactMatchExists && (
-                            <button
-                              type="button"
-                              onClick={handleCreateAndLinkEnfermidade}
-                              className="w-full text-left px-3 py-2.5 rounded-xl text-xs font-extrabold text-white bg-zinc-950 dark:bg-white dark:text-black hover:bg-black transition-colors flex items-center gap-2 shadow-sm cursor-pointer"
-                            >
-                              <Plus size={14} />
-                              <span>Cadastrar \"{searchEnfermidade.trim()}\" no catálogo e vincular</span>
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3 pt-3 border-t border-zinc-100 dark:border-white/5">
-                    <button
-                      type="button"
-                      onClick={() => setSensitiveModalItem(null)}
-                      disabled={isProcessing}
-                      className="min-h-[44px] rounded-xl border border-zinc-200/80 dark:border-zinc-800 font-bold text-xs uppercase text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 transition-colors cursor-pointer"
+            {/* CORPO PRINCIPAL COM MOTION ORQUESTRADO */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-8 lg:p-10">
+              <div className="max-w-6xl mx-auto">
+                <AnimatePresence mode="wait">
+                  {fichaSubTab === "dados" ? (
+                    <motion.div
+                      key="dados-tab"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.2 }}
                     >
-                      Fechar
-                    </button>
-                    <ButtonPrimary
-                      onClick={handleSaveSensitiveData}
-                      disabled={isProcessing}
-                      icon={CheckCircle2}
-                      className="min-h-[44px] text-xs rounded-xl justify-center cursor-pointer"
-                    >
-                      {isProcessing ? "Salvando..." : "Salvar Alterações"}
-                    </ButtonPrimary>
-                  </div>
-                </div>
-              )}
-
-              {/* CONTEÚDO DA ABA 2: MENSAGENS DO WHATSAPP */}
-              {fichaSubTab === "mensagens" && (
-                <div className="space-y-5">
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/70 dark:border-zinc-800 rounded-2xl">
-                    <div className="flex flex-wrap items-center gap-2 text-xs">
-                      <span className="font-bold text-zinc-700 dark:text-zinc-300">
-                        Status da Fila:
-                      </span>
-                      <span className="px-2.5 py-0.5 rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-extrabold text-[11px]">
-                        {statsMensagensAgendamento.pendentes} Pendente(s)
-                      </span>
-                      <span className="px-2.5 py-0.5 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-extrabold text-[11px]">
-                        {statsMensagensAgendamento.enviadas} Enviada(s)
-                      </span>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        playDopamineSound("click");
-                        setIsCriandoMensagem(!isCriandoMensagem);
-                      }}
-                      className="min-h-[38px] px-3.5 py-1.5 bg-zinc-950 dark:bg-white text-white dark:text-black hover:bg-black font-extrabold text-xs rounded-xl flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
-                    >
-                      <Plus size={14} />
-                      <span>{isCriandoMensagem ? "Fechar Formulário" : "Nova Mensagem"}</span>
-                    </button>
-                  </div>
-
-                  {/* FORMULÁRIO DE NOVA MENSAGEM AVULSA */}
-                  <AnimatePresence>
-                    {isCriandoMensagem && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="overflow-hidden"
-                      >
-                        <div className="p-5 bg-emerald-500/5 dark:bg-emerald-950/20 border border-emerald-500/30 rounded-2xl space-y-4 shadow-sm">
-                          <div className="flex items-center justify-between">
-                            <h4 className="text-xs font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
-                              <Sparkles size={15} /> Agendar Mensagem Personalizada
-                            </h4>
-                          </div>
-
-                          <div className="space-y-1.5">
-                            <textarea
-                              rows={4}
-                              value={novaMsgTexto}
-                              onChange={(e) => setNovaMsgTexto(e.target.value)}
-                              placeholder="Digite a mensagem personalizada..."
-                              className="w-full p-3 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs outline-none focus:border-[#9FC131] leading-relaxed custom-scrollbar"
-                            />
-                          </div>
-
-                          <div className="grid sm:grid-cols-2 gap-3">
-                            <TextInput
-                              type="datetime-local"
-                              label="Data e Horário de Envio"
-                              value={novaMsgDataHora}
-                              onChange={(e) => setNovaMsgDataHora(e.target.value)}
-                            />
-                            <TextInput
-                              type="url"
-                              label="Link do Anexo (PDF/Foto)"
-                              placeholder="https://clinica.com/preparo.pdf"
-                              value={novaMsgAnexoUrl}
-                              onChange={(e) => setNovaMsgAnexoUrl(e.target.value)}
-                            />
-                          </div>
-
-                          <div className="flex justify-end gap-2 pt-1">
-                            <button
-                              type="button"
-                              onClick={() => setIsCriandoMensagem(false)}
-                              className="min-h-[38px] px-4 rounded-xl border border-zinc-200 dark:border-zinc-800 text-xs font-bold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 cursor-pointer"
-                            >
-                              Cancelar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={handleCriarMensagemAvulsa}
-                              disabled={isProcessing}
-                              className="min-h-[38px] px-5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center gap-1.5 cursor-pointer"
-                            >
-                              {isProcessing ? (
-                                <Activity size={14} className="animate-spin" />
-                              ) : (
-                                <CheckCircle2 size={14} />
-                              )}
-                              <span>Agendar Mensagem</span>
-                            </button>
-                          </div>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  {/* LISTA DE MENSAGENS */}
-                  {loadingMensagens ? (
-                    <div className="py-12 flex flex-col items-center justify-center text-zinc-400 gap-2">
-                      <Activity size={24} className="animate-spin text-[#9FC131]" />
-                      <span className="text-xs font-semibold">Carregando mensagens da fila...</span>
-                    </div>
-                  ) : mensagensAgendamento.length === 0 ? (
-                    <div className="py-12 text-center rounded-2xl border border-dashed border-zinc-200 dark:border-zinc-800 bg-white/40 dark:bg-white/[0.02] p-6 space-y-2">
-                      <div className="w-12 h-12 mx-auto rounded-2xl bg-zinc-100 dark:bg-zinc-800 text-zinc-400 flex items-center justify-center">
-                        <MessageSquare size={20} />
-                      </div>
-                      <h5 className="text-sm font-bold text-zinc-800 dark:text-zinc-200">
-                        Nenhuma mensagem encontrada na fila
-                      </h5>
-                    </div>
-                  ) : (
-                    <div className="space-y-3.5">
-                      {mensagensAgendamento.map((msg, idx) => {
-                        const isEditing = editingMsgId === msg.id;
-                        const isSent = msg.status === "enviada" || msg.status === "enviado";
-                        const isCanceled = msg.status === "cancelada";
-                        const isPending = msg.status === "pendente" || msg.status === "rascunho";
-                        const isDisparando = disparandoMsgId === msg.id;
+                      {(() => {
+                        const { obsImportada, ehImportado, notasManuais } = extrairObservacoes(sensitiveModalItem);
+                        const iniciais = getIniciais(sensitiveModalItem.nomePaciente);
 
                         return (
-                          <div
-                            key={msg.id || idx}
-                            className={`p-4 md:p-5 rounded-2xl border transition-all ${
-                              isSent
-                                ? "bg-emerald-500/[0.03] border-emerald-500/20"
-                                : isCanceled
-                                ? "bg-zinc-100/50 dark:bg-zinc-900/30 border-zinc-200/60 dark:border-zinc-800 opacity-60"
-                                : "bg-white dark:bg-[#111116] border-zinc-200/80 dark:border-white/10 shadow-sm"
-                            }`}
-                          >
-                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 dark:border-white/5 pb-3">
-                              <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200">
-                                  {msg.gatilho || "Mensagem"}
-                                </span>
-                                <span className="text-[11px] text-zinc-400 font-medium">
-                                  {formatarDataHoraAmigavel(msg.data_hora_programada)}
-                                </span>
-                              </div>
-
-                              <span
-                                className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-md ${
-                                  isSent
-                                    ? "bg-emerald-100 text-emerald-800"
-                                    : isCanceled
-                                    ? "bg-red-100 text-red-700"
-                                    : "bg-blue-100 text-blue-800"
-                                }`}
+                          <div className="grid lg:grid-cols-12 gap-8 items-start">
+                            {/* COLUNA ESQUERDA (5 COLUNAS): DOSSIER CLÍNICO & DADOS */}
+                            <div className="lg:col-span-5 space-y-6">
+                              {/* 1. HERO PROFILE CARD */}
+                              <motion.div
+                                initial={{ opacity: 0, y: 14 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ type: "spring", stiffness: 380, damping: 28 }}
+                                className="bg-white dark:bg-[#1C1C1E] rounded-3xl p-6 border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_18px_rgba(0,0,0,0.03)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.4)] space-y-6"
                               >
-                                {isSent ? "Enviada" : isCanceled ? "Cancelada" : "Pendente"}
-                              </span>
+                                {/* AVATAR & NOME PRINCIPAL */}
+                                <div className="flex items-start gap-4">
+                                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-zinc-100 to-zinc-200 dark:from-zinc-800 dark:to-zinc-900 border border-black/[0.06] dark:border-white/[0.08] flex items-center justify-center font-black text-base text-zinc-800 dark:text-zinc-200 shadow-2xs flex-shrink-0">
+                                    {iniciais}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <h2 className="text-lg font-bold text-zinc-950 dark:text-white tracking-tight leading-snug">
+                                      {sensitiveModalItem.nomePaciente}
+                                    </h2>
+                                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300">
+                                        {sensitiveModalItem.modalidade || sensitiveModalItem.convenio || "Particular"}
+                                      </span>
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-blue-500/10 text-blue-700 dark:text-blue-300">
+                                        {sensitiveModalItem.statusAtendimento || "agendado"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* INSET GROUPED LIST (ESTILO APPLE SETTINGS / HEALTH) */}
+                                <div className="bg-[#F8F8FA] dark:bg-[#252528] rounded-2xl p-4 divide-y divide-black/[0.04] dark:divide-white/[0.06] text-xs">
+                                  {/* DOCUMENTO CPF */}
+                                  <div className="flex items-center justify-between py-2.5 first:pt-0">
+                                    <span className="text-zinc-400 dark:text-zinc-500 font-medium">CPF</span>
+                                    <div className="flex items-center gap-1.5 font-mono font-semibold text-zinc-800 dark:text-zinc-200">
+                                      <span>{sensitiveModalItem.cpfPaciente || "Não informado"}</span>
+                                      {sensitiveModalItem.cpfPaciente && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleCopyCpf(sensitiveModalItem.cpfPaciente)}
+                                          className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors rounded-md cursor-pointer"
+                                          title="Copiar CPF"
+                                        >
+                                          {copiedCpf ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* NASCIMENTO & IDADE */}
+                                  <div className="flex items-center justify-between py-2.5">
+                                    <span className="text-zinc-400 dark:text-zinc-500 font-medium">Nascimento</span>
+                                    <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                                      {sensitiveModalItem.dataNascimento
+                                        ? `${sensitiveModalItem.dataNascimento.split("-").reverse().join("/")} (${calcularIdadeDataNasc(sensitiveModalItem.dataNascimento) || "--"} anos)`
+                                        : "Não informado"}
+                                    </span>
+                                  </div>
+
+                                  {/* WHATSAPP */}
+                                  <div className="flex items-center justify-between py-2.5">
+                                    <span className="text-zinc-400 dark:text-zinc-500 font-medium">WhatsApp</span>
+                                    {sensitiveModalItem.telefonePaciente ? (
+                                      <a
+                                        href={`https://wa.me/${formatarTelefoneEnvio(sensitiveModalItem.telefonePaciente)}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="font-mono font-semibold text-emerald-600 dark:text-emerald-400 hover:underline inline-flex items-center gap-1"
+                                      >
+                                        <span>{formatarTelefoneExibicao(sensitiveModalItem.telefonePaciente)}</span>
+                                        <ExternalLink size={10} />
+                                      </a>
+                                    ) : (
+                                      <span className="text-zinc-400 font-medium">Não informado</span>
+                                    )}
+                                  </div>
+
+                                  {/* ESPECIALISTA */}
+                                  <div className="flex items-center justify-between py-2.5">
+                                    <span className="text-zinc-400 dark:text-zinc-500 font-medium">Profissional</span>
+                                    <span className="font-semibold text-zinc-800 dark:text-zinc-200 text-right truncate max-w-[200px]">
+                                      {sensitiveModalItem.medicoProfissional}
+                                    </span>
+                                  </div>
+
+                                  {/* ESPECIALIDADE / PROCEDIMENTO */}
+                                  <div className="flex items-center justify-between py-2.5">
+                                    <span className="text-zinc-400 dark:text-zinc-500 font-medium">Serviço</span>
+                                    <span className="font-semibold text-zinc-800 dark:text-zinc-200 text-right truncate max-w-[200px]">
+                                      {sensitiveModalItem.especialidade}
+                                    </span>
+                                  </div>
+
+                                  {/* DATA E HORA */}
+                                  <div className="flex items-center justify-between py-2.5 last:pb-0">
+                                    <span className="text-zinc-400 dark:text-zinc-500 font-medium">Horário</span>
+                                    <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                                      {sensitiveModalItem.data ? sensitiveModalItem.data.split("-").reverse().join("/") : "--/--"} às {sensitiveModalItem.horario || sensitiveModalItem.hora || "--:--"}
+                                    </span>
+                                  </div>
+                                </div>
+                              </motion.div>
+
+                              {/* 2. ENFERMIDADES CLÍNICAS (APPLE HEALTH PILLS) */}
+                              <motion.div
+                                initial={{ opacity: 0, y: 14 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ type: "spring", stiffness: 380, damping: 28, delay: 0.08 }}
+                                className="bg-white dark:bg-[#1C1C1E] rounded-3xl p-6 border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_18px_rgba(0,0,0,0.03)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.4)] space-y-4"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <HeartPulse size={16} className="text-rose-500" />
+                                    <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-900 dark:text-white">
+                                      Enfermidades & Condições
+                                    </h3>
+                                  </div>
+                                  <span className="text-[11px] font-semibold text-zinc-400">
+                                    {enfermidadesPaciente.length} ativa(s)
+                                  </span>
+                                </div>
+
+                                <div className="flex flex-wrap gap-1.5 min-h-[36px]">
+                                  {enfermidadesPaciente.length === 0 ? (
+                                    <p className="text-xs text-zinc-400 italic py-1">
+                                      Nenhuma enfermidade vinculada a este paciente.
+                                    </p>
+                                  ) : (
+                                    <AnimatePresence>
+                                      {enfermidadesPaciente.map((enf) => (
+                                        <motion.div
+                                          layout
+                                          key={enf}
+                                          initial={{ scale: 0.8, opacity: 0 }}
+                                          animate={{ scale: 1, opacity: 1 }}
+                                          exit={{ scale: 0.8, opacity: 0 }}
+                                          transition={{ type: "spring", stiffness: 450, damping: 30 }}
+                                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-rose-500/[0.08] dark:bg-rose-500/[0.14] border border-rose-500/20 text-rose-700 dark:text-rose-300 text-xs font-semibold"
+                                        >
+                                          <span>{enf}</span>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleRemoveEnfermidadeFromPatient(enf)}
+                                            className="hover:bg-rose-500/20 rounded-full p-0.5 transition-colors cursor-pointer"
+                                            title="Desvincular"
+                                          >
+                                            <X size={11} strokeWidth={2.5} />
+                                          </button>
+                                        </motion.div>
+                                      ))}
+                                    </AnimatePresence>
+                                  )}
+                                </div>
+
+                                <div className="relative">
+                                  <div className="relative flex items-center">
+                                    <Search size={14} className="absolute left-3.5 text-zinc-400" />
+                                    <input
+                                      type="text"
+                                      value={searchEnfermidade}
+                                      onChange={(e) => setSearchEnfermidade(e.target.value)}
+                                      placeholder="Adicionar condição clínica..."
+                                      className="w-full pl-9 pr-4 py-2 bg-[#F8F8FA] dark:bg-[#252528] rounded-xl text-xs outline-none text-zinc-900 dark:text-white placeholder-zinc-400 border border-transparent focus:border-black/[0.1] dark:focus:border-white/[0.15] transition-all"
+                                    />
+                                  </div>
+
+                                  {searchEnfermidade.trim() && (
+                                    <motion.div
+                                      initial={{ opacity: 0, y: 4, scale: 0.98 }}
+                                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                                      className="absolute top-full left-0 right-0 z-40 mt-1.5 bg-white/95 dark:bg-[#1E1E22]/95 backdrop-blur-2xl border border-black/[0.08] dark:border-white/[0.1] rounded-2xl shadow-xl p-1.5 space-y-1 max-h-48 overflow-y-auto custom-scrollbar"
+                                    >
+                                      {sugestoesEnfermidades.map((sug) => (
+                                        <button
+                                          key={sug}
+                                          type="button"
+                                          onClick={() => handleAddEnfermidadeToPatient(sug)}
+                                          className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-zinc-800 dark:text-zinc-200 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] flex items-center justify-between transition-colors cursor-pointer"
+                                        >
+                                          <span>{sug}</span>
+                                          <span className="text-[10px] text-zinc-400 font-bold uppercase">+ Vincular</span>
+                                        </button>
+                                      ))}
+
+                                      {!exactMatchExists && (
+                                        <button
+                                          type="button"
+                                          onClick={handleCreateAndLinkEnfermidade}
+                                          className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-zinc-950 dark:text-white hover:bg-black/[0.04] dark:hover:bg-white/[0.06] flex items-center gap-1.5 transition-colors cursor-pointer border-t border-black/[0.04] dark:border-white/[0.06] pt-2 mt-1"
+                                        >
+                                          <Plus size={13} strokeWidth={2.5} />
+                                          <span>Cadastrar "{searchEnfermidade.trim()}"</span>
+                                        </button>
+                                      )}
+                                    </motion.div>
+                                  )}
+                                </div>
+
+                                <motion.button
+                                  whileHover={{ scale: 1.01 }}
+                                  whileTap={{ scale: 0.98 }}
+                                  onClick={handleSaveSensitiveData}
+                                  disabled={isProcessing}
+                                  className="w-full py-2.5 rounded-xl bg-zinc-900 hover:bg-black dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-black text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40"
+                                >
+                                  {isProcessing ? <Activity size={13} className="animate-spin" /> : <Check size={14} strokeWidth={2.5} />}
+                                  <span>Salvar Condições</span>
+                                </motion.button>
+                              </motion.div>
                             </div>
 
-                            <div className="mt-3 text-xs text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap leading-relaxed">
-                              {msg.mensagem}
-                            </div>
-
-                            <div className="flex justify-end gap-2 pt-2">
-                              <button
-                                type="button"
-                                onClick={() => handleDispararAgora(msg.id)}
-                                disabled={isDisparando || isProcessing}
-                                className="min-h-[34px] px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                            {/* COLUNA DIREITA (7 COLUNAS): CENTRAL DE OBSERVAÇÕES (APPLE NOTES STYLE) */}
+                            <div className="lg:col-span-7 space-y-6">
+                              <motion.div
+                                initial={{ opacity: 0, y: 14 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ type: "spring", stiffness: 380, damping: 28, delay: 0.05 }}
+                                className="bg-white dark:bg-[#1C1C1E] rounded-3xl p-6 md:p-8 border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_18px_rgba(0,0,0,0.03)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.4)] space-y-6"
                               >
-                                {isDisparando ? (
-                                  <Activity size={13} className="animate-spin" />
-                                ) : (
-                                  <Send size={13} />
+                                {/* HEADER DA CENTRAL DE NOTAS */}
+                                <div className="flex items-center justify-between pb-4 border-b border-black/[0.05] dark:border-white/[0.06]">
+                                  <div className="flex items-center gap-2.5">
+                                    <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                                      <FileText size={16} strokeWidth={2.2} />
+                                    </div>
+                                    <div>
+                                      <h3 className="text-sm font-bold text-zinc-950 dark:text-white tracking-tight">
+                                        Observações & Anotações
+                                      </h3>
+                                      <p className="text-[11px] text-zinc-400">
+                                        Histórico clínico e financeiro sincronizado
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-zinc-100 dark:bg-[#252528] text-zinc-600 dark:text-zinc-300 font-mono">
+                                      {(obsImportada ? 1 : 0) + notasManuais.length} nota(s)
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* 1. OBSERVAÇÃO IMPORTADA DO ERP MEDICALSYS */}
+                                {obsImportada && (
+                                  <motion.div
+                                    layout
+                                    initial={{ opacity: 0, scale: 0.98 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    className="p-5 rounded-2xl bg-amber-500/[0.05] dark:bg-amber-500/[0.08] border border-amber-500/20 space-y-2.5 relative overflow-hidden"
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-900 dark:text-amber-200 border border-amber-500/25">
+                                        <Tag size={10} /> {ehImportado ? "Importado MedicalSYS" : "Observação Inicial"}
+                                      </span>
+                                      <span className="text-[11px] text-zinc-400 font-medium">ERP Sincronizado</span>
+                                    </div>
+                                    <p className="text-xs md:text-sm text-zinc-900 dark:text-zinc-100 font-medium leading-relaxed whitespace-pre-wrap pl-0.5">
+                                      {obsImportada}
+                                    </p>
+                                  </motion.div>
                                 )}
-                                <span>{isSent ? "Reenviar WhatsApp" : "Disparar Agora"}</span>
-                              </button>
+
+                                {/* 2. APPLE NOTES COMPOSER (DIGITAR NOVA OBSERVAÇÃO) */}
+                                <div className="rounded-2xl bg-[#F8F8FA] dark:bg-[#252528] p-4 border border-black/[0.04] dark:border-white/[0.06] space-y-3 transition-all focus-within:border-zinc-300 dark:focus-within:border-zinc-600 focus-within:ring-4 focus-within:ring-black/[0.02]">
+                                  <div className="flex items-center justify-between text-[11px]">
+                                    <span className="font-semibold text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+                                      <Plus size={13} strokeWidth={2.5} className="text-blue-500" /> Nova Anotação
+                                    </span>
+                                    <span className="text-zinc-400">
+                                      {loggedAdmin?.nome || loggedAdmin?.usuario || "Você"}
+                                    </span>
+                                  </div>
+
+                                  <textarea
+                                    rows={3}
+                                    value={novaObsTexto}
+                                    onChange={(e) => setNovaObsTexto(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                                        e.preventDefault();
+                                        handleAdicionarObservacao();
+                                      }
+                                    }}
+                                    placeholder="Digite uma observação clínica, financeira ou operacional... (⌘+Enter para salvar)"
+                                    className="w-full bg-transparent text-xs md:text-sm text-zinc-900 dark:text-white placeholder-zinc-400 outline-none resize-none leading-relaxed"
+                                  />
+
+                                  <div className="flex items-center justify-between pt-1 border-t border-black/[0.04] dark:border-white/[0.06]">
+                                    <span className="text-[10px] text-zinc-400 font-mono hidden sm:inline">
+                                      Atalho: ⌘ + Enter
+                                    </span>
+                                    <motion.button
+                                      whileHover={{ scale: 1.02 }}
+                                      whileTap={{ scale: 0.97 }}
+                                      type="button"
+                                      onClick={handleAdicionarObservacao}
+                                      disabled={isSavingObs || !novaObsTexto.trim()}
+                                      className="ml-auto px-4 py-2 rounded-xl bg-zinc-950 hover:bg-black dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-black font-bold text-xs shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
+                                    >
+                                      {isSavingObs ? (
+                                        <Activity size={13} className="animate-spin" />
+                                      ) : (
+                                        <CheckCircle2 size={13} strokeWidth={2.2} />
+                                      )}
+                                      <span>{isSavingObs ? "Salvando..." : "Salvar Anotação"}</span>
+                                    </motion.button>
+                                  </div>
+                                </div>
+
+                                {/* 3. HISTÓRICO DE ANOTAÇÕES REGISTRADAS */}
+                                <div className="space-y-3 pt-2">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">
+                                      Linha do Tempo
+                                    </span>
+                                    <span className="text-[11px] text-zinc-400 font-mono">
+                                      {notasManuais.length} registro(s)
+                                    </span>
+                                  </div>
+
+                                  {notasManuais.length === 0 ? (
+                                    <div className="py-10 text-center rounded-2xl border border-dashed border-black/[0.06] dark:border-white/[0.08] p-6 space-y-1.5">
+                                      <FileText size={22} className="mx-auto text-zinc-300 dark:text-zinc-600 mb-1" />
+                                      <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                                        Nenhuma anotação manual registrada.
+                                      </p>
+                                      <p className="text-[11px] text-zinc-400">
+                                        Use o campo acima para adicionar notas rápidas para este atendimento.
+                                      </p>
+                                    </div>
+                                  ) : (
+                                    <div className="space-y-3">
+                                      <AnimatePresence>
+                                        {notasManuais.map((nota, idx) => (
+                                          <motion.div
+                                            layout
+                                            key={nota.id || idx}
+                                            initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                            exit={{ opacity: 0, scale: 0.96 }}
+                                            transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                                            className="p-4 rounded-2xl bg-[#F8F8FA] dark:bg-[#252528] border border-black/[0.04] dark:border-white/[0.06] space-y-2 hover:border-black/[0.08] dark:hover:border-white/[0.12] transition-colors shadow-2xs"
+                                          >
+                                            <div className="flex items-center justify-between text-xs">
+                                              <div className="flex items-center gap-2">
+                                                <span className="font-bold text-zinc-900 dark:text-white flex items-center gap-1.5">
+                                                  <div className="w-5 h-5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center text-[10px] font-bold">
+                                                    {(nota.autor || "A")[0].toUpperCase()}
+                                                  </div>
+                                                  {nota.autor || "Atendente"}
+                                                </span>
+                                                <span className="text-zinc-300 dark:text-zinc-600">•</span>
+                                                <span className="text-zinc-400 text-[11px] font-mono">
+                                                  {nota.data_hora_str || (nota.data_hora ? formatarDataHoraAmigavel(nota.data_hora) : "")}
+                                                </span>
+                                              </div>
+                                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                                                Clínica
+                                              </span>
+                                            </div>
+                                            <p className="text-xs md:text-sm text-zinc-800 dark:text-zinc-200 leading-relaxed whitespace-pre-wrap pl-0.5">
+                                              {nota.texto}
+                                            </p>
+                                          </motion.div>
+                                        ))}
+                                      </AnimatePresence>
+                                    </div>
+                                  )}
+                                </div>
+                              </motion.div>
                             </div>
                           </div>
                         );
-                      })}
-                    </div>
-                  )}
-
-                  <div className="pt-3 border-t border-zinc-100 dark:border-white/5 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setSensitiveModalItem(null)}
-                      className="min-h-[44px] px-6 rounded-xl border border-zinc-200/80 dark:border-zinc-800 font-bold text-xs uppercase text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 cursor-pointer"
+                      })()}
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="mensagens-tab"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.2 }}
+                      className="bg-white dark:bg-[#1C1C1E] rounded-3xl p-6 md:p-8 border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_18px_rgba(0,0,0,0.03)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.4)] space-y-6"
                     >
-                      Fechar
-                    </button>
-                  </div>
-                </div>
-              )}
-            </motion.div>
-          </div>
+                      {/* BARRA DE STATUS DA FILA & NOVO DISPARO */}
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 bg-[#F8F8FA] dark:bg-[#252528] rounded-2xl border border-black/[0.04] dark:border-white/[0.06]">
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <span className="font-semibold text-zinc-500">Fila de Disparo:</span>
+                          <span className="px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-700 dark:text-blue-300 font-bold text-[11px]">
+                            {statsMensagensAgendamento.pendentes} Pendente(s)
+                          </span>
+                          <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-bold text-[11px]">
+                            {statsMensagensAgendamento.enviadas} Enviada(s)
+                          </span>
+                        </div>
+
+                        <motion.button
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.97 }}
+                          type="button"
+                          onClick={() => {
+                            playDopamineSound("click");
+                            setIsCriandoMensagem(!isCriandoMensagem);
+                          }}
+                          className="px-4 py-2 bg-zinc-950 dark:bg-white text-white dark:text-black font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                        >
+                          <Plus size={14} strokeWidth={2.5} />
+                          <span>{isCriandoMensagem ? "Fechar Formulário" : "Nova Mensagem"}</span>
+                        </motion.button>
+                      </div>
+
+                      {/* FORMULÁRIO DE NOVA MENSAGEM AVULSA */}
+                      <AnimatePresence>
+                        {isCriandoMensagem && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="overflow-hidden"
+                          >
+                            <div className="p-5 bg-emerald-500/[0.04] dark:bg-emerald-500/[0.08] border border-emerald-500/20 rounded-2xl space-y-4">
+                              <div className="flex items-center justify-between">
+                                <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                                  <Sparkles size={14} /> Agendar Mensagem Personalizada
+                                </h4>
+                              </div>
+
+                              <div className="space-y-1.5">
+                                <textarea
+                                  rows={4}
+                                  value={novaMsgTexto}
+                                  onChange={(e) => setNovaMsgTexto(e.target.value)}
+                                  placeholder="Digite a mensagem personalizada que será enviada via WhatsApp..."
+                                  className="w-full p-3 bg-white dark:bg-black/50 border border-black/[0.08] dark:border-white/[0.1] rounded-xl text-xs outline-none focus:border-emerald-500 leading-relaxed custom-scrollbar"
+                                />
+                              </div>
+
+                              <div className="grid sm:grid-cols-2 gap-3">
+                                <TextInput
+                                  type="datetime-local"
+                                  label="Data e Horário de Envio"
+                                  value={novaMsgDataHora}
+                                  onChange={(e) => setNovaMsgDataHora(e.target.value)}
+                                />
+                                <TextInput
+                                  type="url"
+                                  label="Link do Anexo (PDF/Foto)"
+                                  placeholder="https://clinica.com/preparo.pdf"
+                                  value={novaMsgAnexoUrl}
+                                  onChange={(e) => setNovaMsgAnexoUrl(e.target.value)}
+                                />
+                              </div>
+
+                              <div className="flex justify-end gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setIsCriandoMensagem(false)}
+                                  className="px-4 py-2 rounded-xl border border-black/[0.08] dark:border-white/[0.1] text-xs font-semibold text-zinc-600 dark:text-zinc-400 hover:bg-black/[0.04] cursor-pointer"
+                                >
+                                  Cancelar
+                                </button>
+                                <motion.button
+                                  whileHover={{ scale: 1.02 }}
+                                  whileTap={{ scale: 0.97 }}
+                                  type="button"
+                                  onClick={handleCriarMensagemAvulsa}
+                                  disabled={isProcessing}
+                                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm flex items-center gap-1.5 cursor-pointer"
+                                >
+                                  {isProcessing ? (
+                                    <Activity size={13} className="animate-spin" />
+                                  ) : (
+                                    <CheckCircle2 size={13} strokeWidth={2.2} />
+                                  )}
+                                  <span>Agendar Mensagem</span>
+                                </motion.button>
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      {/* LISTA DE MENSAGENS */}
+                      {loadingMensagens ? (
+                        <div className="py-12 flex flex-col items-center justify-center text-zinc-400 gap-2">
+                          <Activity size={22} className="animate-spin text-emerald-500" />
+                          <span className="text-xs font-medium">Sincronizando mensagens...</span>
+                        </div>
+                      ) : mensagensAgendamento.length === 0 ? (
+                        <div className="py-12 text-center rounded-2xl border border-dashed border-black/[0.06] dark:border-white/[0.08] p-6 space-y-1.5">
+                          <MessageSquare size={22} className="mx-auto text-zinc-300 dark:text-zinc-600 mb-1" />
+                          <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                            Nenhuma mensagem agendada para este atendimento.
+                          </p>
+                          <p className="text-[11px] text-zinc-400">
+                            Mensagens automáticas de confirmação e lembretes serão listadas aqui.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {mensagensAgendamento.map((msg, idx) => {
+                            const isSent = msg.status === "enviada" || msg.status === "enviado";
+                            const isCanceled = msg.status === "cancelada";
+                            const isDisparando = disparandoMsgId === msg.id;
+
+                            return (
+                              <motion.div
+                                key={msg.id || idx}
+                                initial={{ opacity: 0, y: 6 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className={`p-4 md:p-5 rounded-2xl border transition-all ${
+                                  isSent
+                                    ? "bg-emerald-500/[0.02] border-emerald-500/20"
+                                    : isCanceled
+                                    ? "bg-black/[0.02] dark:bg-white/[0.02] border-black/[0.05] dark:border-white/[0.06] opacity-50"
+                                    : "bg-[#F8F8FA] dark:bg-[#252528] border-black/[0.04] dark:border-white/[0.06]"
+                                }`}
+                              >
+                                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-black/[0.04] dark:border-white/[0.06] pb-2.5">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-md bg-black/[0.04] dark:bg-white/[0.06] text-zinc-700 dark:text-zinc-300">
+                                      {msg.gatilho || "Mensagem"}
+                                    </span>
+                                    <span className="text-[11px] text-zinc-400 font-mono">
+                                      {formatarDataHoraAmigavel(msg.data_hora_programada)}
+                                    </span>
+                                  </div>
+
+                                  <span
+                                    className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                                      isSent
+                                        ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                                        : isCanceled
+                                        ? "bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+                                        : "bg-blue-500/10 text-blue-700 dark:text-blue-300"
+                                    }`}
+                                  >
+                                    {isSent ? "Enviada" : isCanceled ? "Cancelada" : "Pendente"}
+                                  </span>
+                                </div>
+
+                                <p className="mt-3 text-xs text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap leading-relaxed">
+                                  {msg.mensagem}
+                                </p>
+
+                                <div className="flex justify-end gap-2 pt-2">
+                                  <motion.button
+                                    whileHover={{ scale: 1.02 }}
+                                    whileTap={{ scale: 0.97 }}
+                                    type="button"
+                                    onClick={() => handleDispararAgora(msg.id)}
+                                    disabled={isDisparando || isProcessing}
+                                    className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                                  >
+                                    {isDisparando ? (
+                                      <Activity size={12} className="animate-spin" />
+                                    ) : (
+                                      <Send size={12} />
+                                    )}
+                                    <span>{isSent ? "Reenviar" : "Disparar Agora"}</span>
+                                  </motion.button>
+                                </div>
+                              </motion.div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
     </motion.div>

@@ -427,7 +427,7 @@ export default function SyncView({ bloqueios = [], servicos = [], fetchBloqueios
     <motion.div key="tech" {...fadeUp} className="p-6 md:p-10 mx-auto w-full max-w-5xl overflow-y-auto h-full custom-scrollbar relative pb-32 space-y-8">
       
       {/* CABEÇALHO UNIFICADO DA EMPRESA */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-zinc-200/80 dark:border-white/10 pb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-black/[0.06] dark:border-white/[0.08] pb-6">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 flex items-center justify-center flex-shrink-0 shadow-sm">
             <Server size={24} />
@@ -508,7 +508,7 @@ export default function SyncView({ bloqueios = [], servicos = [], fetchBloqueios
       )}
 
       {/* MAPEAMENTO DE COLUNAS & CORREÇÃO COM VISUALIZAÇÃO COMPLETA */}
-      <section className="bg-white dark:bg-[#0c0c0e] border border-zinc-200/80 dark:border-white/10 p-8 rounded-[2.5rem] shadow-sm space-y-6">
+      <section className="bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] p-8 rounded-3xl shadow-sm space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-4 gap-4">
           <div>
             <h3 className="text-lg font-black text-zinc-900 dark:text-white flex items-center gap-2">
@@ -594,7 +594,7 @@ export default function SyncView({ bloqueios = [], servicos = [], fetchBloqueios
       </section>
 
       {/* PROFISSIONAIS ÓRFÃOS & GESTÃO DE BLOQUEIOS PERMANENTES */}
-      <section className="bg-white dark:bg-[#0c0c0e] border border-zinc-200/80 dark:border-white/10 p-8 rounded-[2.5rem] shadow-sm space-y-6">
+      <section className="bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] p-8 rounded-3xl shadow-sm space-y-6">
         <div>
           <h3 className="text-lg font-black text-zinc-900 dark:text-white">Mapeamento de Profissionais do ERP</h3>
           <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
@@ -663,7 +663,7 @@ export default function SyncView({ bloqueios = [], servicos = [], fetchBloqueios
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white dark:bg-[#0c0c0e] rounded-3xl p-6 md:p-8 max-w-5xl w-full max-h-[85vh] flex flex-col shadow-2xl border border-zinc-200 dark:border-zinc-800"
+              className="bg-white dark:bg-[#161618] rounded-3xl p-6 md:p-8 max-w-5xl w-full max-h-[85vh] flex flex-col shadow-2xl border border-zinc-200 dark:border-zinc-800"
             >
               <div className="flex justify-between items-start pb-4 border-b border-zinc-100 dark:border-zinc-800">
                 <div className="flex items-center gap-3">

@@ -179,7 +179,7 @@ export default function ModuleCheckout() {
       )}
 
       {/* RESUMO DO AGENDAMENTO */}
-      <div className="p-6 rounded-3xl bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 shadow-sm space-y-3.5">
+      <div className="p-6 rounded-3xl bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-sm space-y-3.5">
         <div className="flex justify-between items-center text-xs font-bold text-zinc-400 uppercase tracking-widest">
           <span>Atendimento</span>
           <span className="text-zinc-950 dark:text-white font-extrabold truncate max-w-[200px]">
@@ -188,7 +188,7 @@ export default function ModuleCheckout() {
         </div>
 
         {nomeEspecialista && (
-          <div className="flex justify-between items-center text-xs border-t border-zinc-100 dark:border-white/5 pt-2.5">
+          <div className="flex justify-between items-center text-xs border-t border-black/[0.04] dark:border-white/[0.06] pt-2.5">
             <span className="text-zinc-400 font-bold uppercase tracking-wider">Especialista</span>
             <span className="text-zinc-800 dark:text-zinc-200 font-semibold truncate max-w-[200px]">
               {nomeEspecialista}
@@ -196,7 +196,7 @@ export default function ModuleCheckout() {
           </div>
         )}
 
-        <div className="flex justify-between items-center text-xs border-t border-zinc-100 dark:border-white/5 pt-2.5">
+        <div className="flex justify-between items-center text-xs border-t border-black/[0.04] dark:border-white/[0.06] pt-2.5">
           <span className="text-zinc-400 font-bold uppercase tracking-wider">Data & Horário</span>
           <span className="text-zinc-800 dark:text-zinc-200 font-bold">
             {formData?.data_agendamento ? formData.data_agendamento.split("-").reverse().join("/") : "--/--"} às {formData?.horario_agendamento || "--:--"}h
@@ -204,7 +204,7 @@ export default function ModuleCheckout() {
         </div>
 
         {!ocultarValorConsulta ? (
-          <div className="flex justify-between items-baseline border-t border-zinc-200/60 dark:border-white/5 pt-3.5">
+          <div className="flex justify-between items-baseline border-t border-black/[0.04] dark:border-white/[0.06] pt-3.5">
             <div>
               <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider block">
                 Valor da Entrada
@@ -216,7 +216,7 @@ export default function ModuleCheckout() {
             </div>
           </div>
         ) : (
-          <div className="flex justify-between items-center border-t border-zinc-200/60 dark:border-white/5 pt-3.5">
+          <div className="flex justify-between items-center border-t border-black/[0.04] dark:border-white/[0.06] pt-3.5">
             <div>
               <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider block">
                 Modalidade de Atendimento
@@ -237,7 +237,7 @@ export default function ModuleCheckout() {
 
       {/* ÁREA DE PAGAMENTO: WHATSAPP VS MERCADO PAGO ONLINE */}
       {(tipoCheckout === "whatsapp" || (tipoCheckout === "ambos" && selectedMethod === "whatsapp")) ? (
-        <div className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-emerald-500/20 dark:border-emerald-500/30 rounded-3xl p-6 shadow-sm space-y-4 text-center">
+        <div className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-emerald-500/20 dark:border-emerald-500/30 rounded-3xl p-6 shadow-sm space-y-4 text-center">
           <div className="w-14 h-14 rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-300 flex items-center justify-center mx-auto shadow-sm">
             <MessageCircle size={28} strokeWidth={2.2} />
           </div>
@@ -264,7 +264,7 @@ export default function ModuleCheckout() {
           </motion.button>
         </div>
       ) : (
-        <div className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 rounded-3xl p-4 sm:p-6 shadow-sm min-h-[220px]">
+        <div className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] rounded-3xl p-4 sm:p-6 shadow-sm min-h-[220px]">
           {mpKey ? (
             <Payment
               initialization={{ amount: Number(valorEntrada.toFixed(2)) }}

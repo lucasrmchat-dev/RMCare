@@ -1407,7 +1407,7 @@ function AgendamentoOrquestrador() {
       type = "text"
     ) => {
       const cnInputWrap =
-        "relative rounded-2xl bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 transition-all duration-300 focus-within:border-[#9FC131] dark:focus-within:border-[#9FC131] focus-within:ring-2 focus-within:ring-[#9FC131]/20 focus-within:bg-white dark:focus-within:bg-black overflow-hidden shadow-sm";
+        "relative rounded-2xl bg-[#F8F8FA] dark:bg-[#222225] border border-zinc-200/80 dark:border-zinc-800 transition-all duration-300 focus-within:border-[#9FC131] dark:focus-within:border-[#9FC131] focus-within:ring-2 focus-within:ring-[#9FC131]/20 focus-within:bg-white dark:focus-within:bg-black overflow-hidden shadow-sm";
       const cnInput =
         "w-full min-h-[52px] p-4 pt-6 bg-transparent outline-none text-zinc-950 dark:text-white font-semibold text-sm sm:text-base peer placeholder-transparent";
       const cnLabel =
@@ -1639,10 +1639,10 @@ function AgendamentoOrquestrador() {
               islandState === "error"
                 ? "bg-red-600 text-white"
                 : islandState === "success"
-                ? "bg-[#9FC131] text-black font-extrabold"
+                ? "bg-[#34C759] text-white font-bold"
                 : islandState === "loading"
                 ? "bg-zinc-950 text-white"
-                : "bg-white/85 dark:bg-[#121216]/85 backdrop-blur-2xl text-zinc-900 dark:text-white border border-zinc-200/80 dark:border-white/10"
+                : "bg-white/85 dark:bg-[#121216]/85 backdrop-blur-2xl text-zinc-900 dark:text-white border border-black/[0.06] dark:border-white/[0.08]"
             }`}
           >
             <AnimatePresence mode="wait">
@@ -1698,7 +1698,7 @@ function AgendamentoOrquestrador() {
                           key={i}
                           className={`h-1.5 rounded-full transition-all duration-300 ${
                             currentStepIndex === i
-                              ? "w-5 bg-[#86a621] dark:bg-[#9FC131] shadow-[0_0_8px_rgba(159,193,49,0.7)]"
+                              ? "w-5 bg-[#34C759] dark:bg-[#30D158] shadow-[0_0_8px_rgba(159,193,49,0.7)]"
                               : currentStepIndex > i
                               ? "w-2 bg-zinc-900/40 dark:bg-white/40"
                               : "w-1.5 bg-zinc-300 dark:bg-white/10"
@@ -1732,7 +1732,7 @@ function AgendamentoOrquestrador() {
                 <div className="flex items-center gap-3">
                   {logoUrl ? (
                     <div
-                      className={`${headerLogoShapeClass} overflow-hidden bg-white dark:bg-[#111116] border border-zinc-200/80 dark:border-white/10 flex items-center justify-center shadow-sm shrink-0`}
+                      className={`${headerLogoShapeClass} overflow-hidden bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] flex items-center justify-center shadow-sm shrink-0`}
                     >
                       <img
                         src={logoUrl}
@@ -1761,11 +1761,11 @@ function AgendamentoOrquestrador() {
           <motion.div
             layout
             transition={{ type: "spring", stiffness: 420, damping: 34 }}
-            className="w-full max-w-[860px] flex-1 md:flex-none md:h-[85vh] md:max-h-[780px] bg-white/90 dark:bg-[#0a0a0d]/90 backdrop-blur-3xl saturate-150 md:rounded-[36px] border-0 md:border border-zinc-200/80 dark:border-white/[0.08] flex flex-col overflow-hidden md:shadow-[0_30px_90px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.85)] dark:md:shadow-[0_30px_90px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.06)] relative"
+            className="w-full max-w-[860px] flex-1 md:flex-none md:h-[85vh] md:max-h-[780px] bg-white/90 dark:bg-[#161618]/95 backdrop-blur-3xl saturate-150 md:rounded-3xl border-0 md:border border-black/[0.06] dark:border-white/[0.08] flex flex-col overflow-hidden md:shadow-[0_30px_90px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.85)] dark:md:shadow-[0_30px_90px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.06)] relative"
           >
             {/* DESKTOP HEADER ACTION BAR */}
             {showActionButtons && (
-              <div className="hidden md:flex flex-none items-center justify-between px-8 py-3.5 border-b border-zinc-200/70 dark:border-white/[0.06] bg-white/70 dark:bg-[#0a0a0d]/70 backdrop-blur-2xl z-20">
+              <div className="hidden md:flex flex-none items-center justify-between px-8 py-3.5 border-b border-black/[0.04] dark:border-white/[0.06] bg-white/70 dark:bg-[#161618]/70 backdrop-blur-2xl z-20">
                 <div className="flex items-center gap-4">
                   {currentStepIndex > minStepIndex || isEspecialidadeSubStep ? (
                     <button
@@ -1776,7 +1776,7 @@ function AgendamentoOrquestrador() {
                     </button>
                   ) : null}
 
-                  <div className="flex items-center gap-2.5 pl-2 border-l border-zinc-200/80 dark:border-white/10">
+                  <div className="flex items-center gap-2.5 pl-2 border-l border-black/[0.06] dark:border-white/[0.08]">
                     <span className="font-bold text-xs text-zinc-900 dark:text-zinc-100 truncate max-w-[220px]">
                       {empresaDados?.nome}
                     </span>
@@ -1858,7 +1858,7 @@ function AgendamentoOrquestrador() {
 
             {/* BARRA DE AÇÕES FIXADA NA BASE DA TELA NO CELULAR */}
             {showActionButtons && (
-              <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 px-5 py-3.5 bg-white/85 dark:bg-[#0a0a0d]/90 backdrop-blur-3xl saturate-150 border-t border-zinc-200/80 dark:border-white/[0.08] flex items-center justify-between shadow-[0_-10px_30px_rgba(0,0,0,0.08)]">
+              <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 px-5 py-3.5 bg-white/85 dark:bg-[#161618]/95 backdrop-blur-3xl saturate-150 border-t border-black/[0.06] dark:border-white/[0.08] flex items-center justify-between shadow-[0_-10px_30px_rgba(0,0,0,0.08)]">
                 <div>
                   {currentStepIndex > minStepIndex || isEspecialidadeSubStep ? (
                     <button

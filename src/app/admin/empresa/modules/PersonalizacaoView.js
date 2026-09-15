@@ -1200,7 +1200,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
       className="flex-1 flex flex-col h-full overflow-hidden w-full max-w-7xl mx-auto p-4 md:p-6 lg:p-8"
     >
       {/* CABEÇALHO COM TÍTULO E BOTÃO SALVAR */}
-      <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-200/80 dark:border-white/10 pb-4">
+      <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-black/[0.06] dark:border-white/[0.08] pb-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-zinc-950 dark:bg-white text-white dark:text-black flex items-center justify-center shrink-0 shadow-sm">
             <Palette size={18} strokeWidth={1.75} />
@@ -1241,8 +1241,8 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
               className="space-y-6"
             >
               {/* REORDENAÇÃO E HABILITAÇÃO INTEGRADA DAS ETAPAS */}
-              <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm space-y-5">
-                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-zinc-100 dark:border-white/5 pb-4">
+              <section className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-5">
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-xl bg-purple-50 dark:bg-purple-950/40 flex items-center justify-center text-purple-600 dark:text-purple-400">
                       <Layers size={18} strokeWidth={1.5} />
@@ -1305,7 +1305,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                         className={`p-4 sm:p-5 rounded-2xl border transition-all flex flex-col gap-4 ${
                           isDesativada
                             ? "bg-zinc-100/60 dark:bg-zinc-900/30 border-zinc-200/50 dark:border-zinc-800/50 opacity-60"
-                            : "bg-zinc-50/70 dark:bg-zinc-900/60 border-zinc-200/80 dark:border-zinc-800 shadow-sm"
+                            : "bg-[#F8F8FA] dark:bg-[#222225] border-zinc-200/80 dark:border-zinc-800 shadow-sm"
                         }`}
                       >
                         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -1420,8 +1420,8 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
               </section>
 
               {/* LOGOTIPO DA CLÍNICA */}
-              <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm">
-                <div className="flex items-center gap-3 mb-6 border-b border-zinc-100 dark:border-white/5 pb-4">
+              <section className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm">
+                <div className="flex items-center gap-3 mb-6 border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
                   <div className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300">
                     <ImageIcon size={18} strokeWidth={1.5} />
                   </div>
@@ -1465,7 +1465,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                       )}
                     </div>
 
-                    <div className="space-y-2 pt-2 border-t border-zinc-100 dark:border-white/5">
+                    <div className="space-y-2 pt-2 border-t border-black/[0.04] dark:border-white/[0.06]">
                       <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
                         Moldura do Logotipo
                       </label>
@@ -1485,7 +1485,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                               className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
                                 isSelected
                                   ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-sm font-bold ring-2 ring-[#9FC131]"
-                                  : "bg-zinc-50/70 dark:bg-zinc-900/60 border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300"
+                                  : "bg-[#F8F8FA] dark:bg-[#222225] border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300"
                               }`}
                             >
                               <div className="text-xs font-bold">{f.label}</div>
@@ -1530,8 +1530,8 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
               </section>
 
               {/* WHATSAPP OFICIAL DE ATENDIMENTO & MENSAGEM MANUAL DE ATIVO PARCIAL */}
-              <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm space-y-5">
-                <div className="flex items-center gap-3 border-b border-zinc-100 dark:border-white/5 pb-4">
+              <section className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-5">
+                <div className="flex items-center gap-3 border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
                   <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
                     <MessageCircle size={18} strokeWidth={1.5} />
                   </div>
@@ -1558,7 +1558,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                 </div>
 
                 {/* MENSAGEM DE ENCAMINHAMENTO MANUAL */}
-                <div className="pt-3 border-t border-zinc-100 dark:border-white/5 space-y-3">
+                <div className="pt-3 border-t border-black/[0.04] dark:border-white/[0.06] space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
                       <label className="text-xs font-bold uppercase tracking-wider text-zinc-900 dark:text-white block">
@@ -1597,8 +1597,8 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
               </section>
 
               {/* FORMA DE PAGAMENTO NO CHECKOUT */}
-              <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm space-y-5">
-                <div className="flex items-center gap-3 border-b border-zinc-100 dark:border-white/5 pb-4">
+              <section className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-5">
+                <div className="flex items-center gap-3 border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
                   <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
                     <CreditCard size={18} strokeWidth={1.5} />
                   </div>
@@ -1647,7 +1647,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                           className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2 ${
                             isSel
                               ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-md font-bold ring-2 ring-[#9FC131]"
-                              : "bg-zinc-50/70 dark:bg-zinc-900/60 border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300"
+                              : "bg-[#F8F8FA] dark:bg-[#222225] border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300"
                           }`}
                         >
                           <div className="flex items-center justify-between">
@@ -1663,7 +1663,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
 
                 {/* TEMPLATE DA MENSAGEM DE WHATSAPP PARA PAGAMENTO */}
                 {((campos.tipo_checkout_pagamento || "online") === "whatsapp" || (campos.tipo_checkout_pagamento || "online") === "ambos") && (
-                  <div className="pt-4 border-t border-zinc-100 dark:border-white/5 space-y-3">
+                  <div className="pt-4 border-t border-black/[0.04] dark:border-white/[0.06] space-y-3">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <div>
                         <label className="text-xs font-bold uppercase tracking-wider text-zinc-900 dark:text-white block">
@@ -1714,7 +1714,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                 )}
 
                 {/* OCULTAR VALOR DA CONSULTA NO AGENDAMENTO */}
-                <div className="pt-4 border-t border-zinc-100 dark:border-white/5 space-y-3">
+                <div className="pt-4 border-t border-black/[0.04] dark:border-white/[0.06] space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-zinc-50/80 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 shadow-sm">
                     <div className="space-y-0.5">
                       <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-900 dark:text-white flex items-center gap-2">
@@ -1745,8 +1745,8 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
               </section>
 
               {/* SINCRONIZAÇÃO AUTOMÁTICA COM ERP MEDICALSYS */}
-              <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm space-y-5">
-                <div className="flex items-center gap-3 border-b border-zinc-100 dark:border-white/5 pb-4">
+              <section className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-5">
+                <div className="flex items-center gap-3 border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
                   <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center text-blue-600 dark:text-blue-400">
                     <Server size={18} strokeWidth={1.5} />
                   </div>
@@ -1804,8 +1804,8 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
               className="space-y-6"
             >
               {/* CONFIGURAÇÃO DE VISUALIZAÇÃO PADRÃO DO SISTEMA */}
-              <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-7 rounded-[2rem] shadow-sm space-y-4">
-                <div className="flex items-center gap-3 border-b border-zinc-100 dark:border-white/5 pb-3">
+              <section className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-7 rounded-3xl shadow-sm space-y-4">
+                <div className="flex items-center gap-3 border-b border-black/[0.04] dark:border-white/[0.06] pb-3">
                   <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center text-blue-600 dark:text-blue-400">
                     <LayoutGrid size={18} strokeWidth={1.5} />
                   </div>
@@ -1860,7 +1860,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
               </section>
 
               {/* SELETOR DE ESCOPO */}
-              <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 rounded-[2rem] shadow-sm space-y-3">
+              <section className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 rounded-3xl shadow-sm space-y-3">
                 <span className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-widest block">
                   Escopo de Aplicação Visual
                 </span>
@@ -1897,7 +1897,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
               <div className="grid lg:grid-cols-12 gap-6">
                 <div className="lg:col-span-7 space-y-6">
                   {/* CORES DA MARCA */}
-                  <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-7 rounded-[2rem] shadow-sm space-y-5">
+                  <section className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-7 rounded-3xl shadow-sm space-y-5">
                     <div>
                       <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">
                         <Sliders size={18} strokeWidth={1.5} /> Paleta de Cores da Marca
@@ -2020,8 +2020,8 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
 
                 {/* PRÉ-VISUALIZAÇÃO */}
                 <div className="lg:col-span-5">
-                  <div className="sticky top-6 bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 rounded-[2rem] shadow-sm space-y-4">
-                    <div className="flex justify-between items-center border-b border-zinc-100 dark:border-white/5 pb-3">
+                  <div className="sticky top-6 bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 rounded-3xl shadow-sm space-y-4">
+                    <div className="flex justify-between items-center border-b border-black/[0.04] dark:border-white/[0.06] pb-3">
                       <span className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-widest">
                         Pré-visualização do Portal
                       </span>
@@ -2030,7 +2030,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                       </span>
                     </div>
 
-                    <div className="p-5 border transition-all space-y-4 bg-zinc-50/70 dark:bg-zinc-900/60 border-zinc-200/80 dark:border-zinc-800 rounded-2xl">
+                    <div className="p-5 border transition-all space-y-4 bg-[#F8F8FA] dark:bg-[#222225] border-zinc-200/80 dark:border-zinc-800 rounded-2xl">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div
@@ -2091,9 +2091,9 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
               transition={spring}
               className="space-y-6"
             >
-              <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm space-y-6">
+              <section className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-6">
                 {/* PAINEL DE FILTROS RESPONSIVO E ALINHADO */}
-                <div className="p-4 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl space-y-3">
+                <div className="p-4 bg-[#F8F8FA] dark:bg-[#222225] border border-zinc-200/80 dark:border-zinc-800 rounded-2xl space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
                       <Filter size={13} /> Filtrar Automações de Mensagens
@@ -2154,7 +2154,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                   </div>
                 </div>
 
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-zinc-100 dark:border-white/5 pb-4 gap-3">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-black/[0.04] dark:border-white/[0.06] pb-4 gap-3">
                   <div>
                     <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">
                       <MessageSquare size={17} strokeWidth={1.5} className="text-emerald-500" />
@@ -2212,7 +2212,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                   </div>
                 ) : visualizacaoMensagens === "lista" ? (
                   /* TABELA COMPLETA COM NOVA COLUNA DE DIAS / ANTECEDÊNCIA */
-                  <div className="bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
+                  <div className="bg-[#F8F8FA] dark:bg-[#222225] border border-zinc-200/80 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
                     <div className="overflow-x-auto">
                       <table className="w-full text-left text-xs border-collapse">
                         <thead>
@@ -3009,8 +3009,8 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
               transition={spring}
               className="space-y-6"
             >
-              <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm space-y-6">
-                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-zinc-100 dark:border-white/5 pb-4">
+              <section className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-6">
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
                   <div>
                     <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">
                       <MessageSquare size={18} strokeWidth={1.5} className="text-emerald-500" />
@@ -3031,7 +3031,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                 </div>
 
                 {/* PAINEL DE FILTROS AVANÇADOS DO HISTÓRICO */}
-                <div className="p-4 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl space-y-3">
+                <div className="p-4 bg-[#F8F8FA] dark:bg-[#222225] border border-zinc-200/80 dark:border-zinc-800 rounded-2xl space-y-3">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
                     <Filter size={13} /> Filtrar Histórico & Disparos
                   </span>
@@ -3129,7 +3129,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                   <div className="overflow-x-auto rounded-2xl border border-zinc-200/80 dark:border-zinc-800 bg-white/40 dark:bg-black/20">
                     <table className="w-full text-left text-xs border-collapse">
                       <thead>
-                        <tr className="border-b border-zinc-200/80 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-900/60 font-bold uppercase tracking-wider text-zinc-400 text-[10px] select-none">
+                        <tr className="border-b border-zinc-200/80 dark:border-zinc-800 bg-[#F8F8FA] dark:bg-[#222225] font-bold uppercase tracking-wider text-zinc-400 text-[10px] select-none">
                           <th
                             onClick={() => handleSortHistorico("status")}
                             className="p-3.5 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
@@ -3330,7 +3330,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                     exit={{ opacity: 0 }}
                     className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
                   >
-                    <div className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
+                    <div className="bg-white dark:bg-[#161618] border border-zinc-200 dark:border-zinc-800 rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
                       <div className="flex justify-between items-center border-b border-zinc-100 dark:border-zinc-800 pb-3">
                         <h4 className="font-bold text-sm text-zinc-950 dark:text-white">
                           Mensagem para {mensagemVisualizar.nome_paciente}
@@ -3386,9 +3386,9 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white dark:bg-[#121216] backdrop-blur-3xl rounded-[2.5rem] p-6 md:p-8 max-w-xl w-full shadow-2xl border border-zinc-200/80 dark:border-white/10 space-y-5 max-h-[90vh] overflow-y-auto custom-scrollbar"
+              className="bg-white dark:bg-[#121216] backdrop-blur-3xl rounded-3xl p-6 md:p-8 max-w-xl w-full shadow-2xl border border-black/[0.06] dark:border-white/[0.08] space-y-5 max-h-[90vh] overflow-y-auto custom-scrollbar"
             >
-              <div className="flex justify-between items-start border-b border-zinc-100 dark:border-white/5 pb-4">
+              <div className="flex justify-between items-start border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-sm">
                     {testModalRegra.tipo_envio === "webhook" ? <Zap size={22} /> : <MessageSquare size={22} />}
@@ -3470,7 +3470,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
               </div>
 
               {/* BOTÕES DO MODAL */}
-              <div className="flex justify-end gap-2.5 pt-3 border-t border-zinc-100 dark:border-white/5">
+              <div className="flex justify-end gap-2.5 pt-3 border-t border-black/[0.04] dark:border-white/[0.06]">
                 <button
                   type="button"
                   onClick={() => setTestModalRegra(null)}

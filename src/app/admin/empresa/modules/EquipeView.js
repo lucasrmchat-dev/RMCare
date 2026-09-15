@@ -62,7 +62,7 @@ const ServicoCard = ({ srv, onEdit, onDelete }) => {
     <motion.div
       variants={staggerItem}
       layoutId={`card-${srv.id}`}
-      className="bg-white/85 dark:bg-[#0c0c0e]/85 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-7 rounded-[2rem] shadow-sm hover:shadow-xl hover:border-zinc-300 dark:hover:border-zinc-700 transition-all duration-300 flex flex-col justify-between group relative overflow-hidden"
+      className="bg-white/85 dark:bg-[#161618]/85 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-7 rounded-3xl shadow-sm hover:shadow-xl hover:border-zinc-300 dark:hover:border-zinc-700 transition-all duration-300 flex flex-col justify-between group relative overflow-hidden"
     >
       <div className="absolute top-5 right-5 flex items-center gap-1.5 z-20">
         <button
@@ -134,7 +134,7 @@ const ServicoCard = ({ srv, onEdit, onDelete }) => {
           <p className="text-xs text-zinc-400 italic mb-4">Nenhuma especialidade vinculada.</p>
         )}
 
-        <div className="flex items-center gap-4 mt-4 pt-4 border-t border-zinc-100 dark:border-white/5">
+        <div className="flex items-center gap-4 mt-4 pt-4 border-t border-black/[0.04] dark:border-white/[0.06]">
           <div className="flex-1">
             <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-0.5">
               Valor Particular
@@ -211,9 +211,9 @@ const ServicoForm = ({ initialData, onSave, onCancel, loading, especialidadesLis
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.96, y: 20 }}
       transition={spring}
-      className="bg-white dark:bg-[#0c0c0e] border border-zinc-200/80 dark:border-white/10 rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-w-3xl mx-auto w-full relative z-50 my-4"
+      className="bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] rounded-3xl shadow-2xl overflow-hidden flex flex-col max-w-3xl mx-auto w-full relative z-50 my-4"
     >
-      <div className="flex justify-between items-center px-6 md:px-8 py-6 border-b border-zinc-100 dark:border-white/5 bg-zinc-50/50 dark:bg-zinc-900/30">
+      <div className="flex justify-between items-center px-6 md:px-8 py-6 border-b border-black/[0.04] dark:border-white/[0.06] bg-zinc-50/50 dark:bg-zinc-900/30">
         <div>
           <h3 className="font-bold text-xl text-zinc-950 dark:text-white tracking-tight">
             {isEditing ? "Editar Especialista" : "Cadastrar Novo Especialista"}
@@ -235,7 +235,7 @@ const ServicoForm = ({ initialData, onSave, onCancel, loading, especialidadesLis
       <div className="p-6 md:p-8 overflow-y-auto custom-scrollbar max-h-[65vh] space-y-8">
         {/* SEÇÃO 1: INFORMAÇÕES BÁSICAS */}
         <section className="space-y-4">
-          <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-zinc-900 dark:text-white border-b border-zinc-100 dark:border-white/5 pb-2">
+          <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-zinc-900 dark:text-white border-b border-black/[0.04] dark:border-white/[0.06] pb-2">
             <span className="w-5 h-5 rounded-md bg-zinc-950 text-white dark:bg-white dark:text-black flex items-center justify-center text-[10px] font-bold">
               1
             </span>
@@ -299,7 +299,7 @@ const ServicoForm = ({ initialData, onSave, onCancel, loading, especialidadesLis
             </div>
 
             {/* STATUS DE DISPONIBILIDADE NA AGENDA */}
-            <div className="md:col-span-2 space-y-2 pt-2 border-t border-zinc-100 dark:border-white/5">
+            <div className="md:col-span-2 space-y-2 pt-2 border-t border-black/[0.04] dark:border-white/[0.06]">
               <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
                 Status de Disponibilidade na Agenda
               </label>
@@ -369,8 +369,8 @@ const ServicoForm = ({ initialData, onSave, onCancel, loading, especialidadesLis
         </section>
 
         {/* SEÇÃO 2: PAUSA TEMPORÁRIA */}
-        <section className="space-y-4 pt-4 border-t border-zinc-100 dark:border-white/5">
-          <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-zinc-900 dark:text-white border-b border-zinc-100 dark:border-white/5 pb-2">
+        <section className="space-y-4 pt-4 border-t border-black/[0.04] dark:border-white/[0.06]">
+          <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-zinc-900 dark:text-white border-b border-black/[0.04] dark:border-white/[0.06] pb-2">
             <span className="w-5 h-5 rounded-md bg-amber-100 text-amber-800 flex items-center justify-center text-[10px] font-bold">
               2
             </span>
@@ -397,8 +397,8 @@ const ServicoForm = ({ initialData, onSave, onCancel, loading, especialidadesLis
         </section>
 
         {/* SEÇÃO 3: PRECIFICAÇÃO E ANTECEDÊNCIA */}
-        <section className="space-y-4 pt-4 border-t border-zinc-100 dark:border-white/5">
-          <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-zinc-900 dark:text-white border-b border-zinc-100 dark:border-white/5 pb-2">
+        <section className="space-y-4 pt-4 border-t border-black/[0.04] dark:border-white/[0.06]">
+          <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-zinc-900 dark:text-white border-b border-black/[0.04] dark:border-white/[0.06] pb-2">
             <span className="w-5 h-5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-500 flex items-center justify-center text-[10px] font-bold">
               3
             </span>
@@ -434,7 +434,7 @@ const ServicoForm = ({ initialData, onSave, onCancel, loading, especialidadesLis
         </section>
       </div>
 
-      <div className="px-6 md:px-8 py-4 border-t border-zinc-100 dark:border-white/5 bg-zinc-50/80 dark:bg-zinc-900/50 flex flex-col sm:flex-row justify-end gap-3">
+      <div className="px-6 md:px-8 py-4 border-t border-black/[0.04] dark:border-white/[0.06] bg-zinc-50/80 dark:bg-zinc-900/50 flex flex-col sm:flex-row justify-end gap-3">
         <button
           onClick={onCancel}
           disabled={loading}
@@ -1010,7 +1010,7 @@ export default function EquipeView({
       className="flex-1 flex flex-col h-full overflow-hidden w-full max-w-7xl mx-auto p-4 md:p-6 lg:p-8"
     >
       {/* CABEÇALHO UNIFICADO */}
-      <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-200/80 dark:border-white/10 pb-4">
+      <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-black/[0.06] dark:border-white/[0.08] pb-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0 shadow-sm">
             <Users size={20} strokeWidth={1.5} />
@@ -1059,7 +1059,7 @@ export default function EquipeView({
           {/* SUB-ABA 1: CORPO CLÍNICO */}
           {(subTab === "corpo" || subTab === "adicionar") && (
             <div className="space-y-4">
-              <div className="flex flex-col sm:flex-row justify-between items-center gap-3 bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl p-3.5 rounded-2xl border border-zinc-200/80 dark:border-white/10">
+              <div className="flex flex-col sm:flex-row justify-between items-center gap-3 bg-white dark:bg-[#161618] p-3.5 rounded-2xl border border-black/[0.06] dark:border-white/[0.08]">
                 <div className="relative w-full sm:w-80">
                   <Search
                     size={15}
@@ -1070,7 +1070,7 @@ export default function EquipeView({
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     placeholder="Buscar especialista, URI ou especialidade..."
-                    className="w-full pl-9 pr-4 py-2 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs outline-none focus:border-[#9FC131]"
+                    className="w-full pl-9 pr-4 py-2 bg-[#F8F8FA] dark:bg-[#222225] border border-black/[0.08] dark:border-white/[0.1] rounded-2xl text-xs outline-none focus:border-black/30 dark:focus:border-white/30 focus:ring-4 focus:ring-black/5 dark:focus:ring-white/10"
                   />
                 </div>
 
@@ -1128,7 +1128,7 @@ export default function EquipeView({
                 </div>
               ) : viewMode === "lista" ? (
                 /* VISUALIZAÇÃO EM LISTA (TABELA MODERNA COM ORDENAÇÃO E BOTÃO EXCLUIR) */
-                <div className="bg-white/85 dark:bg-[#0c0c0e]/85 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 rounded-2xl overflow-hidden shadow-sm">
+                <div className="bg-white/85 dark:bg-[#161618]/85 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] rounded-2xl overflow-hidden shadow-sm">
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-xs border-collapse">
                       <thead>
@@ -1320,8 +1320,8 @@ export default function EquipeView({
           {/* SUB-ABA 2: ESPECIALIDADES MÉDICAS & EXAMES (COM LISTA, CARDS, EDIÇÃO E DURAÇÃO) */}
           {subTab === "especialidades" && (
             <div className="space-y-6">
-              <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm space-y-6">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-100 dark:border-white/5 pb-4">
+              <section className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
                   <div>
                     <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">
                       <Layers size={18} className="text-emerald-500" strokeWidth={1.5} /> Especialidades Médicas & Exames
@@ -1380,7 +1380,7 @@ export default function EquipeView({
                 </div>
 
                 {/* FORMULÁRIO DE NOVA ESPECIALIDADE */}
-                <div className="grid sm:grid-cols-12 gap-3 p-4 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl">
+                <div className="grid sm:grid-cols-12 gap-3 p-4 bg-[#F8F8FA] dark:bg-[#222225] border border-zinc-200/80 dark:border-zinc-800 rounded-2xl">
                   <div className="sm:col-span-3">
                     <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider block mb-1">
                       Nome da Especialidade / Exame *
@@ -1483,7 +1483,7 @@ export default function EquipeView({
                       exit={{ opacity: 0 }}
                       className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
                     >
-                      <div className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl">
+                      <div className="bg-white dark:bg-[#161618] border border-zinc-200 dark:border-zinc-800 rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl">
                         <div className="flex justify-between items-center border-b border-zinc-100 dark:border-zinc-800 pb-3">
                           <h4 className="font-bold text-sm text-zinc-950 dark:text-white flex items-center gap-2">
                             <Pencil size={15} className="text-blue-500" /> Editar Especialidade
@@ -1622,7 +1622,7 @@ export default function EquipeView({
                   </div>
                 ) : viewModeEspecialidades === "lista" ? (
                   /* VISUALIZAÇÃO EM LISTA (TABELA) */
-                  <div className="bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
+                  <div className="bg-[#F8F8FA] dark:bg-[#222225] border border-zinc-200/80 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
                     <div className="overflow-x-auto">
                       <table className="w-full text-left text-xs border-collapse">
                         <thead>
@@ -1751,7 +1751,7 @@ export default function EquipeView({
                     {especialidadesFiltradas.map((esp) => (
                       <div
                         key={esp.nome}
-                        className="p-4 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl flex flex-col justify-between gap-3 group hover:border-zinc-300 dark:hover:border-zinc-700 transition-all shadow-sm"
+                        className="p-4 bg-[#F8F8FA] dark:bg-[#222225] border border-zinc-200/80 dark:border-zinc-800 rounded-2xl flex flex-col justify-between gap-3 group hover:border-zinc-300 dark:hover:border-zinc-700 transition-all shadow-sm"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
@@ -1791,7 +1791,7 @@ export default function EquipeView({
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-4 gap-2 pt-2 border-t border-zinc-100 dark:border-white/5">
+                        <div className="grid grid-cols-4 gap-2 pt-2 border-t border-black/[0.04] dark:border-white/[0.06]">
                           <div>
                             <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider block mb-0.5">
                               Código URI
@@ -1875,8 +1875,8 @@ export default function EquipeView({
           {/* SUB-ABA 3: MODALIDADES & CONVÊNIOS */}
           {subTab === "modalidades" && (
             <div className="space-y-6">
-              <section className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm">
-                <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-6 gap-4 border-b border-zinc-100 dark:border-white/5 pb-4">
+              <section className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm">
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-6 gap-4 border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
                   <div>
                     <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">
                       <ShieldCheck size={18} strokeWidth={1.5} className="text-emerald-500" /> Modalidades de Atendimento & Convênios
@@ -1937,7 +1937,7 @@ export default function EquipeView({
                     return (
                       <div
                         key={mod.id}
-                        className="p-4 sm:p-5 bg-zinc-50/70 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl flex flex-col md:flex-row gap-4 items-start md:items-center justify-between shadow-sm"
+                        className="p-4 sm:p-5 bg-[#F8F8FA] dark:bg-[#222225] border border-zinc-200/80 dark:border-zinc-800 rounded-2xl flex flex-col md:flex-row gap-4 items-start md:items-center justify-between shadow-sm"
                       >
                         <div className="flex items-center gap-2 mb-2 md:mb-0">
                           <span className="px-2.5 py-1 rounded-lg bg-zinc-950 text-white dark:bg-white dark:text-black font-mono text-[11px] font-extrabold whitespace-nowrap shadow-sm">
@@ -2002,8 +2002,8 @@ export default function EquipeView({
 
           {/* SUB-ABA 4: PAUSAS NA AGENDA */}
           {subTab === "pausas" && (
-            <div className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-6 md:p-8 rounded-[2rem] shadow-sm space-y-6">
-              <div className="border-b border-zinc-100 dark:border-white/5 pb-4">
+            <div className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-6">
+              <div className="border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
                 <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">
                   <PauseCircle size={18} className="text-amber-500" strokeWidth={1.5} /> Especialistas com Agenda Pausada
                 </h3>

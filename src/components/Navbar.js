@@ -113,7 +113,7 @@ export default function Navbar({ hasBottomBar = false }) {
       <motion.div
         layout
         transition={liquidSpring}
-        className="relative flex items-center p-1.5 rounded-full bg-white/70 dark:bg-[#0c0c0e]/75 backdrop-blur-[36px] saturate-[1.8] border border-zinc-200/70 dark:border-white/[0.08] shadow-[0_12px_36px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.75)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.65),inset_0_1px_0_rgba(255,255,255,0.06)] pointer-events-auto gap-1"
+        className="relative flex items-center p-1.5 rounded-full bg-white/80 dark:bg-[#161618]/85 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-[0_12px_36px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.75)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.65),inset_0_1px_0_rgba(255,255,255,0.06)] pointer-events-auto gap-1"
       >
         <DockItem href="/" icon={House} label="Início" />
         <DockItem

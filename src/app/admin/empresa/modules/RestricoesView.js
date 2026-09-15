@@ -377,7 +377,7 @@ export default function RestricoesView({
       className="flex-1 flex flex-col h-full overflow-hidden w-full max-w-7xl mx-auto p-4 md:p-6 lg:p-8"
     >
       {/* CABEÇALHO */}
-      <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-200/80 dark:border-white/10 pb-4">
+      <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-black/[0.06] dark:border-white/[0.08] pb-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 flex items-center justify-center flex-shrink-0 shadow-sm">
             <Clock3 size={20} strokeWidth={1.5} />
@@ -454,7 +454,7 @@ export default function RestricoesView({
               transition={spring}
               className="space-y-6"
             >
-              <div className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 rounded-[2rem] shadow-sm p-6 md:p-8 space-y-8">
+              <div className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] rounded-3xl shadow-sm p-6 md:p-8 space-y-8">
                 {editingId && (
                   <div className="flex items-center justify-between rounded-2xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-900/40 px-4 py-3 text-xs">
                     <div>
@@ -1168,7 +1168,7 @@ export default function RestricoesView({
               transition={spring}
             >
               {regras.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-24 text-center rounded-[2rem] border border-dashed border-zinc-200 dark:border-zinc-800 bg-white/40 dark:bg-white/[0.02]">
+                <div className="flex flex-col items-center justify-center py-24 text-center rounded-3xl border border-dashed border-zinc-200 dark:border-zinc-800 bg-white/40 dark:bg-white/[0.02]">
                   <div className="w-16 h-16 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl flex items-center justify-center text-zinc-300 mb-4 shadow-sm">
                     <CalendarDays size={24} />
                   </div>
@@ -1245,7 +1245,7 @@ export default function RestricoesView({
                         layout
                         initial={{ opacity: 0, scale: 0.98 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 p-5 rounded-2xl flex flex-col justify-between shadow-sm hover:shadow-md transition-shadow group"
+                        className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-5 rounded-2xl flex flex-col justify-between shadow-sm hover:shadow-md transition-shadow group"
                       >
                         <div className="space-y-3">
                           <div className="flex items-start justify-between gap-3">
@@ -1375,10 +1375,10 @@ export default function RestricoesView({
                 </div>
               ) : (
                 /* TABELA DE HORÁRIOS CONFIGURADOS COM ORDENAÇÃO */
-                <div className="bg-white/80 dark:bg-[#0c0c0e]/80 backdrop-blur-2xl border border-zinc-200/80 dark:border-white/10 rounded-2xl overflow-x-auto shadow-sm">
+                <div className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] rounded-2xl overflow-x-auto shadow-sm">
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
-                      <tr className="border-b border-zinc-100 dark:border-white/5 bg-zinc-50/50 dark:bg-zinc-900/40 font-bold uppercase tracking-wider text-zinc-400 select-none">
+                      <tr className="border-b border-black/[0.04] dark:border-white/[0.06] bg-[#F8F8FA] dark:bg-[#222225] font-bold uppercase tracking-wider text-zinc-400 select-none">
                         <th
                           onClick={() => handleSort("alvo")}
                           className="p-3.5 cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
