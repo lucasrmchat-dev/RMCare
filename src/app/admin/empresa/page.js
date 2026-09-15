@@ -424,21 +424,28 @@ export default function EmpresaAdmin() {
                     <button
                       onClick={() => handleMainMenuClick(item)}
                       title={isSidebarCollapsed ? item.label : undefined}
-                      className={`group relative flex items-center w-full min-h-[38px] rounded-xl text-xs transition-all duration-200 cursor-pointer ${
+                      className={`group relative flex items-center w-full min-h-[38px] rounded-2xl text-xs transition-colors duration-150 cursor-pointer z-10 ${
                         isMainActive
-                          ? "bg-zinc-950 text-white dark:bg-white dark:text-black font-bold shadow-sm"
+                          ? "text-zinc-950 dark:text-white font-bold"
                           : isExpanded
-                          ? "bg-zinc-100/60 dark:bg-white/[0.04] text-zinc-950 dark:text-white font-semibold"
-                          : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100/60 dark:hover:bg-zinc-800/50 hover:text-zinc-950 dark:hover:text-white font-medium"
+                          ? "text-zinc-900 dark:text-white font-semibold"
+                          : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white font-medium"
                       } ${isSidebarCollapsed ? "justify-center px-0" : "px-3 justify-between"}`}
                     >
+                      {isMainActive && (
+                        <motion.div
+                          layoutId="sidebar-active-indicator"
+                          className="absolute inset-0 bg-black/[0.06] dark:bg-white/[0.1] rounded-2xl shadow-2xs -z-10"
+                          transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                        />
+                      )}
                       <div className="flex items-center gap-2.5 min-w-0">
                         <Icon
                           size={16}
-                          strokeWidth={isMainActive ? 2 : 1.5}
+                          strokeWidth={isMainActive ? 2.2 : 1.75}
                           className={`shrink-0 transition-colors ${
                             isMainActive
-                              ? "text-white dark:text-black"
+                              ? "text-zinc-950 dark:text-white"
                               : "text-zinc-400 group-hover:text-zinc-700 dark:group-hover:text-zinc-300"
                           }`}
                         />

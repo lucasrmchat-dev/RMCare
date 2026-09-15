@@ -36,7 +36,14 @@ import {
   Code2,
   Terminal,
   Layers,
-  ArrowUpRight
+  ArrowUpRight,
+  Globe,
+  ArrowDownLeft,
+  CheckCheck,
+  Trash2,
+  Radio,
+  ExternalLink,
+  Code
 } from "lucide-react";
 import { fadeUp, spring, ButtonPrimary, ToggleSwitch, TextInput, CustomSelect } from "../components/SharedUI";
 import {
@@ -46,7 +53,11 @@ import {
   fetchAdminCustomization,
   actionSalvarConfigWebhooksEFluxos,
   actionTestarWebhookFluxoInteligente,
-  actionExportarDadosEmpresaCSV
+  actionExportarDadosEmpresaCSV,
+  actionBuscarWebhooksEmpresa,
+  actionSalvarWebhooksEmpresa,
+  actionTestarWebhookERP,
+  actionLimparLogsWebhook
 } from "@/actions/adminData";
 import { supabase } from "@/lib/supabase";
 import { playDopamineSound, triggerHaptic } from "@/lib/dopamine";
@@ -516,6 +527,106 @@ const ApiDocumentationModal = ({ isOpen, onClose, originUrl, secret, showToast }
   );
 };
 
+
+// ==========================================
+// CONSTANTES DE DOCUMENTAÇÃO DE WEBHOOKS DO ERP
+// ==========================================
+const EVENTOS_ERP_OUTBOUND = [
+  { id: "agendamento.criado", nome: "Agendamento Criado", desc: "Disparado no momento em que um paciente ou a recepção cria um novo agendamento." },
+  { id: "agendamento.confirmado", nome: "Presença Confirmada", desc: "Disparado quando o paciente confirma a consulta via WhatsApp ou painel." },
+  { id: "agendamento.cancelado", nome: "Agendamento Cancelado", desc: "Disparado quando o agendamento é desmarcado e o horário liberado na agenda." },
+  { id: "agendamento.remarcado", nome: "Agendamento Remarcado", desc: "Disparado quando a data ou horário do atendimento é alterado." },
+  { id: "pagamento.aprovado", nome: "Pagamento Liquidado", desc: "Disparado quando uma consulta/exame particular tem o pagamento aprovado via Pix/Cartão." },
+  { id: "triagem.concluida", nome: "Triagem Pré-Atendimento", desc: "Disparado quando o paciente preenche o formulário clínico de saúde." }
+];
+
+const EVENTOS_ERP_INBOUND_DOCS = [
+  {
+    evento: "agendamento.criar",
+    nome: "Criar Agendamento no RMCare",
+    desc: "Cria um novo agendamento na grade da clínica e cadastra o paciente caso não exista.",
+    exemplo: {
+      evento: "agendamento.criar",
+      paciente: {
+        nome: "Mariana Albuquerque",
+        cpf: "123.456.789-00",
+        telefone: "5584999999999",
+        email: "mariana@exemplo.com",
+        data_nascimento: "1992-05-14"
+      },
+      agendamento: {
+        data: "2026-09-25",
+        horario: "10:30",
+        medico_profissional: "Dr. Ricardo Vasconcelos",
+        tipo_servico: "Endoscopia Digestiva Alta",
+        modalidade: "Particular",
+        valor_total: 450.00,
+        observacoes: "Paciente em jejum de 8 horas"
+      }
+    }
+  },
+  {
+    evento: "agendamento.atualizar_status",
+    nome: "Atualizar Status do Atendimento",
+    desc: "Atualiza o status na grade da clínica (ex: confirmado, cancelado, compareceu, em_atendimento, ausente).",
+    exemplo: {
+      evento: "agendamento.atualizar_status",
+      agendamento_id: "e891bc44-55aa-4321-9988-112233445566",
+      status: "confirmado"
+    }
+  },
+  {
+    evento: "agendamento.cancelar",
+    nome: "Cancelar Agendamento",
+    desc: "Cancela o agendamento e desocupa automaticamente o horário na agenda da clínica.",
+    exemplo: {
+      evento: "agendamento.cancelar",
+      agendamento_id: "e891bc44-55aa-4321-9988-112233445566",
+      motivo: "Cancelado pelo médico no ERP"
+    }
+  },
+  {
+    evento: "agendamento.remarcar",
+    nome: "Remarcar Data/Horário",
+    desc: "Altera a data e o horário de um agendamento existente.",
+    exemplo: {
+      evento: "agendamento.remarcar",
+      agendamento_id: "e891bc44-55aa-4321-9988-112233445566",
+      nova_data: "2026-09-28",
+      novo_horario: "14:00"
+    }
+  },
+  {
+    evento: "bloqueio.criar",
+    nome: "Bloquear Horário na Grade",
+    desc: "Bloqueia a grade do médico para impedir agendamentos de pacientes nesse período.",
+    exemplo: {
+      evento: "bloqueio.criar",
+      medico_profissional: "Dr. Ricardo Vasconcelos",
+      data: "2026-09-25",
+      horario: "11:00",
+      motivo: "Cirurgia de emergência no ERP"
+    }
+  },
+  {
+    evento: "pagamento.confirmar",
+    nome: "Confirmar Pagamento no RMCare",
+    desc: "Liquida o pagamento da consulta/exame no painel financeiro da clínica.",
+    exemplo: {
+      evento: "pagamento.confirmar",
+      agendamento_id: "e891bc44-55aa-4321-9988-112233445566"
+    }
+  },
+  {
+    evento: "ping",
+    nome: "Testar Conexão (Ping/Pong)",
+    desc: "Valida se o endpoint da empresa está ativo e respondendo adequadamente.",
+    exemplo: {
+      evento: "ping"
+    }
+  }
+];
+
 // ==========================================
 // COMPONENTE PRINCIPAL DE INTEGRAÇÕES & WEBHOOKS
 // ==========================================
@@ -538,10 +649,22 @@ export default function IntegracoesView({ bloqueios = [], servicos = [], fetchBl
     auto_sync_cadence: "manual"
   });
 
-  // Configuração de Webhooks & Fluxos Inteligentes
+  // Configuração de Webhooks ERP & Fluxos Inteligentes (Entrada & Saída)
   const [configWebhooks, setConfigWebhooks] = useState({
     webhook_url: "",
+    webhook_outbound_url: "",
+    webhook_outbound_enabled: true,
     webhook_secret: "",
+    inbound_secret: "",
+    eventos_ativos: [
+      "agendamento.criado",
+      "agendamento.confirmado",
+      "agendamento.cancelado",
+      "agendamento.remarcado",
+      "pagamento.aprovado",
+      "triagem.concluida"
+    ],
+    webhook_logs: [],
     webhook_tipo_padrao: "whatsapp",
     respostas_mapping: {
       confirmar: ["1", "sim", "confirmo", "confirmar"],
@@ -558,6 +681,9 @@ export default function IntegracoesView({ bloqueios = [], servicos = [], fetchBl
   // Testador de Webhook
   const [testandoWebhook, setTestandoWebhook] = useState(false);
   const [resultadoTeste, setResultadoTeste] = useState(null);
+  const [eventoInboundDocAtivo, setEventoInboundDocAtivo] = useState("agendamento.criar");
+  const [eventoTesteOutbound, setEventoTesteOutbound] = useState("agendamento.criado");
+  const [limpandoLogs, setLimpandoLogs] = useState(false);
 
   // Estados de Exportação
   const [exportando, setExportando] = useState(null);
@@ -576,11 +702,19 @@ export default function IntegracoesView({ bloqueios = [], servicos = [], fetchBl
         const confCampos = data.config_campos || {};
         const confWeb = confCampos.config_webhooks || data.config_chaves?.config_webhooks || {};
 
+        const outUrl = confWeb.webhook_outbound_url || confWeb.webhook_url_erp || confWeb.webhook_url || data.config_chaves?.webhook_url_inteligente || data.rmchat_webhook_url || "";
+        const sec = confWeb.webhook_secret || confWeb.inbound_secret || data.config_chaves?.webhook_secret || "";
+
         setConfigWebhooks((prev) => ({
           ...prev,
           ...confWeb,
-          webhook_url: confWeb.webhook_url || data.config_chaves?.webhook_url_inteligente || data.rmchat_webhook_url || "",
-          webhook_secret: confWeb.webhook_secret || data.config_chaves?.webhook_secret || "",
+          webhook_url: outUrl,
+          webhook_outbound_url: outUrl,
+          webhook_outbound_enabled: confWeb.webhook_outbound_enabled !== false,
+          webhook_secret: sec,
+          inbound_secret: confWeb.inbound_secret || sec,
+          eventos_ativos: Array.isArray(confWeb.eventos_ativos) ? confWeb.eventos_ativos : prev.eventos_ativos,
+          webhook_logs: Array.isArray(confWeb.webhook_logs) ? confWeb.webhook_logs : [],
           respostas_mapping: confWeb.respostas_mapping || prev.respostas_mapping,
           automacoes_presenca: confCampos.automacoes_presenca || confWeb.automacoes_presenca || prev.automacoes_presenca
         }));
@@ -605,23 +739,80 @@ export default function IntegracoesView({ bloqueios = [], servicos = [], fetchBl
     }
   };
 
+  const handleGerarNovaChave = () => {
+    const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+    let rand = "rm_sec_";
+    for (let i = 0; i < 24; i++) {
+      rand += chars[Math.floor(Math.random() * chars.length)];
+    }
+    setConfigWebhooks((prev) => ({
+      ...prev,
+      webhook_secret: rand,
+      inbound_secret: rand
+    }));
+    playDopamineSound("click");
+    triggerHaptic("light");
+    if (showToast) showToast("Nova chave secreta gerada! Lembre-se de salvar.");
+  };
+
+  const toggleEventoAtivo = (eventoId) => {
+    const atuais = Array.isArray(configWebhooks.eventos_ativos) ? configWebhooks.eventos_ativos : [];
+    let novos;
+    if (atuais.includes(eventoId)) {
+      novos = atuais.filter((e) => e !== eventoId);
+    } else {
+      novos = [...atuais, eventoId];
+    }
+    setConfigWebhooks((prev) => ({ ...prev, eventos_ativos: novos }));
+    playDopamineSound("click");
+    triggerHaptic("light");
+  };
+
   const handleTestarWebhook = async () => {
-    if (!configWebhooks.webhook_url || !configWebhooks.webhook_url.startsWith("http")) {
-      if (showToast) showToast("Informe uma URL de Webhook válida iniciando com http:// ou https://", "error");
+    const targetUrl = (configWebhooks.webhook_outbound_url || configWebhooks.webhook_url || "").trim();
+    if (!targetUrl || !targetUrl.startsWith("http")) {
+      if (showToast) showToast("Informe uma URL de Webhook de saída válida iniciando com http:// ou https://", "error");
       return;
     }
     setTestandoWebhook(true);
     setResultadoTeste(null);
     playDopamineSound("click");
     try {
-      const res = await actionTestarWebhookFluxoInteligente(configWebhooks.webhook_url, configWebhooks.webhook_secret);
-      setResultadoTeste({ success: true, status: res.status, resposta: res.resposta });
-      if (showToast) showToast(`Teste bem-sucedido! Servidor retornou HTTP ${res.status}`);
+      const res = await actionTestarWebhookERP({
+        evento: eventoTesteOutbound,
+        url: targetUrl,
+        secret: configWebhooks.webhook_secret
+      });
+      setResultadoTeste({
+        success: res.success,
+        status: res.status,
+        latencyMs: res.latencyMs,
+        resposta: res.resposta,
+        payloadEnviado: res.payloadEnviado
+      });
+      if (res.success) {
+        if (showToast) showToast(`Teste bem-sucedido! Servidor do ERP retornou HTTP ${res.status} em ${res.latencyMs}ms`);
+      } else {
+        if (showToast) showToast(`Falha no teste: Servidor retornou HTTP ${res.status || 'sem resposta'}`, "error");
+      }
     } catch (err) {
       setResultadoTeste({ success: false, error: err.message });
       if (showToast) showToast(`Erro no teste: ${err.message}`, "error");
     } finally {
       setTestandoWebhook(false);
+    }
+  };
+
+  const handleLimparLogs = async () => {
+    setLimpandoLogs(true);
+    try {
+      await actionLimparLogsWebhook();
+      setConfigWebhooks((prev) => ({ ...prev, webhook_logs: [] }));
+      if (showToast) showToast("Histórico de logs de webhook limpo com sucesso!");
+    } catch (e) {
+      if (showToast) showToast("Erro ao limpar logs.", "error");
+    } finally {
+      setLimpandoLogs(false);
     }
   };
 
@@ -703,10 +894,10 @@ export default function IntegracoesView({ bloqueios = [], servicos = [], fetchBl
     if (typeof fetchBloqueios === "function") await fetchBloqueios();
   };
 
-  const inboundWebhookUrl = `${originUrl || "https://rmagenda.com.br"}/api/webhook-resposta`;
+  const inboundWebhookUrl = `${originUrl || "https://rmagenda.com.br"}/api/webhooks/empresa/${empresaId || ""}`;
 
   return (
-    <motion.div key="integracoes" {...fadeUp} className="flex-1 flex flex-col h-full overflow-hidden w-full max-w-7xl mx-auto p-4 md:p-6 lg:p-8">
+    <motion.div key="integracoes" {...fadeUp} className="flex-1 flex flex-col h-full overflow-hidden w-full p-4 sm:p-5 lg:p-6 min-h-0">
       
       {/* CABEÇALHO UNIFICADO */}
       <div className="mb-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-black/[0.06] dark:border-white/[0.08] pb-4">
@@ -746,310 +937,92 @@ export default function IntegracoesView({ bloqueios = [], servicos = [], fetchBl
               }`}
             >
               {subTab === "webhooks" && (
-                <motion.div layoutId="subtab-int" className="absolute inset-0 bg-zinc-950 dark:bg-white rounded-xl -z-10 shadow-sm" transition={spring} />
-              )}
-              <Zap size={13} className="text-amber-500" /> Webhooks & Fluxos
-            </button>
-
-            <button
-              onClick={() => { playDopamineSound("click"); setSubTab("medicalsys"); }}
-              className={`relative px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-xl transition-colors z-10 whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
-                subTab === "medicalsys" ? "text-white dark:text-black" : "text-zinc-500 hover:text-zinc-950 dark:hover:text-white"
-              }`}
-            >
-              {subTab === "medicalsys" && (
-                <motion.div layoutId="subtab-int" className="absolute inset-0 bg-zinc-950 dark:bg-white rounded-xl -z-10 shadow-sm" transition={spring} />
-              )}
-              <Server size={13} /> ERP (Medicalsys)
-            </button>
-
-            <button
-              onClick={() => { playDopamineSound("click"); setSubTab("mercadopago"); }}
-              className={`relative px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-xl transition-colors z-10 whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
-                subTab === "mercadopago" ? "text-white dark:text-black" : "text-zinc-500 hover:text-zinc-950 dark:hover:text-white"
-              }`}
-            >
-              {subTab === "mercadopago" && (
-                <motion.div layoutId="subtab-int" className="absolute inset-0 bg-zinc-950 dark:bg-white rounded-xl -z-10 shadow-sm" transition={spring} />
-              )}
-              <CreditCard size={13} /> Mercado Pago
-            </button>
-
-            <button
-              onClick={() => { playDopamineSound("click"); setSubTab("exportacao"); }}
-              className={`relative px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-xl transition-colors z-10 whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
-                subTab === "exportacao" ? "text-white dark:text-black" : "text-zinc-500 hover:text-zinc-950 dark:hover:text-white"
-              }`}
-            >
-              {subTab === "exportacao" && (
-                <motion.div layoutId="subtab-int" className="absolute inset-0 bg-zinc-950 dark:bg-white rounded-xl -z-10 shadow-sm" transition={spring} />
-              )}
-              <FileSpreadsheet size={13} /> Exportar (LGPD)
-            </button>
-          </div>
-        </LayoutGroup>
-      </div>
-
-      {/* CONTEÚDO DAS SUB-ABAS */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar pb-28 pr-1 space-y-6">
-        <AnimatePresence mode="wait">
-          
-          {/* SUB-ABA 1: PAINEL GERAL DE CONEXÕES */}
-          {subTab === "painel" && (
-            <motion.div key="sub-painel" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={spring} className="space-y-6">
-              
-              {/* CARD WEBHOOKS E FLUXOS INTELIGENTES */}
-              <div className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                <div className="flex items-start gap-4">
-                  <div className="w-14 h-14 rounded-2xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center flex-shrink-0 border border-amber-200/40">
-                    <Zap size={28} />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-xl font-black text-zinc-950 dark:text-white">Webhooks & Fluxos Inteligentes</h3>
-                      <span className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full ${
-                        configWebhooks.webhook_url ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300" : "bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300"
-                      }`}>
-                        {configWebhooks.webhook_url ? "Ativo" : "Pendente de URL"}
-                      </span>
-                    </div>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 max-w-xl leading-relaxed">
-                      Acione fluxos interativos de IA (n8n, Typebot, chatbots externos) para confirmação, remarcação e cancelamento com escuta ativa via API.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => { playDopamineSound("click"); setShowDocModal(true); }}
-                    className="px-5 py-3.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 font-extrabold text-xs uppercase tracking-wider rounded-2xl transition-all flex items-center gap-2 cursor-pointer"
-                  >
-                    <BookOpen size={15} /> Documentação da API
-                  </button>
-
-                  <button
-                    onClick={() => { playDopamineSound("click"); setSubTab("webhooks"); }}
-                    className="px-6 py-3.5 bg-zinc-950 dark:bg-white text-white dark:text-black font-extrabold text-xs uppercase tracking-wider rounded-2xl hover:bg-black transition-all shadow-md self-start lg:self-center cursor-pointer"
-                  >
-                    Configurar
-                  </button>
-                </div>
-              </div>
-
-              {/* CARD MEDICALSYS */}
-              <div className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                <div className="flex items-start gap-4">
-                  <div className="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0 border border-blue-200/40">
-                    <Server size={28} />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-xl font-black text-zinc-950 dark:text-white">Medicalsys Agenda ERP</h3>
-                      <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300">
-                        Conectado
-                      </span>
-                    </div>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 max-w-xl leading-relaxed">
-                      Sincronize horários indisponíveis, nomes de pacientes e consultas agendadas diretamente com a plataforma Medicalsys.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-2.5 flex-shrink-0">
-                  <button
-                    onClick={handleSyncNow}
-                    disabled={syncLoading}
-                    className="px-5 py-3 bg-zinc-950 dark:bg-white text-white dark:text-black hover:bg-black font-bold text-xs uppercase tracking-wider rounded-2xl transition-all flex items-center justify-center gap-2 shadow-md cursor-pointer"
-                  >
-                    {syncLoading ? <Activity size={15} className="animate-spin text-blue-500" /> : <RefreshCw size={15} />}
-                    Sincronizar Agora
-                  </button>
-                  <button
-                    onClick={() => { playDopamineSound("click"); setSubTab("medicalsys"); }}
-                    className="px-4 py-3 border border-zinc-200/80 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-900 text-zinc-700 dark:text-zinc-300 font-bold text-xs uppercase tracking-wider rounded-2xl transition-colors cursor-pointer"
-                  >
-                    Configurar API
-                  </button>
-                </div>
-              </div>
-
-              {/* CARD MERCADO PAGO */}
-              <div className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                <div className="flex items-start gap-4">
-                  <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center flex-shrink-0 border border-indigo-200/40">
-                    <CreditCard size={28} />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-xl font-black text-zinc-950 dark:text-white">Mercado Pago Checkout</h3>
-                      <span className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full ${
-                        chaves.mp_public_key ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300" : "bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300"
-                      }`}>
-                        {chaves.mp_public_key ? "Configurado" : "Pendente"}
-                      </span>
-                    </div>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 max-w-xl leading-relaxed">
-                      Provedor financeiro para recebimento de consultas e exames via cartão de crédito ou Pix instantâneo no checkout do paciente.
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => { playDopamineSound("click"); setSubTab("mercadopago"); }}
-                  className="px-6 py-3.5 bg-zinc-950 dark:bg-white text-white dark:text-black font-extrabold text-xs uppercase tracking-wider rounded-2xl hover:bg-black transition-all shadow-md self-start lg:self-center cursor-pointer"
-                >
-                  Credenciais
-                </button>
-              </div>
-
-            </motion.div>
-          )}
-
-          {/* SUB-ABA 2: CONFIGURAÇÃO DE WEBHOOKS & FLUXOS INTELIGENTES */}
-          {subTab === "webhooks" && (
             <motion.div key="sub-webhooks" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={spring} className="space-y-6">
               
-              {/* BOTÃO PARA ABRIR A DOCUMENTAÇÃO INTERATIVA */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 bg-amber-500/[0.06] border border-amber-500/25 rounded-3xl">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                    <BookOpen size={20} />
+              {/* BANNER DE APRESENTAÇÃO E STATUS DOS WEBHOOKS DA EMPRESA */}
+              <div className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center flex-shrink-0 border border-amber-500/20">
+                    <Zap size={24} />
                   </div>
                   <div>
-                    <h4 className="font-extrabold text-sm text-zinc-950 dark:text-white">
-                      Guia de Integração & Documentação da API
-                    </h4>
-                    <p className="text-xs text-zinc-500">
-                      Veja o formato completo dos payloads JSON (envio e retorno), exemplos em cURL e passo a passo para n8n/Typebot.
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <h3 className="text-lg md:text-xl font-black text-zinc-950 dark:text-white">
+                        Webhooks ERP Bidirecionais
+                      </h3>
+                      <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300/40 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Endpoint Exclusivo da Clínica
+                      </span>
+                      {configWebhooks.webhook_outbound_enabled && (configWebhooks.webhook_outbound_url || configWebhooks.webhook_url) && (
+                        <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-300/40">
+                          Disparo para ERP Ativo
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 max-w-2xl leading-relaxed">
+                      Conecte seu ERP médico, CRM ou n8n nos dois sentidos: receba novos agendamentos e cancelamentos no endpoint exclusivo da sua clínica, e envie notificações em tempo real para seu sistema quando eventos acontecerem.
                     </p>
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => { playDopamineSound("click"); setShowDocModal(true); }}
-                  className="px-5 py-2.5 bg-zinc-950 hover:bg-black dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-extrabold text-xs rounded-xl flex items-center gap-2 shadow-sm transition-all cursor-pointer shrink-0"
-                >
-                  <Code2 size={15} /> Ver Documentação
-                </button>
-              </div>
-
-              {/* SEÇÃO 1: URL DE DISPARO EXTERNO (OUTGOING) & SECRET */}
-              <div className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-6">
-                <div className="flex items-center gap-3 border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
-                  <div className="w-10 h-10 rounded-2xl bg-amber-50 dark:bg-amber-950/40 text-amber-500 flex items-center justify-center">
-                    <Zap size={20} />
-                  </div>
-                  <div>
-                    <h3 className="text-base md:text-lg font-black text-zinc-950 dark:text-white">
-                      Disparo de Webhook / Início de Fluxo Inteligente
-                    </h3>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                      Quando uma automação estiver configurada como "Tipo: Webhook", o sistema enviará um payload JSON para esta URL.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid md:grid-cols-2 gap-5">
-                  <div className="md:col-span-2 space-y-1.5">
-                    <label className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-widest block ml-1">
-                      URL de Disparo do Webhook (Ex.: n8n, Typebot, Chatbot Externo) *
-                    </label>
-                    <input
-                      type="url"
-                      value={configWebhooks.webhook_url || ""}
-                      onChange={(e) => setConfigWebhooks({ ...configWebhooks, webhook_url: e.target.value })}
-                      placeholder="https://n8n.suaclinica.com/webhook/confirmacao-ia"
-                      className="w-full px-4 py-3.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl text-xs font-mono text-zinc-900 dark:text-white outline-none focus:border-[#9FC131]"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-widest block ml-1 flex items-center gap-1">
-                      <KeySquare size={12} /> Chave Secreta / Token de Assinatura (Header x-webhook-secret)
-                    </label>
-                    <input
-                      type="text"
-                      value={configWebhooks.webhook_secret || ""}
-                      onChange={(e) => setConfigWebhooks({ ...configWebhooks, webhook_secret: e.target.value })}
-                      placeholder="Ex.: secret_rmcare_prod_xyz123"
-                      className="w-full px-4 py-3.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl text-xs font-mono text-zinc-900 dark:text-white outline-none focus:border-[#9FC131]"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <CustomSelect
-                      label="Canal de Disparo Padrão para Novas Mensagens"
-                      value={configWebhooks.webhook_tipo_padrao || "whatsapp"}
-                      onChange={(v) => setConfigWebhooks({ ...configWebhooks, webhook_tipo_padrao: v })}
-                      options={[
-                        { value: "whatsapp", label: "Mensagem WhatsApp Normal (RM Chat / Texto)" },
-                        { value: "webhook", label: "Disparo Webhook (Fluxo Inteligente / Chatbot)" }
-                      ]}
-                    />
-                  </div>
-                </div>
-
-                {/* BOTÃO DE TESTAR WEBHOOK */}
-                <div className="pt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-zinc-50 dark:bg-zinc-900/60 p-4 rounded-2xl border border-zinc-200/70 dark:border-zinc-800">
-                  <div className="text-xs text-zinc-500">
-                    Clique para testar se seu endpoint de webhook está pronto para receber requisições do RM Care.
-                  </div>
+                <div className="flex items-center gap-2.5 shrink-0">
                   <button
                     type="button"
-                    onClick={handleTestarWebhook}
-                    disabled={testandoWebhook || !configWebhooks.webhook_url}
-                    className="px-5 py-2.5 bg-zinc-950 dark:bg-white text-white dark:text-black font-extrabold text-xs rounded-xl flex items-center gap-2 hover:bg-black transition-all shadow-sm disabled:opacity-40 cursor-pointer"
+                    onClick={() => { playDopamineSound("click"); setShowDocModal(true); }}
+                    className="px-4 py-2.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 font-extrabold text-xs rounded-xl flex items-center gap-2 transition-all cursor-pointer shadow-xs"
                   >
-                    {testandoWebhook ? <Activity size={14} className="animate-spin text-amber-500" /> : <Send size={14} />}
-                    <span>{testandoWebhook ? "Enviando Teste..." : "Testar Webhook Agora"}</span>
+                    <BookOpen size={14} /> Guia Completo da API
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    disabled={loading}
+                    className="px-5 py-2.5 bg-zinc-950 hover:bg-black dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-extrabold text-xs rounded-xl flex items-center gap-2 transition-all cursor-pointer shadow-sm disabled:opacity-40"
+                  >
+                    {loading ? <Activity size={14} className="animate-spin text-amber-500" /> : <Save size={14} />}
+                    Salvar Webhooks
                   </button>
                 </div>
-
-                {/* RESULTADO DO TESTE */}
-                {resultadoTeste && (
-                  <div className={`p-4 rounded-2xl border text-xs ${
-                    resultadoTeste.success
-                      ? "bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200"
-                      : "bg-red-50/70 dark:bg-red-950/30 border-red-300 dark:border-red-800 text-red-900 dark:text-red-200"
-                  }`}>
-                    <div className="flex items-center gap-2 font-bold mb-1">
-                      {resultadoTeste.success ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
-                      <span>{resultadoTeste.success ? `Webhook Respondeu com Sucesso (HTTP ${resultadoTeste.status})` : "Falha ao Conectar no Webhook"}</span>
-                    </div>
-                    <p className="font-mono text-[11px] opacity-80 break-all">
-                      {resultadoTeste.resposta || resultadoTeste.error}
-                    </p>
-                  </div>
-                )}
               </div>
 
-              {/* SEÇÃO 2: URL INBOUND DE RECEPÇÃO / RESPOSTAS DA API */}
-              <div className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-5">
-                <div className="flex items-center gap-3 border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
-                  <div className="w-10 h-10 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 flex items-center justify-center">
-                    <Bot size={20} />
+              {/* ========================================================================= */}
+              {/* SEÇÃO 1: WEBHOOK DE ENTRADA (RECEBER DO SEU ERP NO RMCARE)                */}
+              {/* ========================================================================= */}
+              <div className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 flex items-center justify-center">
+                      <ArrowDownLeft size={20} />
+                    </div>
+                    <div>
+                      <h3 className="text-base md:text-lg font-black text-zinc-950 dark:text-white flex items-center gap-2">
+                        1. Webhook de Entrada (Inbound) • Receber Dados do seu ERP
+                      </h3>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                        Configure seu ERP para enviar requisições POST para o endpoint exclusivo da sua clínica.
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-base md:text-lg font-black text-zinc-950 dark:text-white">
-                      Escuta Ativa: URL de Retorno (Inbound Webhook / API)
-                    </h3>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                      Configure no seu n8n/Typebot para enviar a resposta do paciente de volta para este endpoint.
-                    </p>
-                  </div>
+                  <span className="text-[11px] font-mono font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-3 py-1 rounded-xl border border-emerald-300/30">
+                    HTTP POST Ativo
+                  </span>
                 </div>
 
-                <div className="p-4 bg-zinc-50 dark:bg-zinc-900/80 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl space-y-3">
-                  <span className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-widest block">
-                    URL do Endpoint de Resposta da sua Clínica (POST):
-                  </span>
+                {/* URL DO ENDPOINT EXCLUSIVO DA EMPRESA */}
+                <div className="p-4 bg-zinc-50 dark:bg-zinc-900/80 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-widest block">
+                      URL Exclusiva de Webhook da sua Clínica (Inbound):
+                    </label>
+                    <span className="text-[10px] text-zinc-400 font-mono">Única por clínica</span>
+                  </div>
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
                       readOnly
                       value={inboundWebhookUrl}
-                      className="flex-1 px-4 py-3 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs font-mono font-bold text-blue-600 dark:text-blue-400 select-all outline-none"
+                      className="flex-1 px-4 py-3 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 select-all outline-none"
                     />
                     <button
                       type="button"
@@ -1059,97 +1032,478 @@ export default function IntegracoesView({ bloqueios = [], servicos = [], fetchBl
                       <Copy size={14} /> Copiar URL
                     </button>
                   </div>
-                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
-                    💡 O corpo da requisição deve enviar em JSON: <code className="text-zinc-900 dark:text-white font-mono bg-zinc-200 dark:bg-zinc-800 px-1.5 py-0.5 rounded">agendamento_id</code> e <code className="text-zinc-900 dark:text-white font-mono bg-zinc-200 dark:bg-zinc-800 px-1.5 py-0.5 rounded">resposta</code> (ou código numérico mapeado abaixo).
-                  </p>
                 </div>
 
-                {/* MAPEAMENTO DE CÓDIGOS DE RESPOSTA */}
-                <div className="space-y-4 pt-2">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-black uppercase tracking-wider text-zinc-950 dark:text-white flex items-center gap-2">
-                      <Sliders size={14} /> Mapeamento de Códigos e Palavras de Resposta
-                    </h4>
-                    <span className="text-[10px] text-zinc-400">Valores separados por vírgula</span>
+                {/* CHAVE SECRETA DE AUTENTICAÇÃO */}
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-widest block ml-1 flex items-center gap-1">
+                        <KeySquare size={12} /> Chave Secreta de Autenticação (Header x-webhook-secret)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleGerarNovaChave}
+                        className="text-[10px] font-bold text-amber-600 hover:text-amber-700 cursor-pointer"
+                      >
+                        + Gerar Nova Chave
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={configWebhooks.webhook_secret || ""}
+                        onChange={(e) => setConfigWebhooks({ ...configWebhooks, webhook_secret: e.target.value, inbound_secret: e.target.value })}
+                        placeholder="Ex.: rm_sec_123456789abcdef"
+                        className="flex-1 px-4 py-3 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs font-mono text-zinc-900 dark:text-white outline-none focus:border-amber-500"
+                      />
+                      {configWebhooks.webhook_secret && (
+                        <button
+                          type="button"
+                          onClick={() => handleCopiarUrl(configWebhooks.webhook_secret)}
+                          className="px-3.5 py-3 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 rounded-xl text-zinc-700 dark:text-zinc-300 font-bold text-xs flex items-center gap-1 cursor-pointer"
+                        >
+                          <Copy size={13} />
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-zinc-500 ml-1">
+                      O seu ERP deve enviar esta chave no cabeçalho <code className="font-mono bg-zinc-100 dark:bg-zinc-800 px-1 py-0.5 rounded text-zinc-800 dark:text-zinc-200">x-webhook-secret</code> ou como <code className="font-mono bg-zinc-100 dark:bg-zinc-800 px-1 py-0.5 rounded text-zinc-800 dark:text-zinc-200">Bearer Token</code>.
+                    </p>
                   </div>
 
-                  <div className="grid sm:grid-cols-3 gap-4">
-                    {/* CONFIRMAR */}
-                    <div className="p-4 bg-emerald-500/[0.04] border border-emerald-500/25 rounded-2xl space-y-2">
-                      <div className="flex items-center gap-1.5 text-xs font-extrabold text-emerald-700 dark:text-emerald-300">
-                        <CheckCircle2 size={15} /> Confirmar Atendimento
+                  <div className="p-4 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl flex flex-col justify-between">
+                    <div>
+                      <span className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-widest block">Segurança Multi-Tenant</span>
+                      <p className="text-xs text-zinc-600 dark:text-zinc-300 mt-1 leading-relaxed">
+                        Cada clínica processa seus dados com isolamento estrito. Apenas agendamentos e pacientes associados ao seu ID de clínica são acessíveis.
+                      </p>
+                    </div>
+                    <div className="pt-2 flex items-center gap-2 text-[11px] text-emerald-700 dark:text-emerald-400 font-bold">
+                      <ShieldCheck size={14} /> Isolamento de dados por Tenant ativo
+                    </div>
+                  </div>
+                </div>
+
+                {/* VISUALIZADOR DE DOCUMENTAÇÃO DOS EVENTOS RECEBIDOS PELO RMCARE */}
+                <div className="space-y-3 pt-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black uppercase tracking-wider text-zinc-950 dark:text-white flex items-center gap-2">
+                      <Code2 size={15} /> Eventos e Payloads JSON Aceitos pelo seu Endpoint
+                    </h4>
+                    <span className="text-[10px] text-zinc-400">Clique para alternar o exemplo</span>
+                  </div>
+
+                  {/* SUB-ABAS DOS EVENTOS ACEITOS */}
+                  <div className="flex overflow-x-auto gap-1.5 pb-1">
+                    {EVENTOS_ERP_INBOUND_DOCS.map((doc) => {
+                      const isSel = eventoInboundDocAtivo === doc.evento;
+                      return (
+                        <button
+                          key={doc.evento}
+                          type="button"
+                          onClick={() => { playDopamineSound("click"); setEventoInboundDocAtivo(doc.evento); }}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                            isSel
+                              ? "bg-zinc-950 text-white dark:bg-white dark:text-black shadow-xs"
+                              : "bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300"
+                          }`}
+                        >
+                          <span className="font-mono text-[11px]">{doc.evento}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* PREVIEW DO EVENTO SELECIONADO */}
+                  {(() => {
+                    const docAtivo = EVENTOS_ERP_INBOUND_DOCS.find((d) => d.evento === eventoInboundDocAtivo) || EVENTOS_ERP_INBOUND_DOCS[0];
+                    const jsonString = JSON.stringify(docAtivo.exemplo, null, 2);
+
+                    const curlString = `curl -X POST "${inboundWebhookUrl}" \\\n  -H "Content-Type: application/json" \\\n  -H "x-webhook-secret: ${configWebhooks.webhook_secret || 'sua_chave_aqui'}" \\\n  -d '${JSON.stringify(docAtivo.exemplo)}'`;
+
+                    return (
+                      <div className="p-4 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div>
+                            <span className="font-bold text-xs text-zinc-900 dark:text-white flex items-center gap-1.5">
+                              {docAtivo.nome}
+                            </span>
+                            <p className="text-[11px] text-zinc-500 mt-0.5">{docAtivo.desc}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(jsonString);
+                                playDopamineSound("click");
+                                if (showToast) showToast("JSON copiado!");
+                              }}
+                              className="px-2.5 py-1 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 font-bold text-[11px] rounded-lg flex items-center gap-1 cursor-pointer"
+                            >
+                              <Copy size={11} /> Copiar JSON
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(curlString);
+                                playDopamineSound("click");
+                                if (showToast) showToast("Comando cURL copiado!");
+                              }}
+                              className="px-2.5 py-1 bg-zinc-950 dark:bg-white text-white dark:text-black font-bold text-[11px] rounded-lg flex items-center gap-1 cursor-pointer"
+                            >
+                              <Terminal size={11} /> Copiar cURL
+                            </button>
+                          </div>
+                        </div>
+
+                        <pre className="p-3.5 bg-zinc-950 text-emerald-400 font-mono text-[11px] rounded-xl overflow-x-auto border border-zinc-800 custom-scrollbar max-h-56">
+                          {jsonString}
+                        </pre>
                       </div>
-                      <input
-                        type="text"
-                        value={Array.isArray(configWebhooks.respostas_mapping?.confirmar) ? configWebhooks.respostas_mapping.confirmar.join(", ") : "1, sim, confirmo"}
-                        onChange={(e) => {
-                          const list = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
-                          setConfigWebhooks({
-                            ...configWebhooks,
-                            respostas_mapping: {
-                              ...(configWebhooks.respostas_mapping || {}),
-                              confirmar: list
-                            }
-                          });
-                        }}
-                        placeholder="1, sim, confirmo, confirmar"
-                        className="w-full p-2.5 bg-white dark:bg-black border border-emerald-500/30 rounded-xl text-xs font-mono outline-none focus:border-emerald-500"
-                      />
-                      <span className="text-[10px] text-zinc-400 block">Marca o agendamento como Confirmado</span>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              {/* ========================================================================= */}
+              {/* SEÇÃO 2: WEBHOOK DE SAÍDA (ENVIAR DO RMCARE PARA O SEU ERP)               */}
+              {/* ========================================================================= */}
+              <div className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 flex items-center justify-center">
+                      <ArrowUpRight size={20} />
+                    </div>
+                    <div>
+                      <h3 className="text-base md:text-lg font-black text-zinc-950 dark:text-white flex items-center gap-2">
+                        2. Webhook de Saída (Outbound) • Enviar para a API do seu ERP
+                      </h3>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                        O RMCare envia requisições POST para a URL do seu ERP sempre que os eventos selecionados ocorrerem.
+                      </p>
+                    </div>
+                  </div>
+
+                  <ToggleSwitch
+                    checked={Boolean(configWebhooks.webhook_outbound_enabled)}
+                    onChange={(v) => setConfigWebhooks({ ...configWebhooks, webhook_outbound_enabled: v })}
+                    label={configWebhooks.webhook_outbound_enabled ? "Envio Ativado" : "Envio Desativado"}
+                  />
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-5">
+                  <div className="md:col-span-2 space-y-1.5">
+                    <label className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-widest block ml-1">
+                      URL de Destino do Webhook do seu ERP (Onde o seu sistema escuta) *
+                    </label>
+                    <input
+                      type="url"
+                      value={configWebhooks.webhook_outbound_url || configWebhooks.webhook_url || ""}
+                      onChange={(e) =>
+                        setConfigWebhooks({
+                          ...configWebhooks,
+                          webhook_outbound_url: e.target.value,
+                          webhook_url: e.target.value
+                        })
+                      }
+                      placeholder="https://api.seu-erp.com.br/webhooks/rmcare"
+                      className="w-full px-4 py-3 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs font-mono text-zinc-900 dark:text-white outline-none focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-widest block ml-1 flex items-center gap-1">
+                      <KeySquare size={12} /> Chave Secreta Enviada ao seu ERP (Header x-webhook-secret)
+                    </label>
+                    <input
+                      type="text"
+                      value={configWebhooks.webhook_secret || ""}
+                      onChange={(e) => setConfigWebhooks({ ...configWebhooks, webhook_secret: e.target.value })}
+                      placeholder="Ex.: erp_sec_token_998877"
+                      className="w-full px-4 py-3 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-xl text-xs font-mono text-zinc-900 dark:text-white outline-none focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <CustomSelect
+                      label="Canal Padrão de Mensageria"
+                      value={configWebhooks.webhook_tipo_padrao || "whatsapp"}
+                      onChange={(v) => setConfigWebhooks({ ...configWebhooks, webhook_tipo_padrao: v })}
+                      options={[
+                        { value: "whatsapp", label: "WhatsApp Normal (RM Chat / Mensagem Direta)" },
+                        { value: "webhook", label: "Disparo Webhook (Fluxo Inteligente / Chatbot)" }
+                      ]}
+                    />
+                  </div>
+                </div>
+
+                {/* GRADE DE SELEÇÃO DE QUAIS EVENTOS DISPARAM O WEBHOOK */}
+                <div className="space-y-3 pt-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-widest block ml-1">
+                      Gatilhos & Eventos Enviados para o ERP:
+                    </label>
+                    <span className="text-[10px] text-zinc-400">Marque os eventos que deseja sincronizar</span>
+                  </div>
+
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {EVENTOS_ERP_OUTBOUND.map((ev) => {
+                      const ativo = (configWebhooks.eventos_ativos || []).includes(ev.id);
+                      return (
+                        <div
+                          key={ev.id}
+                          onClick={() => toggleEventoAtivo(ev.id)}
+                          className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 ${
+                            ativo
+                              ? "bg-blue-50/70 dark:bg-blue-950/20 border-blue-300 dark:border-blue-800 shadow-2xs"
+                              : "bg-zinc-50 dark:bg-zinc-900/60 border-zinc-200/80 dark:border-zinc-800 opacity-60 hover:opacity-100"
+                          }`}
+                        >
+                          <div className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
+                            ativo ? "bg-blue-600 text-white" : "border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-black"
+                          }`}>
+                            {ativo && <Check size={13} strokeWidth={3} />}
+                          </div>
+                          <div className="min-w-0">
+                            <span className="font-bold text-xs text-zinc-900 dark:text-white block">
+                              {ev.nome}
+                            </span>
+                            <span className="font-mono text-[10px] text-blue-600 dark:text-blue-400 block mb-1">
+                              {ev.id}
+                            </span>
+                            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-tight">
+                              {ev.desc}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* TESTADOR AO VIVO DE WEBHOOK DE SAÍDA */}
+                <div className="pt-3 border-t border-zinc-200/70 dark:border-zinc-800 space-y-3">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-zinc-50 dark:bg-zinc-900/60 p-4 rounded-2xl border border-zinc-200/70 dark:border-zinc-800">
+                    <div className="space-y-1">
+                      <span className="font-bold text-xs text-zinc-900 dark:text-white block">
+                        Simulador de Disparo em Tempo Real:
+                      </span>
+                      <p className="text-xs text-zinc-500">
+                        Selecione um evento e envie uma requisição real para o seu ERP agora.
+                      </p>
                     </div>
 
-                    {/* CANCELAR */}
-                    <div className="p-4 bg-rose-500/[0.04] border border-rose-500/25 rounded-2xl space-y-2">
-                      <div className="flex items-center gap-1.5 text-xs font-extrabold text-rose-700 dark:text-rose-300">
-                        <AlertTriangle size={15} /> Cancelar / Rejeitar
-                      </div>
-                      <input
-                        type="text"
-                        value={Array.isArray(configWebhooks.respostas_mapping?.cancelar) ? configWebhooks.respostas_mapping.cancelar.join(", ") : "2, nao, cancelar"}
-                        onChange={(e) => {
-                          const list = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
-                          setConfigWebhooks({
-                            ...configWebhooks,
-                            respostas_mapping: {
-                              ...(configWebhooks.respostas_mapping || {}),
-                              cancelar: list
-                            }
-                          });
-                        }}
-                        placeholder="2, nao, não, cancelar, desmarcar"
-                        className="w-full p-2.5 bg-white dark:bg-black border border-rose-500/30 rounded-xl text-xs font-mono outline-none focus:border-rose-500"
-                      />
-                      <span className="text-[10px] text-zinc-400 block">Cancela e libera o horário no sistema</span>
-                    </div>
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <select
+                        value={eventoTesteOutbound}
+                        onChange={(e) => setEventoTesteOutbound(e.target.value)}
+                        className="px-3 py-2.5 bg-white dark:bg-black border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs font-bold text-zinc-800 dark:text-zinc-200 outline-none cursor-pointer"
+                      >
+                        {EVENTOS_ERP_OUTBOUND.map((ev) => (
+                          <option key={ev.id} value={ev.id}>
+                            {ev.nome} ({ev.id})
+                          </option>
+                        ))}
+                      </select>
 
-                    {/* REMARCAR */}
-                    <div className="p-4 bg-amber-500/[0.04] border border-amber-500/25 rounded-2xl space-y-2">
-                      <div className="flex items-center gap-1.5 text-xs font-extrabold text-amber-700 dark:text-amber-300">
-                        <Clock size={15} /> Solicitar Remarcação
-                      </div>
-                      <input
-                        type="text"
-                        value={Array.isArray(configWebhooks.respostas_mapping?.remarcar) ? configWebhooks.respostas_mapping.remarcar.join(", ") : "3, remarcar, reagendar"}
-                        onChange={(e) => {
-                          const list = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
-                          setConfigWebhooks({
-                            ...configWebhooks,
-                            respostas_mapping: {
-                              ...(configWebhooks.respostas_mapping || {}),
-                              remarcar: list
-                            }
-                          });
-                        }}
-                        placeholder="3, remarcar, reagendar, mudar"
-                        className="w-full p-2.5 bg-white dark:bg-black border border-amber-500/30 rounded-xl text-xs font-mono outline-none focus:border-amber-500"
-                      />
-                      <span className="text-[10px] text-zinc-400 block">Gera status e alerta para a recepção</span>
+                      <button
+                        type="button"
+                        onClick={handleTestarWebhook}
+                        disabled={testandoWebhook || !(configWebhooks.webhook_outbound_url || configWebhooks.webhook_url)}
+                        className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl flex items-center gap-1.5 shadow-sm transition-all disabled:opacity-40 cursor-pointer shrink-0"
+                      >
+                        {testandoWebhook ? <Activity size={14} className="animate-spin text-white" /> : <Send size={14} />}
+                        <span>{testandoWebhook ? "Disparando..." : "Testar Agora"}</span>
+                      </button>
                     </div>
+                  </div>
+
+                  {/* RESULTADO DO TESTE AO VIVO */}
+                  {resultadoTeste && (
+                    <div className={`p-4 rounded-2xl border text-xs space-y-2 ${
+                      resultadoTeste.success
+                        ? "bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200"
+                        : "bg-red-50/70 dark:bg-red-950/30 border-red-300 dark:border-red-800 text-red-900 dark:text-red-200"
+                    }`}>
+                      <div className="flex items-center justify-between font-bold">
+                        <div className="flex items-center gap-2">
+                          {resultadoTeste.success ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+                          <span>{resultadoTeste.success ? `Sucesso! Servidor do ERP retornou HTTP ${resultadoTeste.status}` : "Falha ao Conectar no Endpoint do ERP"}</span>
+                        </div>
+                        {resultadoTeste.latencyMs !== undefined && (
+                          <span className="font-mono text-[11px] bg-black/10 px-2 py-0.5 rounded">
+                            {resultadoTeste.latencyMs} ms
+                          </span>
+                        )}
+                      </div>
+                      <p className="font-mono text-[11px] opacity-85 break-all">
+                        {resultadoTeste.resposta || resultadoTeste.error}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ========================================================================= */}
+              {/* SEÇÃO 3: HISTÓRICO DE LOGS DE DISPARO (AUDITORIA EM TEMPO REAL)            */}
+              {/* ========================================================================= */}
+              <div className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-4">
+                <div className="flex items-center justify-between border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 flex items-center justify-center">
+                      <Clock size={20} />
+                    </div>
+                    <div>
+                      <h3 className="text-base md:text-lg font-black text-zinc-950 dark:text-white">
+                        Histórico dos Últimos Disparos de Webhook (Logs)
+                      </h3>
+                      <p className="text-xs text-zinc-500">
+                        Auditoria em tempo real de cada payload enviado para o seu sistema externo ou ERP.
+                      </p>
+                    </div>
+                  </div>
+
+                  {Array.isArray(configWebhooks.webhook_logs) && configWebhooks.webhook_logs.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleLimparLogs}
+                      disabled={limpandoLogs}
+                      className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Trash2 size={13} /> Limpar Logs
+                    </button>
+                  )}
+                </div>
+
+                {Array.isArray(configWebhooks.webhook_logs) && configWebhooks.webhook_logs.length > 0 ? (
+                  <div className="space-y-2">
+                    {configWebhooks.webhook_logs.map((lg, idx) => (
+                      <div
+                        key={lg.id || idx}
+                        className="p-3 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <span className={`w-2.5 h-2.5 rounded-full ${lg.sucesso ? "bg-emerald-500" : "bg-red-500"}`} />
+                          <span className="font-mono text-zinc-500 text-[11px]">
+                            {new Date(lg.timestamp).toLocaleString("pt-BR")}
+                          </span>
+                          <span className="font-bold text-zinc-900 dark:text-white bg-zinc-200/70 dark:bg-zinc-800 px-2 py-0.5 rounded text-[11px] font-mono">
+                            {lg.evento}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-3 text-zinc-500 font-mono text-[11px]">
+                          <span>HTTP {lg.status_code || 0}</span>
+                          {lg.latencia_ms !== undefined && <span>{lg.latencia_ms}ms</span>}
+                          <span className="truncate max-w-[200px] text-zinc-400">{lg.resposta_preview || ""}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-8 text-center bg-zinc-50 dark:bg-zinc-900/40 rounded-2xl border border-dashed border-zinc-200 dark:border-zinc-800 text-zinc-400 text-xs">
+                    Nenhum disparo registrado ainda. Configure sua URL acima e faça um teste para registrar os logs.
+                  </div>
+                )}
+              </div>
+
+              {/* ========================================================================= */}
+              {/* SEÇÃO 4: MAPEAMENTO DE RESPOSTAS DO WHATSAPP / CHATBOTS                   */}
+              {/* ========================================================================= */}
+              <div className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-5">
+                <div className="flex items-center gap-3 border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 flex items-center justify-center">
+                    <Bot size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-base md:text-lg font-black text-zinc-950 dark:text-white">
+                      Mapeamento de Respostas de Pacientes (WhatsApp / Chatbot)
+                    </h3>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      Palavras e números digitados pelo paciente que atualizam o status automaticamente no sistema.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid sm:grid-cols-3 gap-4">
+                  {/* CONFIRMAR */}
+                  <div className="p-4 bg-emerald-500/[0.04] border border-emerald-500/25 rounded-2xl space-y-2">
+                    <div className="flex items-center gap-1.5 text-xs font-extrabold text-emerald-700 dark:text-emerald-300">
+                      <CheckCircle2 size={15} /> Confirmar Atendimento
+                    </div>
+                    <input
+                      type="text"
+                      value={Array.isArray(configWebhooks.respostas_mapping?.confirmar) ? configWebhooks.respostas_mapping.confirmar.join(", ") : "1, sim, confirmo"}
+                      onChange={(e) => {
+                        const list = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
+                        setConfigWebhooks({
+                          ...configWebhooks,
+                          respostas_mapping: {
+                            ...(configWebhooks.respostas_mapping || {}),
+                            confirmar: list
+                          }
+                        });
+                      }}
+                      placeholder="1, sim, confirmo, confirmar"
+                      className="w-full p-2.5 bg-white dark:bg-black border border-emerald-500/30 rounded-xl text-xs font-mono outline-none focus:border-emerald-500"
+                    />
+                    <span className="text-[10px] text-zinc-400 block">Marca o agendamento como Confirmado</span>
+                  </div>
+
+                  {/* CANCELAR */}
+                  <div className="p-4 bg-rose-500/[0.04] border border-rose-500/25 rounded-2xl space-y-2">
+                    <div className="flex items-center gap-1.5 text-xs font-extrabold text-rose-700 dark:text-rose-300">
+                      <AlertTriangle size={15} /> Cancelar / Rejeitar
+                    </div>
+                    <input
+                      type="text"
+                      value={Array.isArray(configWebhooks.respostas_mapping?.cancelar) ? configWebhooks.respostas_mapping.cancelar.join(", ") : "2, nao, cancelar"}
+                      onChange={(e) => {
+                        const list = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
+                        setConfigWebhooks({
+                          ...configWebhooks,
+                          respostas_mapping: {
+                            ...(configWebhooks.respostas_mapping || {}),
+                            cancelar: list
+                          }
+                        });
+                      }}
+                      placeholder="2, nao, não, cancelar, desmarcar"
+                      className="w-full p-2.5 bg-white dark:bg-black border border-rose-500/30 rounded-xl text-xs font-mono outline-none focus:border-rose-500"
+                    />
+                    <span className="text-[10px] text-zinc-400 block">Cancela e libera o horário no sistema</span>
+                  </div>
+
+                  {/* REMARCAR */}
+                  <div className="p-4 bg-amber-500/[0.04] border border-amber-500/25 rounded-2xl space-y-2">
+                    <div className="flex items-center gap-1.5 text-xs font-extrabold text-amber-700 dark:text-amber-300">
+                      <Clock size={15} /> Solicitar Remarcação
+                    </div>
+                    <input
+                      type="text"
+                      value={Array.isArray(configWebhooks.respostas_mapping?.remarcar) ? configWebhooks.respostas_mapping.remarcar.join(", ") : "3, remarcar, reagendar"}
+                      onChange={(e) => {
+                        const list = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
+                        setConfigWebhooks({
+                          ...configWebhooks,
+                          respostas_mapping: {
+                            ...(configWebhooks.respostas_mapping || {}),
+                            remarcar: list
+                          }
+                        });
+                      }}
+                      placeholder="3, remarcar, reagendar, mudar"
+                      className="w-full p-2.5 bg-white dark:bg-black border border-amber-500/30 rounded-xl text-xs font-mono outline-none focus:border-amber-500"
+                    />
+                    <span className="text-[10px] text-zinc-400 block">Gera status e alerta para a recepção</span>
                   </div>
                 </div>
               </div>
 
-              {/* SEÇÃO 3: AUTOMAÇÃO DE PRESENÇA / BAIXA AUTOMÁTICA PÓS-HORÁRIO */}
+              {/* ========================================================================= */}
+              {/* SEÇÃO 5: AUTOMAÇÃO DE PRESENÇA / BAIXA AUTOMÁTICA PÓS-HORÁRIO             */}
+              {/* ========================================================================= */}
               <div className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-6">
                 <div className="flex items-center gap-3 border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
                   <div className="w-10 h-10 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 flex items-center justify-center">
@@ -1243,6 +1597,32 @@ export default function IntegracoesView({ bloqueios = [], servicos = [], fetchBl
           {/* SUB-ABA 3: CONFIGURAÇÕES DO MEDICALSYS ERP */}
           {subTab === "medicalsys" && (
             <motion.div key="sub-medicalsys" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={spring} className="space-y-6">
+              
+              {/* CARD DE INTEGRAÇÃO VIA WEBHOOKS ERP */}
+              <div className="p-5 bg-gradient-to-r from-amber-500/10 via-blue-500/10 to-transparent border border-amber-500/25 rounded-3xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                    <Zap size={22} />
+                  </div>
+                  <div>
+                    <h4 className="font-extrabold text-sm text-zinc-950 dark:text-white flex items-center gap-2">
+                      Conexão em Tempo Real via Webhooks do ERP
+                      <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-full font-bold uppercase">Novo</span>
+                    </h4>
+                    <p className="text-xs text-zinc-500 mt-0.5">
+                      Sua clínica pode receber agendamentos diretamente do seu sistema ERP e enviar confirmações e cancelamentos automáticos.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => { playDopamineSound("click"); setSubTab("webhooks"); }}
+                  className="px-4 py-2.5 bg-zinc-950 hover:bg-black dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-extrabold text-xs rounded-xl flex items-center gap-1.5 shadow-sm transition-all cursor-pointer shrink-0"
+                >
+                  <Zap size={14} className="text-amber-500" /> Configurar Webhooks ERP
+                </button>
+              </div>
               
               {/* PROFISSIONAIS ÓRFÃOS */}
               {unmatchedProfessionals.length > 0 && (

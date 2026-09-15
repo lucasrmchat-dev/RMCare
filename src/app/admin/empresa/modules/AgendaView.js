@@ -139,6 +139,86 @@ const isItemParticular = (item) => {
   return mod === "particular" || mod.includes("particular") || !mod;
 };
 
+// ==========================================
+// APPLE HIG DESIGN HELPERS PARA CARDS E BADGES
+// ==========================================
+const renderStatusAtendimentoBadge = (item) => {
+  const isCanceled = item.statusAtendimento === "cancelado";
+  if (isCanceled) {
+    return (
+      <span className="text-[10.5px] font-semibold px-2.5 py-0.5 rounded-full bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/20 inline-flex items-center gap-1">
+        <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+        Cancelado
+      </span>
+    );
+  }
+  if (item.remarcado) {
+    return (
+      <span className="text-[10.5px] font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 inline-flex items-center gap-1">
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+        Reagendado
+      </span>
+    );
+  }
+  return (
+    <span className="text-[10.5px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 inline-flex items-center gap-1">
+      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+      Confirmado
+    </span>
+  );
+};
+
+const renderStatusPagamentoBadge = (item) => {
+  if (item.tipo !== "rmclick") return null;
+  if (isItemParticular(item)) {
+    if (item.pago) {
+      return (
+        <span className="text-[10.5px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 inline-flex items-center gap-1">
+          <CheckCircle2 size={12} strokeWidth={2} /> Pago
+        </span>
+      );
+    }
+    return (
+      <span className="text-[10.5px] font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 inline-flex items-center gap-1">
+        <Clock3 size={12} strokeWidth={2} /> Pendente
+      </span>
+    );
+  }
+  return (
+    <span className="text-[10.5px] font-semibold px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20 inline-flex items-center gap-1">
+      <CreditCard size={12} strokeWidth={2} /> {item.modalidade || "Convênio"}
+    </span>
+  );
+};
+
+const renderOrigemBadge = (item) => {
+  if (item.tipo === "medicalsys") {
+    return (
+      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border border-indigo-500/20 inline-flex items-center gap-1">
+        <Server size={10} /> MedicalSYS
+      </span>
+    );
+  }
+  return (
+    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-black/[0.04] dark:bg-white/[0.06] text-zinc-600 dark:text-zinc-400 border border-black/[0.04] dark:border-white/[0.06] inline-flex items-center gap-1">
+      RMAgenda
+    </span>
+  );
+};
+
+const renderAvatarMonograma = (nome) => {
+  const parts = (nome || "Paciente").trim().split(" ").filter(Boolean);
+  const initials = parts.length > 1
+    ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    : (parts[0] ? parts[0].slice(0, 2).toUpperCase() : "PA");
+  return (
+    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-zinc-100 to-zinc-200 dark:from-zinc-800 dark:to-zinc-900 border border-black/[0.06] dark:border-white/[0.08] flex items-center justify-center font-bold text-xs text-zinc-700 dark:text-zinc-200 shadow-2xs shrink-0 select-none">
+      {initials}
+    </div>
+  );
+};
+
+
 const normalizeText = (t) =>
   String(t || "")
     .normalize("NFD")
@@ -1550,163 +1630,220 @@ export default function AgendaView({
     <motion.div
       key="agenda"
       {...fadeUp}
-      className="flex-1 flex flex-col h-full overflow-hidden w-full max-w-7xl mx-auto p-4 md:p-6 lg:p-8"
+      className="flex-1 flex flex-col h-full overflow-hidden w-full p-3 sm:p-5 lg:p-6 min-h-0"
     >
       <div className="bg-white dark:bg-[#161618] rounded-3xl border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col h-full overflow-hidden">
-        {/* CABEÇALHO, AÇÃO NOVO AGENDAMENTO & FILTROS */}
-        <div className="px-6 md:px-8 pt-5 pb-4 border-b border-black/[0.06] dark:border-white/[0.08] bg-black/[0.01] dark:bg-white/[0.01] flex flex-col gap-4">
-          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-            <div className="flex items-center gap-3.5">
-              <div className="w-12 h-12 rounded-2xl bg-[#9FC131]/10 text-[#86a621] dark:text-[#9FC131] border border-[#9FC131]/25 flex items-center justify-center shrink-0 shadow-sm">
-                <CalendarDays size={24} strokeWidth={2} />
+        {/* CABEÇALHO & TOOLBAR PADRÃO APPLE MACOS */}
+        <div className="px-5 sm:px-7 py-4 border-b border-black/[0.06] dark:border-white/[0.08] bg-black/[0.01] dark:bg-white/[0.01] flex flex-col gap-3.5 shrink-0">
+          {/* LINHA SUPERIOR: TÍTULO, SUB-TABS CENTRAIS, MODO DE VISUALIZAÇÃO E AÇÕES */}
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3.5">
+            {/* LADO ESQUERDO: TÍTULO + STATUS */}
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-zinc-100 to-zinc-200 dark:from-zinc-800 dark:to-zinc-900 border border-black/[0.06] dark:border-white/[0.08] flex items-center justify-center text-zinc-900 dark:text-white shadow-2xs shrink-0">
+                <CalendarDays size={20} strokeWidth={2} />
               </div>
               <div>
-                <h2 className="text-2xl md:text-3xl font-black text-zinc-950 dark:text-white tracking-tight">
-                  Agenda de Atendimentos
-                </h2>
-                <p className="text-xs md:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5 font-medium">
-                  Visão consolidada de consultas e exames com proteção contra conflitos de horários.
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg sm:text-xl font-bold text-zinc-950 dark:text-white tracking-tight">
+                    Agenda
+                  </h2>
+                  <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-black/[0.04] dark:bg-white/[0.06] text-zinc-600 dark:text-zinc-400 border border-black/[0.04] dark:border-white/[0.06]">
+                    {(subTab === "calendario" ? eventosAgendaMistaDiaria.length : listaUnificadaTodosPacientes.length)} atendimentos
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-400 hidden sm:block">
+                  Visão consolidada de consultas e sincronização em tempo real
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-3 flex-wrap w-full lg:w-auto">
-              {/* ALTERNADOR DE VISUALIZAÇÃO UNIFICADO NO CANTO DIREITO */}
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mr-1 hidden sm:inline">
-                  Visualização:
-                </span>
-                <div className="flex p-1 bg-zinc-100/80 dark:bg-zinc-800/80 rounded-xl border border-zinc-200/60 dark:border-zinc-700/60 gap-1 shadow-inner">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      playDopamineSound("click");
-                      triggerHaptic("light");
-                      setViewMode("cards");
-                      try {
-                        localStorage.setItem("rmcare_default_view_mode", "cards");
-                        localStorage.setItem("rmcare_view_mode", "cards");
-                      } catch (e) {}
-                    }}
-                    className={`px-3 py-1.5 rounded-lg transition-all min-h-[34px] flex items-center gap-1.5 cursor-pointer text-xs font-bold ${
-                      viewMode === "cards"
-                        ? "bg-white dark:bg-zinc-900 text-zinc-950 dark:text-white shadow-sm font-black"
-                        : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-                    }`}
-                    title="Visão em Cards"
-                  >
-                    <LayoutGrid size={15} />
-                    <span className="hidden sm:inline">Cards</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      playDopamineSound("click");
-                      triggerHaptic("light");
-                      setViewMode("tabela");
-                      try {
-                        localStorage.setItem("rmcare_default_view_mode", "tabela");
-                        localStorage.setItem("rmcare_view_mode", "tabela");
-                      } catch (e) {}
-                    }}
-                    className={`px-3 py-1.5 rounded-lg transition-all min-h-[34px] flex items-center gap-1.5 cursor-pointer text-xs font-bold ${
-                      viewMode === "tabela"
-                        ? "bg-white dark:bg-zinc-900 text-zinc-950 dark:text-white shadow-sm font-black"
-                        : "text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-                    }`}
-                    title="Visão em Lista / Tabela"
-                  >
-                    <List size={15} />
-                    <span className="hidden sm:inline">Lista</span>
-                  </button>
-                </div>
+            {/* CENTRO: APPLE SEGMENTED CONTROL (Pacientes do Dia vs Todos os Pacientes) */}
+            <div className="flex p-1 bg-black/[0.04] dark:bg-white/[0.06] rounded-2xl border border-black/[0.04] dark:border-white/[0.04] gap-1 relative self-stretch sm:self-auto justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  playDopamineSound("click");
+                  triggerHaptic("light");
+                  setSubTab("calendario");
+                }}
+                className={`relative px-4 py-1.5 rounded-xl transition-colors min-h-[32px] flex items-center gap-2 cursor-pointer text-xs font-semibold z-10 ${
+                  subTab === "calendario"
+                    ? "text-zinc-950 dark:text-white font-bold"
+                    : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+                }`}
+              >
+                {subTab === "calendario" && (
+                  <motion.div
+                    layoutId="agenda-subtab-pill"
+                    className="absolute inset-0 bg-white dark:bg-[#2C2C2E] rounded-xl shadow-xs border border-black/[0.04] dark:border-white/[0.08] -z-10"
+                    transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                  />
+                )}
+                <CalendarDays size={14} />
+                <span>Pacientes do Dia</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  playDopamineSound("click");
+                  triggerHaptic("light");
+                  setSubTab("lista");
+                }}
+                className={`relative px-4 py-1.5 rounded-xl transition-colors min-h-[32px] flex items-center gap-2 cursor-pointer text-xs font-semibold z-10 ${
+                  subTab === "lista"
+                    ? "text-zinc-950 dark:text-white font-bold"
+                    : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+                }`}
+              >
+                {subTab === "lista" && (
+                  <motion.div
+                    layoutId="agenda-subtab-pill"
+                    className="absolute inset-0 bg-white dark:bg-[#2C2C2E] rounded-xl shadow-xs border border-black/[0.04] dark:border-white/[0.08] -z-10"
+                    transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                  />
+                )}
+                <Users size={14} />
+                <span>Todos os Pacientes</span>
+              </button>
+            </div>
+
+            {/* LADO DIREITO: CARDS / LISTA + ATUALIZAR + NOVO AGENDAMENTO */}
+            <div className="flex items-center justify-end gap-2.5 flex-wrap w-full lg:w-auto">
+              <div className="flex p-1 bg-black/[0.04] dark:bg-white/[0.06] rounded-2xl border border-black/[0.04] dark:border-white/[0.04] gap-1 relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    playDopamineSound("click");
+                    triggerHaptic("light");
+                    setViewMode("cards");
+                    try {
+                      localStorage.setItem("rmcare_default_view_mode", "cards");
+                      localStorage.setItem("rmcare_view_mode", "cards");
+                    } catch (e) {}
+                  }}
+                  className={`relative px-3.5 py-1.5 rounded-xl transition-colors min-h-[32px] flex items-center gap-1.5 cursor-pointer text-xs font-semibold z-10 ${
+                    viewMode === "cards"
+                      ? "text-zinc-950 dark:text-white font-bold"
+                      : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+                  }`}
+                  title="Visão em Cards"
+                >
+                  {viewMode === "cards" && (
+                    <motion.div
+                      layoutId="agenda-view-mode-pill"
+                      className="absolute inset-0 bg-white dark:bg-[#2C2C2E] rounded-xl shadow-xs border border-black/[0.04] dark:border-white/[0.08] -z-10"
+                      transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                    />
+                  )}
+                  <LayoutGrid size={14} />
+                  <span className="hidden sm:inline">Cards</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    playDopamineSound("click");
+                    triggerHaptic("light");
+                    setViewMode("tabela");
+                    try {
+                      localStorage.setItem("rmcare_default_view_mode", "tabela");
+                      localStorage.setItem("rmcare_view_mode", "tabela");
+                    } catch (e) {}
+                  }}
+                  className={`relative px-3.5 py-1.5 rounded-xl transition-colors min-h-[32px] flex items-center gap-1.5 cursor-pointer text-xs font-semibold z-10 ${
+                    viewMode === "tabela"
+                      ? "text-zinc-950 dark:text-white font-bold"
+                      : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+                  }`}
+                  title="Visão em Lista / Tabela"
+                >
+                  {viewMode === "tabela" && (
+                    <motion.div
+                      layoutId="agenda-view-mode-pill"
+                      className="absolute inset-0 bg-white dark:bg-[#2C2C2E] rounded-xl shadow-xs border border-black/[0.04] dark:border-white/[0.08] -z-10"
+                      transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                    />
+                  )}
+                  <List size={14} />
+                  <span className="hidden sm:inline">Lista</span>
+                </button>
               </div>
 
-              {/* BOTÃO ATUALIZAR DADOS DO BANCO */}
               <button
                 type="button"
                 onClick={handleManualRefresh}
                 disabled={isRefreshing}
-                className="min-h-[40px] px-3.5 py-2 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 font-extrabold text-xs rounded-2xl flex items-center gap-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                className="min-h-[36px] px-3.5 py-1.5 bg-black/[0.04] hover:bg-black/[0.08] dark:bg-white/[0.06] dark:hover:bg-white/[0.1] text-zinc-800 dark:text-zinc-200 font-semibold text-xs rounded-2xl flex items-center gap-1.5 transition-all shadow-2xs border border-black/[0.04] dark:border-white/[0.06] cursor-pointer disabled:opacity-50"
                 title="Puxar novos dados do banco agora"
               >
-                <RefreshCw size={14} className={isRefreshing ? "animate-spin text-[#9FC131]" : ""} />
+                <RefreshCw size={13} className={isRefreshing ? "animate-spin text-[#34C759]" : ""} />
                 <span>{isRefreshing ? "Atualizando..." : "Atualizar"}</span>
               </button>
 
-              {/* BOTÃO NOVO AGENDAMENTO INTERNO */}
               <button
                 type="button"
                 onClick={handleAbrirNovoAgendamento}
-                className="min-h-[40px] px-4 py-2 bg-zinc-950 hover:bg-black dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-extrabold text-xs rounded-2xl flex items-center gap-2 shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer shrink-0"
+                className="min-h-[36px] px-4 py-1.5 bg-zinc-950 hover:bg-black dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-semibold text-xs rounded-2xl flex items-center gap-2 shadow-xs transition-all cursor-pointer shrink-0"
               >
-                <CalendarPlus size={16} strokeWidth={2.2} />
+                <CalendarPlus size={15} strokeWidth={2} />
                 <span>Novo Agendamento</span>
               </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 items-end pt-1">
-            <div className="space-y-1">
-              <label className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-widest ml-1">
-                Buscar Paciente
-              </label>
-              <div className="relative">
-                <Search
-                  size={15}
-                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400"
-                />
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Nome, CPF..."
-                  className="w-full min-h-[44px] pl-9 pr-4 py-2 bg-[#F8F8FA] dark:bg-[#222225] border border-black/[0.08] dark:border-white/[0.1] rounded-2xl text-xs font-medium text-zinc-900 dark:text-white outline-none focus:border-black/30 dark:focus:border-white/30 focus:ring-4 focus:ring-black/5 dark:focus:ring-white/10 transition-all"
-                />
-                {searchTerm && (
-                  <button
-                    onClick={() => setSearchTerm("")}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700 cursor-pointer"
-                  >
-                    <X size={15} />
-                  </button>
-                )}
-              </div>
+          {/* LINHA INFERIOR: BARRA DE BUSCA E FILTROS COMPACTOS NO ESTILO APPLE TOOLBAR */}
+          <div className="flex flex-wrap items-center gap-2.5 pt-2 border-t border-black/[0.04] dark:border-white/[0.06]">
+            <div className="relative flex-1 min-w-[200px] max-w-xs">
+              <Search
+                size={14}
+                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400"
+              />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Buscar paciente, CPF..."
+                className="w-full h-9 pl-9 pr-8 bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.06] dark:border-white/[0.08] rounded-xl text-xs text-zinc-900 dark:text-white placeholder-zinc-400 outline-none focus:border-black/30 dark:focus:border-white/30 focus:ring-2 focus:ring-black/5 dark:focus:ring-white/10 transition-all"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 cursor-pointer"
+                >
+                  <X size={13} />
+                </button>
+              )}
             </div>
 
-            <div className="space-y-1">
+            <div className="w-[145px]">
               <CustomSelect
-                label="Origem da Agenda"
                 value={origemFilter}
                 onChange={setOrigemFilter}
                 options={[
-                  { value: "todos", label: "Todas as Origens" },
-                  { value: "rmclick", label: "RMAgenda (Local)" },
-                  { value: "medicalsys", label: "MedicalSYS (ERP)" }
+                  { value: "todos", label: "Origem: Todas" },
+                  { value: "rmclick", label: "RMAgenda" },
+                  { value: "medicalsys", label: "MedicalSYS" }
                 ]}
               />
             </div>
 
-            <div className="space-y-1">
+            <div className="w-[155px]">
               <CustomSelect
-                label="Modalidade"
                 value={modalidadeFilter}
                 onChange={setModalidadeFilter}
                 options={[
-                  { value: "todas", label: "Todas Modalidades" },
+                  { value: "todas", label: "Modalidade: Todas" },
                   { value: "particular", label: "Particular" },
                   { value: "convenio", label: "Convênio" }
                 ]}
               />
             </div>
 
-            <div className="space-y-1">
+            <div className="w-[155px]">
               <CustomSelect
-                label="Status Atendimento"
                 value={statusFilter}
                 onChange={setStatusFilter}
                 options={[
-                  { value: "todos", label: "Ver tudo" },
+                  { value: "todos", label: "Status: Todos" },
                   { value: "agendado", label: "Agendados" },
                   { value: "reagendado", label: "Reagendados" },
                   { value: "cancelado", label: "Cancelados" }
@@ -1714,50 +1851,64 @@ export default function AgendaView({
               />
             </div>
 
-            <div className="space-y-1">
+            <div className="w-[165px]">
               <CustomSelect
-                label="Status Pagamento"
                 value={pagamentoFilter}
                 onChange={setPagamentoFilter}
                 options={[
-                  { value: "todos", label: "Todos Pagamentos" },
-                  { value: "pendente", label: "Pagamento Pendente" },
+                  { value: "todos", label: "Pagamento: Todos" },
+                  { value: "pendente", label: "Pendente" },
                   { value: "pago", label: "Pago / Aprovado" }
                 ]}
               />
             </div>
 
-            <div className="space-y-1">
+            <div className="w-[185px]">
               <CustomSelect
-                label="Médico / Especialidade"
                 value={filterMedico}
                 onChange={setFilterMedico}
                 options={profissionaisOptions}
                 icon={Filter}
               />
             </div>
-          </div>
 
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-200/50 dark:border-zinc-800/60 flex-wrap">
-            <div className="text-[10px] text-zinc-400 font-mono" suppressHydrationWarning>
+            {(searchTerm || origemFilter !== "todos" || modalidadeFilter !== "todas" || statusFilter !== "todos" || pagamentoFilter !== "todos" || filterMedico !== "todos") && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchTerm("");
+                  setOrigemFilter("todos");
+                  setModalidadeFilter("todas");
+                  setStatusFilter("todos");
+                  setPagamentoFilter("todos");
+                  setFilterMedico("todos");
+                }}
+                className="h-9 px-3 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors cursor-pointer inline-flex items-center gap-1 border border-rose-500/20"
+              >
+                <X size={13} />
+                <span>Limpar filtros</span>
+              </button>
+            )}
+
+            <div className="text-[11px] text-zinc-400 font-medium ml-auto hidden sm:flex items-center gap-1.5" suppressHydrationWarning>
+              <span className="w-1.5 h-1.5 rounded-full bg-[#34C759]" />
               {mounted && lastSyncedAt
-                ? `Última atualização: ${lastSyncedAt.toLocaleTimeString("pt-BR")}`
+                ? `Atualizado às ${lastSyncedAt.toLocaleTimeString("pt-BR")}`
                 : "Sincronizado em tempo real"}
             </div>
           </div>
         </div>
-
         {/* CONTEÚDO PRINCIPAL: CALENDÁRIO OU LISTA */}
         <div className="flex-1 overflow-hidden relative">
           <AnimatePresence mode="wait">
             {subTab === "calendario" && (
               <motion.div
                 key="subtab-cal"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={spring}
-                className="flex flex-col md:flex-row h-full overflow-hidden"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.16, ease: "easeOut" }}
+                className="flex flex-col md:flex-row h-full overflow-hidden flex-1 min-h-0"
               >
                 {/* CALENDÁRIO MENSAL */}
                 <div className="w-full md:w-[320px] border-r border-black/[0.06] dark:border-white/[0.08] p-5 flex flex-col overflow-y-auto bg-black/[0.01] dark:bg-white/[0.01]">
@@ -1814,18 +1965,18 @@ export default function AgendaView({
                           }}
                           className={`relative h-10 w-full rounded-xl text-xs sm:text-sm transition-all min-h-[38px] flex items-center justify-center cursor-pointer ${
                             isSel
-                              ? "bg-zinc-950 text-white dark:bg-white dark:text-black font-extrabold shadow-md ring-2 ring-[#9FC131] scale-105"
+                              ? "bg-zinc-950 text-white dark:bg-white dark:text-black font-bold shadow-xs scale-105"
                               : isTod
-                              ? "bg-zinc-100 dark:bg-zinc-800 font-bold text-zinc-900 dark:text-white"
-                              : "hover:bg-zinc-100/70 dark:hover:bg-zinc-900/60 text-zinc-700 dark:text-zinc-300 font-medium"
+                              ? "bg-black/[0.05] dark:bg-white/[0.08] font-bold text-zinc-950 dark:text-white"
+                              : "hover:bg-black/[0.03] dark:hover:bg-white/[0.05] text-zinc-700 dark:text-zinc-300 font-medium"
                           }`}
                         >
                           {i + 1}
                           <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex gap-1">
                             {hasAgend && (
                               <div
-                                className={`w-1.5 h-1.5 rounded-full ${
-                                  isSel ? "bg-white dark:bg-black" : "bg-emerald-500"
+                                className={`w-1 h-1 rounded-full ${
+                                  isSel ? "bg-white dark:bg-black" : "bg-[#34C759] dark:bg-[#30D158]"
                                 }`}
                               />
                             )}
@@ -1962,105 +2113,59 @@ export default function AgendaView({
                         const isApproving = approvingPaymentId === item.id;
 
                         return (
-                          <div
+                          <motion.div
                             key={item.id}
-                            className={`p-5 rounded-2xl border ${
+                            whileHover={{ scale: 1.008, y: -1 }}
+                            whileTap={{ scale: 0.99 }}
+                            transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                            className={`p-4 sm:p-5 rounded-3xl border ${
                               isCanceled
-                                ? "bg-zinc-50/50 border-zinc-200/60 opacity-60"
-                                : "bg-white dark:bg-[#111116] border-black/[0.06] dark:border-white/[0.08] shadow-sm hover:shadow-md"
+                                ? "bg-black/[0.02] dark:bg-white/[0.02] border-black/[0.04] dark:border-white/[0.06] opacity-60"
+                                : "bg-white dark:bg-[#161618] border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.02)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)]"
                             } transition-all flex flex-col md:flex-row md:items-center justify-between gap-4`}
                           >
-                            <div className="flex items-start md:items-center gap-4">
-                              <div className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 px-4 py-3 rounded-2xl text-center min-w-[76px] shadow-inner flex-shrink-0">
-                                <span className="text-lg font-black text-zinc-950 dark:text-white tracking-tighter">
+                            <div className="flex items-start md:items-center gap-3.5 min-w-0">
+                              {renderAvatarMonograma(item.nomePaciente)}
+
+                              <div className="bg-[#F8F8FA] dark:bg-[#222225] border border-black/[0.06] dark:border-white/[0.08] px-3 py-2 rounded-2xl text-center min-w-[68px] shadow-2xs shrink-0">
+                                <span className="text-sm sm:text-base font-bold text-zinc-950 dark:text-white tracking-tight">
                                   {item.horario || "--:--"}
                                 </span>
                               </div>
 
-                              <div>
+                              <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-2">
-                                  <h4 className="font-extrabold text-zinc-950 dark:text-white text-base">
+                                  <h4 className="font-bold text-zinc-950 dark:text-white text-sm sm:text-base tracking-tight truncate">
                                     {item.nomePaciente}
                                   </h4>
-                                  {item.tipo === "medicalsys" ? (
-                                    <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 bg-blue-100 dark:bg-blue-950/50 text-blue-800 dark:text-blue-300 rounded-md flex items-center gap-1">
-                                      <Server size={10} /> Medicalsys ERP
-                                    </span>
-                                  ) : (
-                                    <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-md">
-                                      RMAgenda
-                                    </span>
-                                  )}
+                                  {renderOrigemBadge(item)}
                                   {item.cpfPaciente && (
-                                    <span className="text-xs font-semibold text-zinc-400 bg-zinc-100 dark:bg-zinc-800/80 px-2 py-0.5 rounded-md">
+                                    <span className="text-[11px] font-medium text-zinc-400 bg-black/[0.04] dark:bg-white/[0.06] px-2.5 py-0.5 rounded-full">
                                       CPF: {item.cpfPaciente}
                                     </span>
                                   )}
-
-                                  {/* BADGE DE ATENDIMENTO */}
-                                  <span
-                                    className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-md ${
-                                      isCanceled
-                                        ? "bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-400"
-                                        : item.remarcado
-                                        ? "bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300"
-                                        : "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-400"
-                                    }`}
-                                  >
-                                    {isCanceled
-                                      ? "Cancelado"
-                                      : item.remarcado
-                                      ? "Reagendado"
-                                      : "Confirmado"}
-                                  </span>
-
-                                  {/* BADGE DE PAGAMENTO / MODALIDADE */}
-                                  {item.tipo === "rmclick" && (
-                                    isItemParticular(item) ? (
-                                      <span
-                                        className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-md flex items-center gap-1 ${
-                                          item.pago
-                                            ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/40"
-                                            : "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200/40"
-                                        }`}
-                                      >
-                                        {item.pago ? (
-                                          <>
-                                            <CheckCircle2 size={11} /> Pago / Aprovado
-                                          </>
-                                        ) : (
-                                          <>
-                                            <Clock3 size={11} /> Pagamento Pendente
-                                          </>
-                                        )}
-                                      </span>
-                                    ) : (
-                                      <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-md bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200/40 flex items-center gap-1">
-                                        <CreditCard size={11} /> {item.modalidade || "Convênio"}
-                                      </span>
-                                    )
-                                  )}
+                                  {renderStatusAtendimentoBadge(item)}
+                                  {renderStatusPagamentoBadge(item)}
                                 </div>
 
-                                {/* ALINHAMENTO SEMÂNTICO PRECISO */}
-                                <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-zinc-600 dark:text-zinc-400">
+                                <div className="flex flex-wrap items-center gap-3 mt-1.5 text-xs text-zinc-600 dark:text-zinc-400">
                                   <span>
-                                    <strong>Especialista:</strong> {item.medicoProfissional}
+                                    <strong className="font-semibold text-zinc-900 dark:text-zinc-200">Especialista:</strong> {item.medicoProfissional}
                                   </span>
                                   <span>
-                                    <strong>Especialidade:</strong> {item.especialidade}
+                                    <strong className="font-semibold text-zinc-900 dark:text-zinc-200">Especialidade:</strong> {item.especialidade}
                                   </span>
                                   {item.subtipoExame && item.subtipoExame !== item.especialidade && (
                                     <span>
-                                      <strong>Procedimento:</strong> {item.subtipoExame}
+                                      <strong className="font-semibold text-zinc-900 dark:text-zinc-200">Procedimento:</strong> {item.subtipoExame}
                                     </span>
                                   )}
-                                  <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-[10px] font-bold uppercase text-zinc-700 dark:text-zinc-300">
+                                  <span className="px-2 py-0.5 rounded-full bg-black/[0.04] dark:bg-white/[0.06] text-[10px] font-semibold uppercase text-zinc-700 dark:text-zinc-300">
                                     {item.tipoServico}
                                   </span>
                                   {item.modalidade && (
                                     <span>
-                                      <strong>Modalidade:</strong> {item.modalidade}
+                                      <strong className="font-semibold text-zinc-900 dark:text-zinc-200">Modalidade:</strong> {item.modalidade}
                                     </span>
                                   )}
                                   {item.telefonePaciente && (
@@ -2068,7 +2173,7 @@ export default function AgendaView({
                                       href={`https://wa.me/${formatarTelefoneEnvio(item.telefonePaciente)}`}
                                       target="_blank"
                                       rel="noreferrer"
-                                      className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-bold hover:underline"
+                                      className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold hover:underline"
                                       title={`WhatsApp: ${formatarTelefoneExibicao(item.telefonePaciente)}`}
                                     >
                                       <Phone size={12} /> {formatarTelefoneExibicao(item.telefonePaciente)}
@@ -2076,7 +2181,6 @@ export default function AgendaView({
                                   )}
                                 </div>
 
-                                {/* TAGS DE ENFERMIDADES VINCULADAS */}
                                 {temPermissaoSigiloClinico &&
                                   item.enfermidades &&
                                   item.enfermidades.length > 0 && (
@@ -2084,7 +2188,7 @@ export default function AgendaView({
                                       {item.enfermidades.map((enf, idx) => (
                                         <span
                                           key={idx}
-                                          className="text-[9px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 border border-rose-200/50 dark:border-rose-900/40 px-2 py-0.5 rounded-md flex items-center gap-1"
+                                          className="text-[10px] font-semibold text-rose-700 dark:text-rose-300 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-full flex items-center gap-1"
                                         >
                                           <HeartPulse size={10} /> {enf}
                                         </span>
@@ -2095,8 +2199,7 @@ export default function AgendaView({
                             </div>
 
                             {/* AÇÕES NO CARD */}
-                            <div className="flex items-center gap-2 self-end md:self-center flex-wrap">
-                              {/* BOTÃO APROVAR PAGAMENTO MANUAL (APENAS PARTICULAR) */}
+                            <div className="flex items-center gap-2 self-end md:self-center flex-wrap shrink-0">
                               {!item.pago &&
                                 item.tipo === "rmclick" &&
                                 isItemParticular(item) &&
@@ -2105,7 +2208,7 @@ export default function AgendaView({
                                     type="button"
                                     onClick={() => setConfirmApproveModalItem(item.rawItem || item)}
                                     disabled={isApproving}
-                                    className="min-h-[40px] px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 text-xs font-extrabold transition-all shadow-sm cursor-pointer"
+                                    className="min-h-[38px] px-3.5 py-1.5 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
                                     title="Confirmar que o paciente particular efetuou o pagamento"
                                   >
                                     {isApproving ? (
@@ -2120,7 +2223,7 @@ export default function AgendaView({
                               {temPermissaoSigiloClinico ? (
                                 <button
                                   onClick={() => handleOpenSensitiveModal(item)}
-                                  className="min-h-[40px] px-3.5 py-2 rounded-xl border border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 flex items-center gap-1.5 text-xs font-bold transition-colors shadow-sm cursor-pointer"
+                                  className="min-h-[38px] px-3.5 py-1.5 rounded-2xl bg-black/[0.04] hover:bg-black/[0.08] dark:bg-white/[0.06] dark:hover:bg-white/[0.1] text-zinc-900 dark:text-white border border-black/[0.04] dark:border-white/[0.06] flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
                                   title="Ver Ficha Clínica, Enfermidades & Mensagens"
                                 >
                                   <ShieldCheck size={14} className="text-blue-500" />
@@ -2128,7 +2231,7 @@ export default function AgendaView({
                                 </button>
                               ) : (
                                 <span
-                                  className="min-h-[40px] px-3 py-2 rounded-xl bg-zinc-100/50 dark:bg-zinc-800/40 text-zinc-400 text-[11px] font-bold inline-flex items-center gap-1 border border-zinc-200/50 dark:border-zinc-800 opacity-60 cursor-not-allowed"
+                                  className="min-h-[38px] px-3 py-1.5 rounded-2xl bg-black/[0.02] dark:bg-white/[0.03] text-zinc-400 text-[11px] font-medium inline-flex items-center gap-1 border border-black/[0.04] dark:border-white/[0.06] opacity-60 cursor-not-allowed"
                                   title="Acesso Restrito: Requer permissão de Sigilo Clínico"
                                 >
                                   <Lock size={12} /> Ficha Restrita
@@ -2139,24 +2242,25 @@ export default function AgendaView({
                                 <>
                                   <button
                                     onClick={() => handleAbrirRemarcacao(item)}
-                                    className="min-h-[40px] px-3.5 py-2 rounded-xl border border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 flex items-center gap-1.5 text-xs font-bold transition-colors shadow-sm cursor-pointer"
+                                    className="min-h-[38px] px-3.5 py-1.5 rounded-2xl bg-black/[0.04] hover:bg-black/[0.08] dark:bg-white/[0.06] dark:hover:bg-white/[0.1] text-zinc-900 dark:text-white border border-black/[0.04] dark:border-white/[0.06] flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
                                   >
                                     <RotateCcw
-                                      size={14}
-                                      className="text-[#86a621] dark:text-[#9FC131]"
-                                    />{" "}
-                                    Remarcar
+                                      size={13}
+                                      className="text-zinc-600 dark:text-zinc-400"
+                                    />
+                                    <span>Remarcar</span>
                                   </button>
                                   <button
                                     onClick={() => handleAbrirModalCancelamento(item)}
-                                    className="min-h-[40px] px-3.5 py-2 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 hover:bg-red-500/20 flex items-center gap-1.5 text-xs font-bold transition-colors shadow-sm cursor-pointer"
+                                    className="min-h-[38px] px-3.5 py-1.5 rounded-2xl bg-rose-500/10 hover:bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20 flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
                                   >
-                                    <Trash2 size={14} /> Cancelar
+                                    <Trash2 size={13} />
+                                    <span>Cancelar</span>
                                   </button>
                                 </>
                               )}
                             </div>
-                          </div>
+                          </motion.div>
                         );
                       })}
                     </div>
@@ -2374,11 +2478,11 @@ export default function AgendaView({
             {subTab === "lista" && (
               <motion.div
                 key="subtab-lista"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={spring}
-                className="p-6 md:p-8 h-full overflow-y-auto custom-scrollbar"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.16, ease: "easeOut" }}
+                className="p-5 lg:p-7 h-full overflow-y-auto custom-scrollbar flex-1 min-h-0"
               >
                 <div className="flex justify-between items-center mb-6 pb-4 border-b border-black/[0.04] dark:border-white/[0.06]">
                   <div>
@@ -2516,151 +2620,155 @@ export default function AgendaView({
                       const isApproving = approvingPaymentId === item.id;
 
                       return (
-                        <div
-                          key={item.id}
-                          className={`p-5 rounded-2xl border ${
-                            isCanceled
-                              ? "bg-zinc-50/50 border-zinc-200/60 opacity-60"
-                              : "bg-white dark:bg-[#111116] border-black/[0.06] dark:border-white/[0.08] shadow-sm"
-                          } flex flex-col md:flex-row md:items-center justify-between gap-4`}
-                        >
-                          <div className="flex items-start md:items-center gap-4">
-                            <div className="w-11 h-11 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 flex items-center justify-center font-bold flex-shrink-0 border border-blue-200/50">
-                              <User size={20} />
-                            </div>
-                            <div>
-                              <div className="flex flex-wrap items-center gap-2">
-                                <h4 className="font-bold text-zinc-950 dark:text-white text-base">
-                                  {item.nomePaciente}
-                                </h4>
-                                {item.tipo === "medicalsys" ? (
-                                  <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 bg-blue-100 dark:bg-blue-950/50 text-blue-800 dark:text-blue-300 rounded-md flex items-center gap-1">
-                                    <Server size={10} /> Medicalsys ERP
-                                  </span>
-                                ) : (
-                                  <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-md">
-                                    RMAgenda
-                                  </span>
-                                )}
-                                {item.cpfPaciente && (
-                                  <span className="text-xs font-medium text-zinc-400 bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-md">
-                                    CPF: {item.cpfPaciente}
-                                  </span>
-                                )}
-                                <span
-                                  className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-md ${
-                                    isCanceled
-                                      ? "bg-red-100 text-red-700"
-                                      : item.remarcado
-                                      ? "bg-amber-100 text-amber-800"
-                                      : "bg-emerald-100 text-emerald-800"
-                                  }`}
-                                >
-                                  {isCanceled
-                                    ? "Cancelado"
-                                    : item.remarcado
-                                    ? "Reagendado"
-                                    : "Confirmado"}
-                                </span>
+                          <motion.div
+                            key={item.id}
+                            whileHover={{ scale: 1.008, y: -1 }}
+                            whileTap={{ scale: 0.99 }}
+                            transition={{ type: "spring", stiffness: 450, damping: 32 }}
+                            className={`p-4 sm:p-5 rounded-3xl border ${
+                              isCanceled
+                                ? "bg-black/[0.02] dark:bg-white/[0.02] border-black/[0.04] dark:border-white/[0.06] opacity-60"
+                                : "bg-white dark:bg-[#161618] border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.02)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)]"
+                            } transition-all flex flex-col md:flex-row md:items-center justify-between gap-4`}
+                          >
+                            <div className="flex items-start md:items-center gap-3.5 min-w-0">
+                              {renderAvatarMonograma(item.nomePaciente)}
 
-                                {/* BADGE DE PAGAMENTO / MODALIDADE */}
-                                {item.tipo === "rmclick" && (
-                                  isItemParticular(item) ? (
-                                    <span
-                                      className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-md flex items-center gap-1 ${
-                                        item.pago
-                                          ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/40"
-                                          : "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200/40"
-                                      }`}
-                                    >
-                                      {item.pago ? (
-                                        <>
-                                          <CheckCircle2 size={11} /> Pago
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Clock3 size={11} /> Pendente
-                                        </>
-                                      )}
-                                    </span>
-                                  ) : (
-                                    <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-md bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200/40 flex items-center gap-1">
-                                      <CreditCard size={11} /> {item.modalidade || "Convênio"}
-                                    </span>
-                                  )
-                                )}
+                              <div className="bg-[#F8F8FA] dark:bg-[#222225] border border-black/[0.06] dark:border-white/[0.08] px-3 py-2 rounded-2xl text-center min-w-[68px] shadow-2xs shrink-0">
+                                <span className="text-sm sm:text-base font-bold text-zinc-950 dark:text-white tracking-tight">
+                                  {item.horario || "--:--"}
+                                </span>
                               </div>
 
-                              <p className="text-xs text-zinc-500 mt-1 flex flex-wrap gap-3">
-                                <span>
-                                  <strong>Especialista:</strong> {item.medicoProfissional}
-                                </span>
-                                <span>
-                                  <strong>Especialidade:</strong> {item.especialidade}
-                                </span>
-                                {item.modalidade && (
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <h4 className="font-bold text-zinc-950 dark:text-white text-sm sm:text-base tracking-tight truncate">
+                                    {item.nomePaciente}
+                                  </h4>
+                                  {renderOrigemBadge(item)}
+                                  {item.cpfPaciente && (
+                                    <span className="text-[11px] font-medium text-zinc-400 bg-black/[0.04] dark:bg-white/[0.06] px-2.5 py-0.5 rounded-full">
+                                      CPF: {item.cpfPaciente}
+                                    </span>
+                                  )}
+                                  {renderStatusAtendimentoBadge(item)}
+                                  {renderStatusPagamentoBadge(item)}
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-3 mt-1.5 text-xs text-zinc-600 dark:text-zinc-400">
                                   <span>
-                                    <strong>Modalidade:</strong> {item.modalidade}
+                                    <strong className="font-semibold text-zinc-900 dark:text-zinc-200">Especialista:</strong> {item.medicoProfissional}
                                   </span>
-                                )}
-                              </p>
+                                  <span>
+                                    <strong className="font-semibold text-zinc-900 dark:text-zinc-200">Especialidade:</strong> {item.especialidade}
+                                  </span>
+                                  {item.subtipoExame && item.subtipoExame !== item.especialidade && (
+                                    <span>
+                                      <strong className="font-semibold text-zinc-900 dark:text-zinc-200">Procedimento:</strong> {item.subtipoExame}
+                                    </span>
+                                  )}
+                                  <span className="px-2 py-0.5 rounded-full bg-black/[0.04] dark:bg-white/[0.06] text-[10px] font-semibold uppercase text-zinc-700 dark:text-zinc-300">
+                                    {item.tipoServico}
+                                  </span>
+                                  {item.modalidade && (
+                                    <span>
+                                      <strong className="font-semibold text-zinc-900 dark:text-zinc-200">Modalidade:</strong> {item.modalidade}
+                                    </span>
+                                  )}
+                                  {item.telefonePaciente && (
+                                    <a
+                                      href={`https://wa.me/${formatarTelefoneEnvio(item.telefonePaciente)}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold hover:underline"
+                                      title={`WhatsApp: ${formatarTelefoneExibicao(item.telefonePaciente)}`}
+                                    >
+                                      <Phone size={12} /> {formatarTelefoneExibicao(item.telefonePaciente)}
+                                    </a>
+                                  )}
+                                </div>
 
-                              <p className="text-xs text-zinc-400 mt-1">
-                                Data: <strong>{item.data ? item.data.split("-").reverse().join("/") : "--/--/----"}</strong> às{" "}
-                                <strong>{item.horario || "--:--"}h</strong>
-                              </p>
+                                {temPermissaoSigiloClinico &&
+                                  item.enfermidades &&
+                                  item.enfermidades.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mt-2">
+                                      {item.enfermidades.map((enf, idx) => (
+                                        <span
+                                          key={idx}
+                                          className="text-[10px] font-semibold text-rose-700 dark:text-rose-300 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded-full flex items-center gap-1"
+                                        >
+                                          <HeartPulse size={10} /> {enf}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                              </div>
                             </div>
-                          </div>
 
-                          <div className="flex items-center gap-2 self-end md:self-center flex-wrap">
-                            {!item.pago &&
-                              item.tipo === "rmclick" &&
-                              isItemParticular(item) &&
-                              !isCanceled && (
+                            {/* AÇÕES NO CARD */}
+                            <div className="flex items-center gap-2 self-end md:self-center flex-wrap shrink-0">
+                              {!item.pago &&
+                                item.tipo === "rmclick" &&
+                                isItemParticular(item) &&
+                                !isCanceled && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmApproveModalItem(item.rawItem || item)}
+                                    disabled={isApproving}
+                                    className="min-h-[38px] px-3.5 py-1.5 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
+                                    title="Confirmar que o paciente particular efetuou o pagamento"
+                                  >
+                                    {isApproving ? (
+                                      <Activity size={14} className="animate-spin" />
+                                    ) : (
+                                      <CheckCircle2 size={14} />
+                                    )}
+                                    <span>Aprovar Pagamento</span>
+                                  </button>
+                                )}
+
+                              {temPermissaoSigiloClinico ? (
                                 <button
-                                  type="button"
-                                  onClick={() => setConfirmApproveModalItem(item.rawItem || item)}
-                                  disabled={isApproving}
-                                  className="min-h-[40px] px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 text-xs font-extrabold transition-all shadow-sm cursor-pointer"
+                                  onClick={() => handleOpenSensitiveModal(item)}
+                                  className="min-h-[38px] px-3.5 py-1.5 rounded-2xl bg-black/[0.04] hover:bg-black/[0.08] dark:bg-white/[0.06] dark:hover:bg-white/[0.1] text-zinc-900 dark:text-white border border-black/[0.04] dark:border-white/[0.06] flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
+                                  title="Ver Ficha Clínica, Enfermidades & Mensagens"
                                 >
-                                  {isApproving ? <Activity size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-                                  <span>Aprovar Pagamento</span>
+                                  <ShieldCheck size={14} className="text-blue-500" />
+                                  <span>Ficha</span>
                                 </button>
+                              ) : (
+                                <span
+                                  className="min-h-[38px] px-3 py-1.5 rounded-2xl bg-black/[0.02] dark:bg-white/[0.03] text-zinc-400 text-[11px] font-medium inline-flex items-center gap-1 border border-black/[0.04] dark:border-white/[0.06] opacity-60 cursor-not-allowed"
+                                  title="Acesso Restrito: Requer permissão de Sigilo Clínico"
+                                >
+                                  <Lock size={12} /> Ficha Restrita
+                                </span>
                               )}
 
-                            {temPermissaoSigiloClinico && (
-                              <button
-                                onClick={() => handleOpenSensitiveModal(item)}
-                                className="min-h-[40px] px-3.5 py-2 border border-zinc-200/80 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl text-xs font-bold hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
-                              >
-                                <ShieldCheck size={14} className="text-blue-500" />
-                                <span>Ficha</span>
-                              </button>
-                            )}
-
-                            {!isCanceled && (
-                              <>
-                                <button
-                                  onClick={() => handleAbrirRemarcacao(item)}
-                                  className="min-h-[40px] px-3.5 py-2 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl text-xs font-bold hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
-                                >
-                                  <RotateCcw
-                                    size={14}
-                                    className="text-[#86a621] dark:text-[#9FC131]"
-                                  />{" "}
-                                  Remarcar
-                                </button>
-                                <button
-                                  onClick={() => handleAbrirModalCancelamento(item)}
-                                  className="min-h-[40px] px-3.5 py-2 bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 rounded-xl text-xs font-bold hover:bg-red-500/20 transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
-                                >
-                                  <Trash2 size={14} /> Cancelar
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      );
+                              {!isCanceled && (
+                                <>
+                                  <button
+                                    onClick={() => handleAbrirRemarcacao(item)}
+                                    className="min-h-[38px] px-3.5 py-1.5 rounded-2xl bg-black/[0.04] hover:bg-black/[0.08] dark:bg-white/[0.06] dark:hover:bg-white/[0.1] text-zinc-900 dark:text-white border border-black/[0.04] dark:border-white/[0.06] flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
+                                  >
+                                    <RotateCcw
+                                      size={13}
+                                      className="text-zinc-600 dark:text-zinc-400"
+                                    />
+                                    <span>Remarcar</span>
+                                  </button>
+                                  <button
+                                    onClick={() => handleAbrirModalCancelamento(item)}
+                                    className="min-h-[38px] px-3.5 py-1.5 rounded-2xl bg-rose-500/10 hover:bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20 flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
+                                  >
+                                    <Trash2 size={13} />
+                                    <span>Cancelar</span>
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </motion.div>
+                        );
                     })}
                   </div>
                 ) : (
@@ -3975,7 +4083,7 @@ export default function AgendaView({
 
             {/* CORPO PRINCIPAL COM MOTION ORQUESTRADO */}
             <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-8 lg:p-10">
-              <div className="max-w-6xl mx-auto">
+              <div className="w-full">
                 <AnimatePresence mode="wait">
                   {fichaSubTab === "dados" ? (
                     <motion.div

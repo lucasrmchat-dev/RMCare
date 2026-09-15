@@ -5,12 +5,12 @@
 
 /* 2. Cores do Modo Claro padrão */
 :root {
-  --background: #fafafa;
+  --background: #F5F5F7;
   --foreground: #09090b;
   --brand-primary: #8aa822;
   --brand-glow: rgba(159, 193, 49, 0.25);
-  --glass-bg: rgba(255, 255, 255, 0.76);
-  --glass-border: rgba(228, 228, 231, 0.85);
+  --glass-bg: rgba(255, 255, 255, 0.82);
+  --glass-border: rgba(0, 0, 0, 0.06);
   --glass-specular: rgba(255, 255, 255, 0.9);
   --glass-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.08);
 }
@@ -27,12 +27,12 @@
 
 /* 3. Cores do Modo Escuro vinculadas à classe .dark */
 .dark {
-  --background: #060a12;
+  --background: #000000;
   --foreground: #f4f4f5;
   --brand-primary: #9fc131;
   --brand-glow: rgba(159, 193, 49, 0.22);
-  --glass-bg: rgba(12, 12, 16, 0.76);
-  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-bg: rgba(22, 22, 24, 0.82);
+  --glass-border: rgba(255, 255, 255, 0.08);
   --glass-specular: rgba(255, 255, 255, 0.08);
   --glass-shadow: 0 25px 60px -12px rgba(0, 0, 0, 0.75);
 }

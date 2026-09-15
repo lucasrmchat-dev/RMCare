@@ -2235,7 +2235,18 @@ export async function actionSalvarConfigWebhooksEFluxos(configWebhooks) {
 
   const cleanConfig = {
     webhook_url: configWebhooks?.webhook_url ? configWebhooks.webhook_url.trim() : "",
+    webhook_outbound_url: (configWebhooks?.webhook_outbound_url || configWebhooks?.webhook_url || "").trim(),
+    webhook_outbound_enabled: configWebhooks?.webhook_outbound_enabled !== false,
+    eventos_ativos: Array.isArray(configWebhooks?.eventos_ativos) ? configWebhooks.eventos_ativos : [
+      "agendamento.criado",
+      "agendamento.confirmado",
+      "agendamento.cancelado",
+      "agendamento.remarcado",
+      "pagamento.aprovado",
+      "triagem.concluida"
+    ],
     webhook_secret: configWebhooks?.webhook_secret ? configWebhooks.webhook_secret.trim() : "",
+    inbound_secret: configWebhooks?.inbound_secret ? configWebhooks.inbound_secret.trim() : configWebhooks?.webhook_secret ? configWebhooks.webhook_secret.trim() : "",
     webhook_tipo_padrao: configWebhooks?.webhook_tipo_padrao || "whatsapp",
     respostas_mapping: configWebhooks?.respostas_mapping || {
       confirmar: ["1", "sim", "confirmo", "confirmar"],
@@ -2246,7 +2257,8 @@ export async function actionSalvarConfigWebhooksEFluxos(configWebhooks) {
       ativo: Boolean(configWebhooks?.automacoes_presenca?.ativo),
       acao_padrao: configWebhooks?.automacoes_presenca?.acao_padrao || "compareceu",
       tolerancia_minutos: Number(configWebhooks?.automacoes_presenca?.tolerancia_minutos || 60)
-    }
+    },
+    webhook_logs: Array.isArray(configWebhooks?.webhook_logs) ? configWebhooks.webhook_logs : (confCampos.config_webhooks?.webhook_logs || [])
   };
 
   const { error } = await supabaseAdmin
@@ -3101,3 +3113,214 @@ export async function actionTestarMensagemWhatsAppTemplate({
   };
 }
 
+
+/* ==========================================
+   WEBHOOKS BIDIRECIONAIS DO ERP (ENTRADA & SAÍDA)
+   ========================================== */
+export async function actionBuscarWebhooksEmpresa() {
+  const admin = await getAdminLogado(true);
+  const { data: emp, error } = await supabaseAdmin
+    .from("empresas")
+    .select("id, nome, slug, config_campos, config_chaves")
+    .eq("id", admin.empresa_id)
+    .single();
+
+  if (error || !emp) throw new Error(error?.message || "Empresa não encontrada");
+
+  const confCampos = emp.config_campos || {};
+  const confChaves = emp.config_chaves || {};
+  const confWeb = confCampos.config_webhooks || confChaves.config_webhooks || {};
+
+  return {
+    empresa_id: emp.id,
+    empresa_nome: emp.nome,
+    empresa_slug: emp.slug,
+    inbound_url_path: `/api/webhooks/empresa/${emp.id}`,
+    inbound_secret: confWeb.inbound_secret || confWeb.webhook_secret || "",
+    outbound_enabled: confWeb.webhook_outbound_enabled !== false,
+    outbound_url: confWeb.webhook_outbound_url || confWeb.webhook_url_erp || confWeb.webhook_url || "",
+    outbound_secret: confWeb.webhook_secret || confWeb.outbound_secret || "",
+    eventos_ativos: Array.isArray(confWeb.eventos_ativos) ? confWeb.eventos_ativos : [
+      "agendamento.criado",
+      "agendamento.confirmado",
+      "agendamento.cancelado",
+      "agendamento.remarcado",
+      "pagamento.aprovado",
+      "triagem.concluida"
+    ],
+    logs: Array.isArray(confWeb.webhook_logs) ? confWeb.webhook_logs : []
+  };
+}
+
+export async function actionSalvarWebhooksEmpresa(config) {
+  const admin = await getAdminLogado(true);
+  const { data: emp, error: errFetch } = await supabaseAdmin
+    .from("empresas")
+    .select("id, config_campos, config_chaves")
+    .eq("id", admin.empresa_id)
+    .single();
+
+  if (errFetch || !emp) throw new Error(errFetch?.message || "Empresa não encontrada");
+
+  const confCampos = emp.config_campos || {};
+  const confChaves = emp.config_chaves || {};
+  const currentWeb = confCampos.config_webhooks || confChaves.config_webhooks || {};
+
+  const updatedWeb = {
+    ...currentWeb,
+    inbound_secret: (config.inbound_secret || config.outbound_secret || "").trim(),
+    webhook_secret: (config.outbound_secret || config.inbound_secret || "").trim(),
+    webhook_outbound_enabled: Boolean(config.outbound_enabled),
+    webhook_outbound_url: (config.outbound_url || "").trim(),
+    webhook_url_erp: (config.outbound_url || "").trim(),
+    webhook_url: (config.outbound_url || currentWeb.webhook_url || "").trim(),
+    eventos_ativos: Array.isArray(config.eventos_ativos) ? config.eventos_ativos : currentWeb.eventos_ativos || [
+      "agendamento.criado",
+      "agendamento.confirmado",
+      "agendamento.cancelado",
+      "agendamento.remarcado",
+      "pagamento.aprovado",
+      "triagem.concluida"
+    ]
+  };
+
+  const { error } = await supabaseAdmin
+    .from("empresas")
+    .update({
+      config_campos: {
+        ...confCampos,
+        config_webhooks: updatedWeb
+      },
+      config_chaves: {
+        ...confChaves,
+        config_webhooks: updatedWeb,
+        webhook_url_inteligente: updatedWeb.webhook_outbound_url || confChaves.webhook_url_inteligente
+      }
+    })
+    .eq("id", admin.empresa_id);
+
+  if (error) throw new Error(error.message);
+  return { success: true, config: updatedWeb };
+}
+
+export async function actionTestarWebhookERP({ evento = "agendamento.criado", url, secret = "" }) {
+  const admin = await getAdminLogado(true);
+  if (!url || !url.startsWith("http")) {
+    throw new Error("Informe uma URL de Webhook válida iniciando com http:// ou https://");
+  }
+
+  const { data: emp } = await supabaseAdmin
+    .from("empresas")
+    .select("id, nome, slug")
+    .eq("id", admin.empresa_id)
+    .single();
+
+  const timestampIso = new Date().toISOString();
+  const eventId = `test_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+  const payload = {
+    event: evento,
+    event_id: eventId,
+    timestamp: timestampIso,
+    is_test: true,
+    empresa: {
+      id: emp?.id || admin.empresa_id,
+      nome: emp?.nome || "Clínica Teste",
+      slug: emp?.slug || "clinica-teste"
+    },
+    data: {
+      agendamento: {
+        id: "ag_test_998877",
+        data: new Date().toISOString().substring(0, 10),
+        horario: "14:30",
+        servico: "Consulta Especializada",
+        especialista: "Dr. Roberto Martins",
+        especialidade: "Gastroenterologia",
+        modalidade: "Particular",
+        status: evento.includes("confirmado") ? "confirmado" : evento.includes("cancelado") ? "cancelado" : "agendado",
+        valor_total: 350.00,
+        observacoes: "Teste de integração de webhook disparado pelo painel administrativo"
+      },
+      paciente: {
+        id: "pac_test_112233",
+        nome: "Paciente de Teste",
+        nome_completo: "Paciente de Teste RMCare",
+        cpf: "123.456.789-00",
+        telefone: "5584999999999",
+        email: "paciente.teste@exemplo.com"
+      }
+    }
+  };
+
+  const headers = {
+    "Content-Type": "application/json",
+    "User-Agent": "RMCare-Webhooks-Test/2.0",
+    "x-rmcare-event": evento,
+    "x-empresa-id": emp?.id || admin.empresa_id
+  };
+
+  if (secret && secret.trim()) {
+    headers["x-webhook-secret"] = secret.trim();
+    headers["Authorization"] = `Bearer ${secret.trim()}`;
+  }
+
+  const start = Date.now();
+  let responseText = "";
+  let status = 0;
+  let success = false;
+
+  try {
+    const res = await fetch(url.trim(), {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload)
+    });
+    status = res.status;
+    success = res.ok;
+    try {
+      responseText = await res.text();
+    } catch (e) {}
+  } catch (err) {
+    status = 0;
+    success = false;
+    responseText = err.message || "Erro de rede";
+  }
+
+  const latencyMs = Date.now() - start;
+
+  return {
+    success,
+    status,
+    latencyMs,
+    resposta: responseText.slice(0, 300),
+    url: url.trim(),
+    payloadEnviado: payload
+  };
+}
+
+export async function actionLimparLogsWebhook() {
+  const admin = await getAdminLogado(true);
+  const { data: emp } = await supabaseAdmin
+    .from("empresas")
+    .select("config_campos")
+    .eq("id", admin.empresa_id)
+    .single();
+
+  const confCampos = emp?.config_campos || {};
+  const confWeb = confCampos.config_webhooks || {};
+
+  await supabaseAdmin
+    .from("empresas")
+    .update({
+      config_campos: {
+        ...confCampos,
+        config_webhooks: {
+          ...confWeb,
+          webhook_logs: []
+        }
+      }
+    })
+    .eq("id", admin.empresa_id);
+
+  return true;
+}

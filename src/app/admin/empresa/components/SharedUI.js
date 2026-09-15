@@ -21,9 +21,9 @@ export const appleSpring = { type: "spring", stiffness: 450, damping: 32 };
 export const smoothSpring = { type: "spring", stiffness: 350, damping: 28 };
 
 export const fadeUp = {
-  initial: { opacity: 0, y: 12 },
-  animate: { opacity: 1, y: 0, transition: appleSpring },
-  exit: { opacity: 0, y: -8, transition: { duration: 0.15 } }
+  initial: { opacity: 0 },
+  animate: { opacity: 1, transition: { duration: 0.18, ease: [0.25, 0.1, 0.25, 1] } },
+  exit: { opacity: 0, transition: { duration: 0.12, ease: [0.25, 0.1, 0.25, 1] } }
 };
 
 export const staggerContainer = {
@@ -131,7 +131,7 @@ export const SidebarItem = ({ id, icon: Icon, label, activeView, onClick }) => (
   </button>
 );
 
-export const CustomSelect = ({ value, onChange, options, label, icon: Icon }) => {
+export const CustomSelect = ({ value, onChange, options, label, icon: Icon, compact = false }) => {
   const [isOpen, setIsOpen] = useState(false);
   const ref = useRef(null);
   useOutsideClick(ref, () => setIsOpen(false));
@@ -150,19 +150,21 @@ export const CustomSelect = ({ value, onChange, options, label, icon: Icon }) =>
           playDopamineSound("click");
           setIsOpen(!isOpen);
         }}
-        className={`flex items-center justify-between w-full px-4 py-3 min-h-[46px] bg-[#F8F8FA] dark:bg-[#1C1C1E] border ${
+        className={`flex items-center justify-between w-full ${
+          compact ? "px-3 py-1.5 min-h-[36px] text-xs rounded-xl" : "px-4 py-2.5 min-h-[44px] text-xs rounded-2xl"
+        } bg-black/[0.03] dark:bg-white/[0.05] border ${
           isOpen
-            ? "border-black/20 dark:border-white/30 ring-4 ring-black/5 dark:ring-white/10"
+            ? "border-black/20 dark:border-white/30 ring-2 ring-black/5 dark:ring-white/10"
             : "border-black/[0.06] dark:border-white/[0.08] hover:border-black/15 dark:hover:border-white/15"
-        } rounded-2xl text-xs sm:text-sm font-semibold text-zinc-900 dark:text-white transition-all shadow-xs cursor-pointer`}
+        } transition-all font-semibold text-zinc-900 dark:text-white shadow-2xs cursor-pointer`}
       >
         <div className="flex items-center gap-2 truncate">
-          {Icon && <Icon size={16} className="text-zinc-400 dark:text-zinc-500 shrink-0" />}
+          {Icon && <Icon size={14} className="text-zinc-400 dark:text-zinc-500 shrink-0" />}
           <span className="truncate">{selectedOption?.label}</span>
         </div>
         <ChevronDown
-          size={15}
-          className={`text-zinc-400 transition-transform duration-200 shrink-0 ${
+          size={14}
+          className={`text-zinc-400 transition-transform duration-200 shrink-0 ml-1 ${
             isOpen ? "rotate-180 text-zinc-800 dark:text-zinc-200" : ""
           }`}
         />
@@ -170,11 +172,11 @@ export const CustomSelect = ({ value, onChange, options, label, icon: Icon }) =>
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ opacity: 0, y: 6, scale: 0.97 }}
+            initial={{ opacity: 0, y: 4, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 6, scale: 0.97 }}
-            transition={appleSpring}
-            className="absolute z-50 top-full left-0 right-0 mt-2 bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-2xl border border-black/[0.08] dark:border-white/[0.1] rounded-2xl shadow-[0_20px_40px_rgba(0,0,0,0.15)] dark:shadow-[0_20px_40px_rgba(0,0,0,0.6)] overflow-hidden flex flex-col max-h-60 overflow-y-auto custom-scrollbar p-1"
+            exit={{ opacity: 0, y: 4, scale: 0.98 }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
+            className="absolute z-50 top-full left-0 right-0 mt-1.5 bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-2xl border border-black/[0.08] dark:border-white/[0.1] rounded-2xl shadow-[0_20px_40px_rgba(0,0,0,0.15)] dark:shadow-[0_20px_40px_rgba(0,0,0,0.6)] overflow-hidden flex flex-col max-h-60 overflow-y-auto custom-scrollbar p-1"
           >
             {options.map((opt) => (
               <button
@@ -194,7 +196,7 @@ export const CustomSelect = ({ value, onChange, options, label, icon: Icon }) =>
               >
                 <span className="truncate">{opt.label}</span>
                 {value === opt.value && (
-                  <Check size={14} strokeWidth={2.5} className="text-zinc-900 dark:text-white flex-shrink-0 ml-2" />
+                  <Check size={14} strokeWidth={2.5} className="text-[#34C759] flex-shrink-0 ml-2" />
                 )}
               </button>
             ))}
@@ -244,24 +246,24 @@ export const CustomDatePicker = ({ value, onChange, label }) => {
           playDopamineSound("click");
           setIsOpen(!isOpen);
         }}
-        className={`flex items-center justify-between w-full px-4 py-3 min-h-[46px] bg-[#F8F8FA] dark:bg-[#1C1C1E] border ${
+        className={`flex items-center justify-between w-full px-4 py-2.5 min-h-[44px] bg-black/[0.03] dark:bg-white/[0.05] border ${
           isOpen
-            ? "border-black/20 dark:border-white/30 ring-4 ring-black/5 dark:ring-white/10"
+            ? "border-black/20 dark:border-white/30 ring-2 ring-black/5 dark:ring-white/10"
             : "border-black/[0.06] dark:border-white/[0.08] hover:border-black/15 dark:hover:border-white/15"
-        } rounded-2xl text-xs sm:text-sm font-semibold text-zinc-900 dark:text-white transition-all shadow-xs cursor-pointer`}
+        } rounded-2xl text-xs sm:text-sm font-semibold text-zinc-900 dark:text-white transition-all shadow-2xs cursor-pointer`}
       >
         <div className="flex items-center gap-2 font-medium">
-          <CalendarIcon size={16} className="text-zinc-400 dark:text-zinc-500" />
+          <CalendarIcon size={15} className="text-zinc-400 dark:text-zinc-500" />
           {displayDate}
         </div>
       </button>
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ opacity: 0, y: 6, scale: 0.97 }}
+            initial={{ opacity: 0, y: 4, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 6, scale: 0.97 }}
-            transition={appleSpring}
+            exit={{ opacity: 0, y: 4, scale: 0.98 }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
             className="absolute z-50 top-full left-0 mt-2 w-72 bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-2xl border border-black/[0.08] dark:border-white/[0.1] rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.18)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.6)] p-4"
           >
             <div className="flex justify-between items-center mb-3">
@@ -336,7 +338,7 @@ export const TextInput = ({ label, type = "text", ...props }) => (
     )}
     <input
       type={type}
-      className="w-full min-h-[46px] px-4 py-3 bg-[#F8F8FA] dark:bg-[#1C1C1E] border border-black/[0.08] dark:border-white/[0.1] rounded-2xl text-xs sm:text-sm font-medium text-zinc-900 dark:text-white outline-none transition-all duration-200 focus:border-black/30 dark:focus:border-white/30 focus:ring-4 focus:ring-black/5 dark:focus:ring-white/10 shadow-xs placeholder:text-zinc-400 dark:placeholder:text-zinc-500"
+      className="w-full min-h-[44px] px-4 py-2.5 bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.08] dark:border-white/[0.1] rounded-2xl text-xs sm:text-sm font-medium text-zinc-900 dark:text-white outline-none transition-all duration-200 focus:border-black/30 dark:focus:border-white/30 focus:ring-4 focus:ring-black/5 dark:focus:ring-white/10 shadow-2xs placeholder:text-zinc-400 dark:placeholder:text-zinc-500"
       {...props}
     />
   </div>
@@ -376,15 +378,15 @@ export const ToggleSwitch = ({ checked, onChange, label }) => (
 
 export const ButtonPrimary = ({ children, onClick, disabled, className = "", icon: Icon }) => (
   <motion.button
-    whileHover={!disabled ? { scale: 1.015 } : {}}
-    whileTap={!disabled ? { scale: 0.97 } : {}}
+    whileHover={!disabled ? { scale: 1.012 } : {}}
+    whileTap={!disabled ? { scale: 0.98 } : {}}
     onClick={(e) => {
       playDopamineSound("click");
       triggerHaptic("light");
       if (onClick) onClick(e);
     }}
     disabled={disabled}
-    className={`relative overflow-hidden min-h-[46px] bg-zinc-950 hover:bg-black dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black px-5 py-3 rounded-2xl font-bold text-xs sm:text-sm shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer ${className}`}
+    className={`relative overflow-hidden min-h-[42px] bg-zinc-950 hover:bg-black dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black px-5 py-2.5 rounded-2xl font-bold text-xs sm:text-sm shadow-xs transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer ${className}`}
   >
     {Icon && <Icon size={16} strokeWidth={2} />}
     {children}
@@ -393,15 +395,15 @@ export const ButtonPrimary = ({ children, onClick, disabled, className = "", ico
 
 export const ButtonSecondary = ({ children, onClick, disabled, className = "", icon: Icon }) => (
   <motion.button
-    whileHover={!disabled ? { scale: 1.015 } : {}}
-    whileTap={!disabled ? { scale: 0.97 } : {}}
+    whileHover={!disabled ? { scale: 1.012 } : {}}
+    whileTap={!disabled ? { scale: 0.98 } : {}}
     onClick={(e) => {
       playDopamineSound("click");
       triggerHaptic("light");
       if (onClick) onClick(e);
     }}
     disabled={disabled}
-    className={`relative overflow-hidden min-h-[46px] bg-black/[0.04] hover:bg-black/[0.07] dark:bg-white/[0.06] dark:hover:bg-white/[0.1] text-zinc-800 dark:text-zinc-200 border border-black/[0.04] dark:border-white/[0.06] px-5 py-3 rounded-2xl font-semibold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer ${className}`}
+    className={`relative overflow-hidden min-h-[42px] bg-black/[0.04] hover:bg-black/[0.07] dark:bg-white/[0.06] dark:hover:bg-white/[0.1] text-zinc-800 dark:text-zinc-200 border border-black/[0.04] dark:border-white/[0.06] px-5 py-2.5 rounded-2xl font-semibold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer ${className}`}
   >
     {Icon && <Icon size={16} strokeWidth={2} />}
     {children}
@@ -438,8 +440,8 @@ export const ModuleHeader = ({ icon: Icon, title, description, badge, rightEleme
   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-black/[0.06] dark:border-white/[0.08] pb-4 text-left">
     <div className="flex items-start sm:items-center gap-3.5">
       {Icon && (
-        <div className="w-11 h-11 rounded-2xl bg-black/[0.04] dark:bg-white/[0.06] border border-black/[0.04] dark:border-white/[0.06] text-zinc-900 dark:text-white flex items-center justify-center shrink-0 shadow-xs">
-          <Icon size={20} strokeWidth={1.75} className="text-zinc-800 dark:text-zinc-200" />
+        <div className="w-10 h-10 rounded-2xl bg-black/[0.04] dark:bg-white/[0.06] border border-black/[0.04] dark:border-white/[0.06] text-zinc-900 dark:text-white flex items-center justify-center shrink-0 shadow-2xs">
+          <Icon size={18} strokeWidth={1.75} className="text-zinc-800 dark:text-zinc-200" />
         </div>
       )}
       <div>
@@ -448,7 +450,7 @@ export const ModuleHeader = ({ icon: Icon, title, description, badge, rightEleme
             {badge}
           </span>
         )}
-        <h2 className="text-xl font-bold text-zinc-950 dark:text-white tracking-tight leading-tight">
+        <h2 className="text-lg font-bold text-zinc-950 dark:text-white tracking-tight leading-tight">
           {title}
         </h2>
         {description && (

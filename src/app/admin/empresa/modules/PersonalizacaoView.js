@@ -1197,7 +1197,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
     <motion.div
       key="personalizacao"
       {...fadeUp}
-      className="flex-1 flex flex-col h-full overflow-hidden w-full max-w-7xl mx-auto p-4 md:p-6 lg:p-8"
+      className="flex-1 flex flex-col h-full overflow-hidden w-full p-4 sm:p-5 lg:p-6 min-h-0"
     >
       {/* CABEÇALHO COM TÍTULO E BOTÃO SALVAR */}
       <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-black/[0.06] dark:border-white/[0.08] pb-4">

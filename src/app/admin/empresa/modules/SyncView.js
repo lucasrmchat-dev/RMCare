@@ -424,7 +424,7 @@ export default function SyncView({ bloqueios = [], servicos = [], fetchBloqueios
   };
 
   return (
-    <motion.div key="tech" {...fadeUp} className="p-6 md:p-10 mx-auto w-full max-w-5xl overflow-y-auto h-full custom-scrollbar relative pb-32 space-y-8">
+    <motion.div key="tech" {...fadeUp} className="p-4 sm:p-5 lg:p-6 w-full min-h-0 overflow-y-auto h-full custom-scrollbar relative pb-32 space-y-8">
       
       {/* CABEÇALHO UNIFICADO DA EMPRESA */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-black/[0.06] dark:border-white/[0.08] pb-6">

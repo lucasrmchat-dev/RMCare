@@ -432,7 +432,7 @@ export default function FinanceiroView({ subTab = "corpo", setSubTab, servicos =
   }, [servicos]);
 
   return (
-    <motion.div key="financeiro" {...fadeUp} className="p-6 md:p-10 mx-auto w-full max-w-7xl overflow-y-auto h-full custom-scrollbar relative">
+    <motion.div key="financeiro" {...fadeUp} className="p-4 sm:p-5 lg:p-6 w-full min-h-0 overflow-y-auto h-full custom-scrollbar relative">
       
       {/* PADRÃO UNIFICADO DE CABEÇALHO */}
       <div className="mb-8 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">

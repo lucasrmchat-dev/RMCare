@@ -306,6 +306,33 @@ export async function dispararGatilhoServidor({
       }
     }
 
+    // Disparar Webhook Outbound para o ERP da Empresa
+    try {
+      const { dispararWebhookOutboundEmpresa } = await import("@/lib/webhookDispatcher");
+      const mapaGatilhos = {
+        imediato: "agendamento.criado",
+        cancelado: "agendamento.cancelado",
+        remarcado: "agendamento.remarcado",
+        pagamento_aprovado: "pagamento.aprovado",
+        pagamento_rejeitado: "pagamento.rejeitado",
+        confirmado: "agendamento.confirmado"
+      };
+      const eventName = mapaGatilhos[gatilho] || `agendamento.${gatilho}`;
+      dispararWebhookOutboundEmpresa({
+        empresaId,
+        evento: eventName,
+        dados: {
+          gatilho,
+          motivo: motivoFinal,
+          nova_data: dataFinal,
+          novo_horario: horaFinal
+        },
+        agendamentoId
+      }).catch((e) => console.warn("Aviso ao disparar webhook outbound ERP:", e));
+    } catch (errWb) {
+      console.warn("Aviso ao disparar webhook outbound do ERP:", errWb);
+    }
+
     return true;
   } catch (err) {
     console.error("Erro em dispararGatilhoServidor:", err);

@@ -202,7 +202,7 @@ export default function TriagemView({
     <motion.div
       key="triagem"
       {...fadeUp}
-      className="p-4 md:p-8 mx-auto w-full max-w-6xl overflow-y-auto h-full custom-scrollbar pb-32 space-y-8"
+      className="p-4 sm:p-5 lg:p-6 w-full min-h-0 overflow-y-auto h-full custom-scrollbar pb-32 space-y-8"
     >
       {/* CABEÇALHO UNIFICADO */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-black/[0.06] dark:border-white/[0.08] pb-4">

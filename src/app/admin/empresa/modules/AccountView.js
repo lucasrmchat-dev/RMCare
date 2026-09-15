@@ -304,7 +304,7 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
     <motion.div
       key="account-view"
       {...fadeUp}
-      className="flex-1 flex flex-col h-full overflow-hidden w-full max-w-7xl mx-auto p-4 md:p-6 lg:p-8 space-y-6 text-left"
+      className="flex-1 flex flex-col h-full overflow-hidden w-full p-4 sm:p-5 lg:p-6 min-h-0 space-y-6 text-left"
     >
       {/* CABEÇALHO PADRONIZADO */}
       <ModuleHeader
