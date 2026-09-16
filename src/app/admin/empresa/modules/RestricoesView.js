@@ -80,19 +80,35 @@ export default function RestricoesView({
   fetchRegras,
   showToast
 }) {
-  const [viewMode, setViewMode] = useState("cards"); // "cards" | "tabela"
+  const [viewMode, setViewMode] = useState(() => {
+    if (typeof window !== "undefined") {
+      const defaultMode = localStorage.getItem("rmcare_default_view_mode") || localStorage.getItem("rmcare_view_mode");
+      if (defaultMode === "lista" || defaultMode === "tabela") return "tabela";
+      if (defaultMode === "cards") return "cards";
+    }
+    return "cards";
+  });
   const [tipoRegra, setTipoRegra] = useState("especialidade"); // "geral" | "especialidade" | "especifica"
 
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
 
   useEffect(() => {
-    try {
-      const defaultMode = localStorage.getItem("rmcare_default_view_mode") || localStorage.getItem("rmcare_view_mode");
-      if (defaultMode === "cards" || defaultMode === "tabela") {
-        setViewMode(defaultMode);
-      }
-    } catch (e) {}
+    const handleModeChange = (e) => {
+      const mode = e?.detail || localStorage.getItem("rmcare_default_view_mode") || localStorage.getItem("rmcare_view_mode");
+      setViewMode(mode === "lista" || mode === "tabela" ? "tabela" : "cards");
+    };
+    window.addEventListener("rmcare_view_mode_changed", handleModeChange);
+    return () => window.removeEventListener("rmcare_view_mode_changed", handleModeChange);
   }, []);
+
+  const handleToggleViewMode = (mode) => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem("rmcare_default_view_mode", mode === "tabela" ? "lista" : "cards");
+      localStorage.setItem("rmcare_view_mode", mode);
+      window.dispatchEvent(new CustomEvent("rmcare_view_mode_changed", { detail: mode }));
+    } catch (e) {}
+  };
 
   const [formData, setFormData] = useState({
     servico_id: "",
@@ -418,7 +434,7 @@ export default function RestricoesView({
 
           <div className="flex items-center gap-1 p-1 bg-zinc-100 dark:bg-zinc-900 rounded-xl border border-zinc-200/60 dark:border-zinc-800">
             <button
-              onClick={() => setViewMode("cards")}
+              onClick={() => handleToggleViewMode("cards")}
               className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                 viewMode === "cards"
                   ? "bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white shadow-sm"
@@ -429,7 +445,7 @@ export default function RestricoesView({
               <LayoutGrid size={15} />
             </button>
             <button
-              onClick={() => setViewMode("tabela")}
+              onClick={() => handleToggleViewMode("tabela")}
               className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                 viewMode === "tabela"
                   ? "bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white shadow-sm"

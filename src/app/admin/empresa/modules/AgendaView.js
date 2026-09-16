@@ -306,7 +306,17 @@ export default function AgendaView({
   isOwner = false,
   loggedAdmin = null
 }) {
-  const [viewMode, setViewMode] = useState("cards");
+  const currentSubTab = subTab === "lista" ? "lista" : "calendario";
+  const [viewMode, setViewMode] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved =
+        localStorage.getItem("rmcare_default_view_mode") ||
+        localStorage.getItem("rmcare_view_mode");
+      if (saved === "lista" || saved === "tabela") return "tabela";
+      if (saved === "cards") return "cards";
+    }
+    return "cards";
+  });
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const [mounted, setMounted] = useState(false);
@@ -335,14 +345,19 @@ export default function AgendaView({
   }, [agendamentos, bloqueios]);
 
   useEffect(() => {
-    try {
-      const defaultMode =
+    const handleModeChange = (e) => {
+      const mode =
+        e?.detail ||
         localStorage.getItem("rmcare_default_view_mode") ||
         localStorage.getItem("rmcare_view_mode");
-      if (defaultMode === "cards" || defaultMode === "tabela") {
-        setViewMode(defaultMode);
+      if (mode === "lista" || mode === "tabela") {
+        setViewMode("tabela");
+      } else if (mode === "cards") {
+        setViewMode("cards");
       }
-    } catch (e) {}
+    };
+    window.addEventListener("rmcare_view_mode_changed", handleModeChange);
+    return () => window.removeEventListener("rmcare_view_mode_changed", handleModeChange);
   }, []);
 
   // Sincronizador Automático de 1 minuto (60s) para manter os dados atualizados em tempo real
@@ -1644,7 +1659,7 @@ export default function AgendaView({
                     Agenda
                   </h2>
                   <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-black/[0.04] dark:bg-white/[0.06] text-zinc-600 dark:text-zinc-400 border border-black/[0.04] dark:border-white/[0.06]">
-                    {(subTab === "calendario" ? eventosAgendaMistaDiaria.length : listaUnificadaTodosPacientes.length)} atendimentos
+                    {(currentSubTab === "calendario" ? eventosAgendaMistaDiaria.length : listaUnificadaTodosPacientes.length)} atendimentos
                   </span>
                 </div>
                 <p className="text-xs text-zinc-400 hidden sm:block">
@@ -1663,12 +1678,12 @@ export default function AgendaView({
                   setSubTab("calendario");
                 }}
                 className={`relative px-4 py-1.5 rounded-xl transition-colors min-h-[32px] flex items-center gap-2 cursor-pointer text-xs font-semibold z-10 ${
-                  subTab === "calendario"
+                  currentSubTab === "calendario"
                     ? "text-zinc-950 dark:text-white font-bold"
                     : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
                 }`}
               >
-                {subTab === "calendario" && (
+                {currentSubTab === "calendario" && (
                   <motion.div
                     layoutId="agenda-subtab-pill"
                     className="absolute inset-0 bg-white dark:bg-[#2C2C2E] rounded-xl shadow-xs border border-black/[0.04] dark:border-white/[0.08] -z-10"
@@ -1686,12 +1701,12 @@ export default function AgendaView({
                   setSubTab("lista");
                 }}
                 className={`relative px-4 py-1.5 rounded-xl transition-colors min-h-[32px] flex items-center gap-2 cursor-pointer text-xs font-semibold z-10 ${
-                  subTab === "lista"
+                  currentSubTab === "lista"
                     ? "text-zinc-950 dark:text-white font-bold"
                     : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
                 }`}
               >
-                {subTab === "lista" && (
+                {currentSubTab === "lista" && (
                   <motion.div
                     layoutId="agenda-subtab-pill"
                     className="absolute inset-0 bg-white dark:bg-[#2C2C2E] rounded-xl shadow-xs border border-black/[0.04] dark:border-white/[0.08] -z-10"
@@ -1897,7 +1912,7 @@ export default function AgendaView({
         {/* CONTEÚDO PRINCIPAL: CALENDÁRIO OU LISTA */}
         <div className="flex-1 overflow-hidden relative">
           <AnimatePresence mode="wait">
-            {subTab === "calendario" && (
+            {currentSubTab === "calendario" && (
               <motion.div
                 key="subtab-cal"
                 initial={{ opacity: 0 }}
@@ -2121,8 +2136,6 @@ export default function AgendaView({
                             } transition-all flex flex-col md:flex-row md:items-center justify-between gap-4`}
                           >
                             <div className="flex items-start md:items-center gap-3.5 min-w-0">
-                              {renderAvatarMonograma(item.nomePaciente)}
-
                               <div className="bg-[#F8F8FA] dark:bg-[#222225] border border-black/[0.06] dark:border-white/[0.08] px-3 py-2 rounded-2xl text-center min-w-[68px] shadow-2xs shrink-0">
                                 <span className="text-sm sm:text-base font-bold text-zinc-950 dark:text-white tracking-tight">
                                   {item.horario || "--:--"}
@@ -2471,7 +2484,7 @@ export default function AgendaView({
               </motion.div>
             )}
 
-            {subTab === "lista" && (
+            {currentSubTab === "lista" && (
               <motion.div
                 key="subtab-lista"
                 initial={{ opacity: 0 }}
@@ -2628,8 +2641,6 @@ export default function AgendaView({
                             } transition-all flex flex-col md:flex-row md:items-center justify-between gap-4`}
                           >
                             <div className="flex items-start md:items-center gap-3.5 min-w-0">
-                              {renderAvatarMonograma(item.nomePaciente)}
-
                               <div className="bg-[#F8F8FA] dark:bg-[#222225] border border-black/[0.06] dark:border-white/[0.08] px-3 py-2 rounded-2xl text-center min-w-[68px] shadow-2xs shrink-0">
                                 <span className="text-sm sm:text-base font-bold text-zinc-950 dark:text-white tracking-tight">
                                   {item.horario || "--:--"}

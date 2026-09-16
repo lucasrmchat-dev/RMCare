@@ -1240,6 +1240,104 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
               transition={spring}
               className="space-y-6"
             >
+              {/* PREFERÊNCIA GLOBAL DE VISUALIZAÇÃO: CARDS OU LISTA */}
+              <section className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-5">
+                <div className="flex items-center gap-3 border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-500/20 flex items-center justify-center text-[#34C759] dark:text-[#30D158] shadow-2xs">
+                    <LayoutGrid size={20} strokeWidth={1.8} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-zinc-950 dark:text-white tracking-tight">
+                      Preferência Global de Visualização
+                    </h3>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      Defina como todas as telas do sistema (Agenda, Corpo Clínico, Especialidades, Horários & Duração e Financeiro) serão abertas por padrão.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {[
+                    {
+                      id: "cards",
+                      label: "Sempre visualizar por Cards",
+                      badge: "Modo Grade",
+                      desc: "Visualização em cards modernos, expansíveis e ricos em detalhes visuais.",
+                      icon: LayoutGrid
+                    },
+                    {
+                      id: "lista",
+                      label: "Sempre visualizar por Lista",
+                      badge: "Modo Tabela",
+                      desc: "Visualização em lista tabular compacta e direta, ideal para visualizar muitos registros.",
+                      icon: List
+                    }
+                  ].map((m) => {
+                    const currentView = campos.tema?.visualizacao_padrao || campos.formato_visualizacao_padrao || "cards";
+                    const isSel = currentView === m.id;
+                    const Icon = m.icon;
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={async () => {
+                          playDopamineSound("select");
+                          triggerHaptic("medium");
+                          const newTheme = { ...(campos.tema || {}), visualizacao_padrao: m.id };
+                          const newCampos = {
+                            ...campos,
+                            tema: newTheme,
+                            formato_visualizacao_padrao: m.id
+                          };
+                          setCampos(newCampos);
+                          aplicarTemaEmTempoReal(newTheme);
+                          if (typeof window !== "undefined") {
+                            localStorage.setItem("rmcare_default_view_mode", m.id);
+                            localStorage.setItem("rmcare_view_mode", m.id);
+                            window.dispatchEvent(new CustomEvent("rmcare_view_mode_changed", { detail: m.id }));
+                          }
+                          try {
+                            await actionSalvarCustomization({ config_campos: newCampos, config_mensagens: regrasMensagens });
+                          } catch (e) {
+                            console.warn("Aviso ao persistir visualizacao_padrao:", e);
+                          }
+                          if (showToast) showToast(`Preferência atualizada: ${m.label} em todo o sistema.`);
+                        }}
+                        className={`p-5 rounded-2xl border text-left transition-all cursor-pointer flex items-start gap-4 ${
+                          isSel
+                            ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-md ring-2 ring-[#34C759]"
+                            : "bg-[#F8F8FA] dark:bg-[#222225] border-black/[0.06] dark:border-white/[0.08] text-zinc-700 dark:text-zinc-300 hover:border-black/20 dark:hover:border-white/20"
+                        }`}
+                      >
+                        <div className={`p-2.5 rounded-xl shrink-0 ${isSel ? "bg-white/20 dark:bg-black/20 text-white dark:text-black" : "bg-black/[0.04] dark:bg-white/[0.06] text-zinc-600 dark:text-zinc-400"}`}>
+                          <Icon size={20} strokeWidth={2} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-bold tracking-tight">{m.label}</span>
+                            {isSel && (
+                              <div className="w-5 h-5 rounded-full bg-[#34C759] text-white flex items-center justify-center shrink-0">
+                                <Check size={12} strokeWidth={3} />
+                              </div>
+                            )}
+                          </div>
+                          <span className={`inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md mt-1 mb-1.5 ${
+                            isSel
+                              ? "bg-white/15 dark:bg-black/15 text-white dark:text-black"
+                              : "bg-black/[0.04] dark:bg-white/[0.06] text-zinc-500 dark:text-zinc-400"
+                          }`}>
+                            {m.badge}
+                          </span>
+                          <p className={`text-xs leading-relaxed ${isSel ? "text-white/80 dark:text-black/80 font-normal" : "text-zinc-500 dark:text-zinc-400"}`}>
+                            {m.desc}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
               {/* REORDENAÇÃO E HABILITAÇÃO INTEGRADA DAS ETAPAS */}
               <section className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-5">
                 <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-black/[0.04] dark:border-white/[0.06] pb-4">

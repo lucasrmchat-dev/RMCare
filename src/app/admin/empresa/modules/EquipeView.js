@@ -472,8 +472,22 @@ export default function EquipeView({
   const [searchTerm, setSearchTerm] = useState("");
 
   // Preferência visual: Lista vs Cards para Especialistas e Especialidades
-  const [viewMode, setViewMode] = useState("lista");
-  const [viewModeEspecialidades, setViewModeEspecialidades] = useState("lista");
+  const [viewMode, setViewMode] = useState(() => {
+    if (typeof window !== "undefined") {
+      const defaultMode = localStorage.getItem("rmcare_default_view_mode") || localStorage.getItem("rmcare_view_mode");
+      if (defaultMode === "cards") return "cards";
+      if (defaultMode === "lista" || defaultMode === "tabela") return "lista";
+    }
+    return "lista";
+  });
+  const [viewModeEspecialidades, setViewModeEspecialidades] = useState(() => {
+    if (typeof window !== "undefined") {
+      const defaultMode = localStorage.getItem("rmcare_default_view_mode") || localStorage.getItem("rmcare_view_mode");
+      if (defaultMode === "cards") return "cards";
+      if (defaultMode === "lista" || defaultMode === "tabela") return "lista";
+    }
+    return "lista";
+  });
 
   // Ordenação de colunas do Corpo Clínico
   const [sortEspecialistas, setSortEspecialistas] = useState({ key: "nome", direction: "asc" });
@@ -482,24 +496,32 @@ export default function EquipeView({
   const [sortEspecialidades, setSortEspecialidades] = useState({ key: "nome", direction: "asc" });
 
   useEffect(() => {
-    try {
-      const defaultMode = localStorage.getItem("rmcare_default_view_mode") || localStorage.getItem("rmcare_view_mode");
-      if (defaultMode === "cards" || defaultMode === "lista") {
-        setViewMode(defaultMode);
-        setViewModeEspecialidades(defaultMode);
-      }
-    } catch (e) {}
+    const handleModeChange = (e) => {
+      const mode = e?.detail || localStorage.getItem("rmcare_default_view_mode") || localStorage.getItem("rmcare_view_mode");
+      const target = mode === "cards" ? "cards" : "lista";
+      setViewMode(target);
+      setViewModeEspecialidades(target);
+    };
+    window.addEventListener("rmcare_view_mode_changed", handleModeChange);
+    return () => window.removeEventListener("rmcare_view_mode_changed", handleModeChange);
   }, []);
 
   const handleToggleViewMode = (mode) => {
     setViewMode(mode);
     try {
+      localStorage.setItem("rmcare_default_view_mode", mode);
       localStorage.setItem("rmcare_view_mode", mode);
+      window.dispatchEvent(new CustomEvent("rmcare_view_mode_changed", { detail: mode }));
     } catch (e) {}
   };
 
   const handleToggleViewModeEspecialidades = (mode) => {
     setViewModeEspecialidades(mode);
+    try {
+      localStorage.setItem("rmcare_default_view_mode", mode);
+      localStorage.setItem("rmcare_view_mode", mode);
+      window.dispatchEvent(new CustomEvent("rmcare_view_mode_changed", { detail: mode }));
+    } catch (e) {}
   };
 
   // Estados para Especialidades e Modalidades
@@ -591,7 +613,8 @@ export default function EquipeView({
                   nome: nameClean,
                   categoria: item.categoria || "Consultas",
                   codigo_uri: item.codigo_uri ? String(item.codigo_uri).trim() : null,
-                  duracao_minutos: Number(item.duracao_minutos) || 30
+                  duracao_minutos: Number(item.duracao_minutos) || 30,
+                  intervalo_minutos: Number(item.intervalo_minutos) || 0
                 });
               }
             });

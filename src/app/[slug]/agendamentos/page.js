@@ -758,31 +758,62 @@ function AgendamentoOrquestrador() {
           const getDurationForAppointment = (itemEsp, itemSub) => {
             const iEsp = normalizeText(itemEsp);
             const iSub = normalizeText(itemSub);
+
+            // 1. Especialidades categorizadas cadastradas na clínica (correspondência bidirecional)
             const found = confEsps.find((e) => {
               const n = normalizeText(e.nome);
-              return n === iEsp || n === iSub || (iEsp && n.includes(iEsp)) || (iSub && n.includes(iSub));
+              if (!n) return false;
+              if (n === iEsp || n === iSub) return true;
+              if (iSub && (n.includes(iSub) || iSub.includes(n))) return true;
+              if (iEsp && (n.includes(iEsp) || iEsp.includes(n))) return true;
+              return false;
             });
             if (found?.duracao_minutos && Number(found.duracao_minutos) > 0) {
               return Number(found.duracao_minutos);
             }
+
+            // 2. Serviços / Corpo Clínico
+            const foundSrv = (servicosDB || []).find((s) => {
+              const sn = normalizeText(s.nome);
+              const se = normalizeText(s.especialidade);
+              if (sn && (sn === iSub || sn === iEsp || (iSub && (sn.includes(iSub) || iSub.includes(sn))))) return true;
+              if (se && (se === iEsp || (iEsp && (se.includes(iEsp) || iEsp.includes(se))))) return true;
+              return false;
+            });
+            if (foundSrv?.duracao_minutos && Number(foundSrv.duracao_minutos) > 0) {
+              return Number(foundSrv.duracao_minutos);
+            }
+
+            // 3. Regra explícita da agenda compartilhada
             const ruleMatch = sharedRules.find((r) => r.duracao_slot_minutos > 0);
-            return Number(ruleMatch?.duracao_slot_minutos) || 30;
+            if (ruleMatch) {
+              return Number(ruleMatch.duracao_slot_minutos);
+            }
+
+            return 30;
           };
 
           const getIntervalForAppointment = (itemEsp, itemSub) => {
             const iEsp = normalizeText(itemEsp);
             const iSub = normalizeText(itemSub);
+
             const found = confEsps.find((e) => {
               const n = normalizeText(e.nome);
-              return n === iEsp || n === iSub || (iEsp && n.includes(iEsp)) || (iSub && n.includes(iSub));
+              if (!n) return false;
+              if (n === iEsp || n === iSub) return true;
+              if (iSub && (n.includes(iSub) || iSub.includes(n))) return true;
+              if (iEsp && (n.includes(iEsp) || iEsp.includes(n))) return true;
+              return false;
             });
             if (found?.intervalo_minutos !== undefined && found?.intervalo_minutos !== null && Number(found.intervalo_minutos) >= 0) {
               return Number(found.intervalo_minutos);
             }
+
             const ruleMatch = sharedRules.find((r) => r.intervalo_slot_minutos !== undefined && r.intervalo_slot_minutos !== null && Number(r.intervalo_slot_minutos) > 0);
             if (ruleMatch) {
               return Number(ruleMatch.intervalo_slot_minutos);
             }
+
             return Number(empresaDados?.config_campos?.intervalo_exames_padrao_minutos) || 0;
           };
 

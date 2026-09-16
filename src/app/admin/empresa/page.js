@@ -45,7 +45,7 @@ import { playDopamineSound, triggerHaptic } from "@/lib/dopamine";
 export default function EmpresaAdmin() {
   const [activeView, setActiveView] = useState("agenda");
   const [activeSubView, setActiveSubView] = useState("calendario");
-  const [expandedMenu, setExpandedMenu] = useState("agenda");
+  const [expandedMenu, setExpandedMenu] = useState(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -79,6 +79,15 @@ export default function EmpresaAdmin() {
             root.style.setProperty("--brand-secondary", tema.cor_secundaria);
             localStorage.setItem("rmcare_brand_secondary", tema.cor_secundaria);
           }
+        }
+      }
+      if (emp?.config_campos && typeof window !== "undefined") {
+        const defaultView =
+          emp.config_campos.tema?.visualizacao_padrao ||
+          emp.config_campos.formato_visualizacao_padrao;
+        if (defaultView) {
+          localStorage.setItem("rmcare_default_view_mode", defaultView);
+          localStorage.setItem("rmcare_view_mode", defaultView);
         }
       }
     } catch (e) {}
@@ -208,11 +217,7 @@ export default function EmpresaAdmin() {
       {
         id: "agenda",
         label: "Agenda",
-        icon: CalendarDays,
-        subItems: [
-          { id: "calendario", label: "Pacientes do Dia" },
-          { id: "lista", label: "Todos os Pacientes" }
-        ]
+        icon: CalendarDays
       },
       {
         id: "metricas",
@@ -336,7 +341,11 @@ export default function EmpresaAdmin() {
       }
     } else {
       setExpandedMenu(null);
-      setActiveSubView("");
+      if (item.id === "agenda") {
+        setActiveSubView("calendario");
+      } else {
+        setActiveSubView("");
+      }
     }
     setIsMobileMenuOpen(false);
   };

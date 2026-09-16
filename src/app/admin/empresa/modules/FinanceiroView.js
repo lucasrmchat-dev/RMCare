@@ -315,7 +315,32 @@ const ServicoForm = ({ initialData, onSave, onCancel, loading, especialidadesLis
 // COMPONENTE PRINCIPAL (VIEW)
 // ==========================================
 export default function FinanceiroView({ subTab = "corpo", setSubTab, servicos = [], showToast, fetchServicos }) {
-  const [viewMode, setViewMode] = useState("cards"); // "cards" | "tabela"
+  const [viewMode, setViewMode] = useState(() => {
+    if (typeof window !== "undefined") {
+      const defaultMode = localStorage.getItem("rmcare_default_view_mode") || localStorage.getItem("rmcare_view_mode");
+      if (defaultMode === "lista" || defaultMode === "tabela") return "tabela";
+      if (defaultMode === "cards") return "cards";
+    }
+    return "cards";
+  });
+
+  useEffect(() => {
+    const handleModeChange = (e) => {
+      const mode = e?.detail || localStorage.getItem("rmcare_default_view_mode") || localStorage.getItem("rmcare_view_mode");
+      setViewMode(mode === "lista" || mode === "tabela" ? "tabela" : "cards");
+    };
+    window.addEventListener("rmcare_view_mode_changed", handleModeChange);
+    return () => window.removeEventListener("rmcare_view_mode_changed", handleModeChange);
+  }, []);
+
+  const handleToggleViewMode = (mode) => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem("rmcare_default_view_mode", mode === "tabela" ? "lista" : "cards");
+      localStorage.setItem("rmcare_view_mode", mode);
+      window.dispatchEvent(new CustomEvent("rmcare_view_mode_changed", { detail: mode }));
+    } catch (e) {}
+  };
   const [editingServico, setEditingServico] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -448,7 +473,7 @@ export default function FinanceiroView({ subTab = "corpo", setSubTab, servicos =
           <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mr-1">Visualização:</span>
           <div className="flex p-1 bg-zinc-100 dark:bg-zinc-800 rounded-xl border border-zinc-200 dark:border-zinc-700">
             <button
-              onClick={() => setViewMode("cards")}
+              onClick={() => handleToggleViewMode("cards")}
               className={`p-2 rounded-lg transition-colors ${
                 viewMode === "cards" ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-sm" : "text-zinc-400 hover:text-zinc-700"
               }`}
@@ -457,7 +482,7 @@ export default function FinanceiroView({ subTab = "corpo", setSubTab, servicos =
               <LayoutGrid size={16} />
             </button>
             <button
-              onClick={() => setViewMode("tabela")}
+              onClick={() => handleToggleViewMode("tabela")}
               className={`p-2 rounded-lg transition-colors ${
                 viewMode === "tabela" ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-sm" : "text-zinc-400 hover:text-zinc-700"
               }`}

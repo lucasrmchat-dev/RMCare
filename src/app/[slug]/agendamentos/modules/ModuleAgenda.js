@@ -427,11 +427,13 @@ export default function ModuleAgenda() {
             else if (drLast !== null) effLast = drLast;
 
             const durSlot =
-              sr.duracao_slot_minutos > 0
+              agenda?.duracaoAtual && Number(agenda.duracaoAtual) > 0
+                ? Number(agenda.duracaoAtual)
+                : sr.duracao_slot_minutos > 0
                 ? sr.duracao_slot_minutos
                 : dr.duracao_slot_minutos > 0
                 ? dr.duracao_slot_minutos
-                : agenda?.duracaoAtual || 30;
+                : 30;
 
             const isSeq = Boolean(dr.ocupacao_sequencial || sr.ocupacao_sequencial);
 
@@ -450,7 +452,7 @@ export default function ModuleAgenda() {
         janelasEfetivas.push({
           startStr: dr.hora_inicio,
           endStr: dr.hora_fim,
-          duracao: dr.duracao_slot_minutos > 0 ? dr.duracao_slot_minutos : agenda?.duracaoAtual || 30,
+          duracao: agenda?.duracaoAtual && Number(agenda.duracaoAtual) > 0 ? Number(agenda.duracaoAtual) : (dr.duracao_slot_minutos > 0 ? dr.duracao_slot_minutos : 30),
           ultimoHorario: dr.ultimo_horario_agendamento || null,
           ocupacaoSequencial: Boolean(dr.ocupacao_sequencial)
         });
@@ -460,7 +462,7 @@ export default function ModuleAgenda() {
         janelasEfetivas.push({
           startStr: sr.hora_inicio,
           endStr: sr.hora_fim,
-          duracao: sr.duracao_slot_minutos > 0 ? sr.duracao_slot_minutos : agenda?.duracaoAtual || 30,
+          duracao: agenda?.duracaoAtual && Number(agenda.duracaoAtual) > 0 ? Number(agenda.duracaoAtual) : (sr.duracao_slot_minutos > 0 ? sr.duracao_slot_minutos : 30),
           ultimoHorario: sr.ultimo_horario_agendamento || null,
           ocupacaoSequencial: Boolean(sr.ocupacao_sequencial)
         });
@@ -470,7 +472,7 @@ export default function ModuleAgenda() {
         janelasEfetivas.push({
           startStr: gr.hora_inicio,
           endStr: gr.hora_fim,
-          duracao: gr.duracao_slot_minutos > 0 ? gr.duracao_slot_minutos : agenda?.duracaoAtual || 30,
+          duracao: agenda?.duracaoAtual && Number(agenda.duracaoAtual) > 0 ? Number(agenda.duracaoAtual) : (gr.duracao_slot_minutos > 0 ? gr.duracao_slot_minutos : 30),
           ultimoHorario: gr.ultimo_horario_agendamento || null,
           ocupacaoSequencial: Boolean(gr.ocupacao_sequencial)
         });
