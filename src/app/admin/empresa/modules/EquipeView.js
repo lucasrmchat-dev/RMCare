@@ -28,7 +28,9 @@ import {
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
-  Pencil
+  Pencil,
+  Building2,
+  RefreshCw
 } from "lucide-react";
 import {
   fadeUp,
@@ -46,7 +48,11 @@ import {
   actionCriarServico,
   actionDeletarServico,
   actionSalvarCustomization,
-  fetchAdminCustomization
+  fetchAdminCustomization,
+  actionBuscarConvenios,
+  actionSalvarConvenio,
+  actionExcluirConvenio,
+  actionSincronizarConveniosMedicalsys
 } from "@/actions/adminData";
 import { playDopamineSound, triggerHaptic } from "@/lib/dopamine";
 
@@ -533,6 +539,12 @@ export default function EquipeView({
   const [modalidadePadrao, setModalidadePadrao] = useState("Particular");
   const [ocultarValorParticular, setOcultarValorParticular] = useState(false);
 
+  // Estados para Convênios e Planos de Saúde (MedicalSYS)
+  const [convenios, setConvenios] = useState([]);
+  const [novoConvenioNome, setNovoConvenioNome] = useState("");
+  const [novoConvenioIdMedicalsys, setNovoConvenioIdMedicalsys] = useState("");
+  const [syncingConvenios, setSyncingConvenios] = useState(false);
+
   const [especialidadesCategorizadas, setEspecialidadesCategorizadas] = useState([]);
   const [novaEspecialidadeNome, setNovaEspecialidadeNome] = useState("");
   const [novaEspecialidadeCodigoUri, setNovaEspecialidadeCodigoUri] = useState("");
@@ -563,6 +575,13 @@ export default function EquipeView({
             setOcultarValorParticular(Boolean(conf.ocultar_valor_particular));
           } else if (conf.ocultar_valor_consulta !== undefined) {
             setOcultarValorParticular(Boolean(conf.ocultar_valor_consulta));
+          }
+
+          try {
+            const convs = await actionBuscarConvenios(emp.id);
+            setConvenios(convs || []);
+          } catch (eConv) {
+            console.warn("Aviso ao carregar convenios:", eConv);
           }
 
           const mapCategorias = new Map();
@@ -794,6 +813,81 @@ export default function EquipeView({
     setModalidadesOpcoes(updated);
     await persistirModalidades(updated, modalidadePadrao);
     showToast("Modalidade removida.");
+  };
+
+  // Handlers para Convênios (MedicalSYS)
+  const handleAddConvenio = async () => {
+    if (!novoConvenioNome.trim()) {
+      showToast("Informe o nome do convênio.", "error");
+      return;
+    }
+    const autoId = novoConvenioIdMedicalsys.trim() || String(convenios.length + 10);
+    const novo = {
+      id: `conv_${Date.now()}`,
+      nome: novoConvenioNome.trim(),
+      codigo_medicalsys: autoId,
+      ativo: true
+    };
+    try {
+      await actionSalvarConvenio(novo);
+      setConvenios((prev) => [...prev, novo]);
+      setNovoConvenioNome("");
+      setNovoConvenioIdMedicalsys("");
+      showToast(`Convênio "${novo.nome}" cadastrado!`);
+      playDopamineSound("click");
+    } catch (e) {
+      showToast("Erro ao salvar convênio.", "error");
+    }
+  };
+
+  const handleUpdateConvenioField = async (convId, field, val) => {
+    const updated = convenios.map((c) => (c.id === convId ? { ...c, [field]: val } : c));
+    setConvenios(updated);
+    const target = updated.find((c) => c.id === convId);
+    if (target) {
+      await actionSalvarConvenio(target);
+    }
+  };
+
+  const handleDeleteConvenio = async (convId) => {
+    try {
+      await actionExcluirConvenio(convId);
+      setConvenios((prev) => prev.filter((c) => c.id !== convId));
+      showToast("Convênio removido.");
+      playDopamineSound("pop");
+    } catch (e) {
+      showToast("Erro ao excluir convênio.", "error");
+    }
+  };
+
+  const handleSincronizarMedicalsys = async () => {
+    setSyncingConvenios(true);
+    try {
+      const res = await actionSincronizarConveniosMedicalsys();
+      if (res.success && Array.isArray(res.results)) {
+        let adicionados = 0;
+        const novosList = [...convenios];
+        for (const item of res.results) {
+          if (item.nome && !novosList.some((c) => c.nome.toLowerCase() === item.nome.toLowerCase())) {
+            const novo = {
+              id: `conv_${item.id || Date.now()}`,
+              nome: item.nome.trim(),
+              codigo_medicalsys: String(item.id || ""),
+              ativo: true
+            };
+            await actionSalvarConvenio(novo);
+            novosList.push(novo);
+            adicionados++;
+          }
+        }
+        setConvenios(novosList);
+        showToast(`${adicionados} convênios importados da MedicalSYS!`);
+      }
+    } catch (e) {
+      showToast(`Falha ao conectar na MedicalSYS: ${e.message}`, "error");
+    } finally {
+      setSyncingConvenios(false);
+    }
   };
 
   // Persistir Especialidades
@@ -2018,6 +2112,117 @@ export default function EquipeView({
                       </div>
                     );
                   })}
+                </div>
+              </section>
+
+              {/* SEÇÃO DE CONVÊNIOS & MAPEAMENTO MEDICALSYS */}
+              <section className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-6">
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
+                  <div>
+                    <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">
+                      <Building2 size={18} strokeWidth={1.5} className="text-blue-500" /> Planos de Saúde & Convênios (Mapeamento MedicalSYS)
+                    </h3>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      Cadastre os convênios aceitos na clínica e mapeie o <strong>convenio_id</strong> correspondente no MedicalSYS ERP para sincronização automática.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSincronizarMedicalsys}
+                    disabled={syncingConvenios}
+                    className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-xs font-bold rounded-xl transition-all border border-blue-200/60 dark:border-blue-800 min-h-[38px] cursor-pointer"
+                  >
+                    <RefreshCw size={14} className={syncingConvenios ? "animate-spin" : ""} />
+                    {syncingConvenios ? "Sincronizando..." : "Puxar da MedicalSYS"}
+                  </button>
+                </div>
+
+                {/* FORMULÁRIO RÁPIDO DE ADICIONAR CONVÊNIO */}
+                <div className="p-4 bg-zinc-50/80 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl grid sm:grid-cols-12 gap-3 items-end">
+                  <div className="sm:col-span-6">
+                    <TextInput
+                      label="Nome do Convênio"
+                      placeholder="Ex: Unimed, GEAP, Cassi, Bradesco..."
+                      value={novoConvenioNome}
+                      onChange={(e) => setNovoConvenioNome(e.target.value)}
+                    />
+                  </div>
+                  <div className="sm:col-span-4">
+                    <TextInput
+                      label="ID no MedicalSYS (convenio_id)"
+                      placeholder="Ex: 10, 12, 31 (ou deixe em branco p/ automático)"
+                      value={novoConvenioIdMedicalsys}
+                      onChange={(e) => setNovoConvenioIdMedicalsys(e.target.value)}
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <button
+                      type="button"
+                      onClick={handleAddConvenio}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-zinc-950 dark:bg-white text-white dark:text-black text-xs font-bold rounded-2xl shadow-sm hover:bg-black transition-all min-h-[44px] cursor-pointer"
+                    >
+                      <Plus size={16} /> Adicionar
+                    </button>
+                  </div>
+                </div>
+
+                {/* LISTAGEM DOS CONVÊNIOS */}
+                <div className="space-y-3">
+                  {convenios.length === 0 ? (
+                    <div className="text-center p-8 bg-zinc-50 dark:bg-zinc-900/40 rounded-2xl border border-dashed border-zinc-200 dark:border-zinc-800 text-xs text-zinc-400">
+                      Nenhum convênio cadastrado ainda. Adicione acima ou clique em "Puxar da MedicalSYS" para importar.
+                    </div>
+                  ) : (
+                    convenios.map((conv) => (
+                      <div
+                        key={conv.id}
+                        className="p-4 sm:p-5 bg-[#F8F8FA] dark:bg-[#222225] border border-zinc-200/80 dark:border-zinc-800 rounded-2xl flex flex-col md:flex-row gap-4 items-start md:items-center justify-between shadow-sm"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 flex items-center justify-center font-bold">
+                            <Building2 size={18} />
+                          </div>
+                          <div>
+                            <span className="font-bold text-sm text-zinc-950 dark:text-white block">
+                              {conv.nome}
+                            </span>
+                            <span className="text-[11px] font-mono text-zinc-400">
+                              MedicalSYS ID: #{conv.codigo_medicalsys || "Auto"}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex-1 w-full md:max-w-md grid sm:grid-cols-2 gap-3">
+                          <TextInput
+                            label="Nome de Exibição"
+                            value={conv.nome}
+                            onChange={(e) => handleUpdateConvenioField(conv.id, "nome", e.target.value)}
+                          />
+                          <TextInput
+                            label="ID MedicalSYS"
+                            value={conv.codigo_medicalsys || ""}
+                            onChange={(e) => handleUpdateConvenioField(conv.id, "codigo_medicalsys", e.target.value)}
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
+                          <ToggleSwitch
+                            checked={conv.ativo !== false}
+                            onChange={(v) => handleUpdateConvenioField(conv.id, "ativo", v)}
+                            label={conv.ativo !== false ? "Ativo no Portal" : "Oculto"}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteConvenio(conv.id)}
+                            className="p-2 rounded-xl text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
+                            title="Excluir Convênio"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </section>
             </div>

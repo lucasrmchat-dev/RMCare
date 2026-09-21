@@ -42,6 +42,7 @@ function AgendamentoOrquestrador() {
     const [empresaDados, setEmpresaDados] = useState(null);
     const [loadingConfig, setLoadingConfig] = useState(true);
     const [loading, setLoading] = useState(false);
+    const [medicalsysResult, setMedicalsysResult] = useState(null);
 
     const [islandState, setIslandState] = useState("default");
     const [islandMessage, setIslandMessage] = useState("");
@@ -857,8 +858,15 @@ function AgendamentoOrquestrador() {
 
             if (matchProf || matchShared) {
               const startMin = timeToMin(b.horario);
-              const dur = Number(sharedRules[0]?.duracao_slot_minutos) || 30;
-              const intervalo = Number(sharedRules[0]?.intervalo_slot_minutos) || 0;
+              let dur = 0;
+              if (b.horario_fim) {
+                const fimMin = timeToMin(b.horario_fim);
+                if (fimMin > startMin) dur = fimMin - startMin;
+              }
+              if (!dur || dur <= 0) {
+                dur = getDurationForAppointment(b.especialidade, null);
+              }
+              const intervalo = getIntervalForAppointment(b.especialidade, null);
               const endMin = startMin + dur + intervalo;
               const formattedH = formatTime(b.horario);
               occupiedIntervals.push({ startMin, endMin, hora: formattedH, duracao: dur, intervalo });
@@ -1001,6 +1009,7 @@ function AgendamentoOrquestrador() {
 
         const confCampos = empresaDados?.config_campos || {};
         const modalidadeEfetiva =
+          formData.convenio ||
           formData.modalidade ||
           (confCampos.ocultar_modalidade
             ? confCampos.modalidade_padrao || "Convênio"
@@ -1107,11 +1116,12 @@ function AgendamentoOrquestrador() {
           savedAppointment = retry.data;
         }
 
-        await enviarParaMedicalsysSeHabilitado(
-          { ...formData, modalidade: modalidadeEfetiva },
+        const medResult = await enviarParaMedicalsysSeHabilitado(
+          { ...formData, modalidade: modalidadeEfetiva, convenio: formData.convenio, convenio_id: formData.convenio_id },
           empresaDados,
           savedAppointment?.id
         );
+        setMedicalsysResult(medResult);
 
         return savedAppointment;
       } catch (error) {
@@ -1157,6 +1167,9 @@ function AgendamentoOrquestrador() {
             .filter((p) => p.obrigatoria !== false)
             .every((p) => respostasTriagem[p.id]);
         case "modalidade":
+          if (formData.modalidade?.toLowerCase().includes("conv")) {
+            return !!formData.convenio;
+          }
           return !!formData.modalidade || formData.tipo_servico === "Retorno";
         case "agenda":
           return !!(formData.data_agendamento && formData.horario_agendamento);
@@ -1591,6 +1604,8 @@ function AgendamentoOrquestrador() {
       onSubmitMP,
       salvarNoBanco,
       loading,
+      medicalsysResult,
+      setMedicalsysResult,
       regrasGlobais,
       handleNovoAgendamento,
       handleGoBack,

@@ -40,16 +40,13 @@ export async function POST(request) {
     const configChaves = empresa.config_chaves || {};
     const configCampos = empresa.config_campos || {};
 
-    // Verifica se a sincronização está ativada (aceita ambas as propriedades para redundância total)
-    const isEnabled = Boolean(
-      configCampos.enviar_agendamentos_medicalsys ??
-      configCampos.medicalsys_enabled ??
-      configChaves.medicalsys_enabled
-    );
+    // Sincronização habilitada por padrão se credenciais existirem, exceto se explicitamente desativada
+    const explicitamenteDesabilitado =
+      configCampos.enviar_agendamentos_medicalsys === false ||
+      configChaves.medicalsys_enabled === false;
 
-    // TRAVA DE SEGURANÇA: Se desabilitado, não envia ao Medicalsys e mantém apenas no RMCare
-    if (!isEnabled) {
-      console.log(`[Medicalsys] Sincronização desabilitada para a empresa "${empresa.nome || empresaId}". Agendamento mantido apenas na RMCare.`);
+    if (explicitamenteDesabilitado) {
+      console.log(`[Medicalsys] Sincronização desabilitada explicitamente para "${empresa.nome || empresaId}". Agendamento mantido apenas na RMCare.`);
       return NextResponse.json({
         success: true,
         enabled: false,
@@ -66,9 +63,18 @@ export async function POST(request) {
       momento = `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
     }
 
-    // B. Horário de início e fim: HH:MM
+    // B. Horário de início e fim considerando duração real (Endoscopia: 20m, Colonoscopia: 30m, Consulta: 15m)
     const cleanHorarioInicio = String(horarioInicio || "08:00").trim().slice(0, 5);
-    const calcHorarioFim = (inicio, minutos = 15) => {
+    
+    let duracaoProcedimento = 15;
+    const procText = `${body.procedimento || ""} ${medico || ""}`.toLowerCase();
+    if (procText.includes("endoscopia")) {
+      duracaoProcedimento = 20;
+    } else if (procText.includes("colonoscopia")) {
+      duracaoProcedimento = 30;
+    }
+
+    const calcHorarioFim = (inicio, minutos = duracaoProcedimento) => {
       if (!inicio) return "08:15";
       const [h, m] = inicio.split(":").map(Number);
       const total = h * 60 + m + minutos;
@@ -98,76 +104,364 @@ export async function POST(request) {
       cleanPagamento = "espe";
     }
 
-    // E. Resolução inteligente do ID do Médico (Medicalsys exige um ID inteiro de médico)
-    let resolvedMedicoId = configChaves.medicalsys_id_medico || "1";
-    if (medico && /^\d+$/.test(String(medico).trim())) {
-      resolvedMedicoId = String(medico).trim();
-    } else if (medico) {
-      const cleanMedicoNome = String(medico).trim();
+    const clinicaIdConfig = configChaves.medicalsys_id_clinica || "9";
+    const apiKey = configChaves.medicalsys_apikey || "8FxD2eUsODMO8IZWMHZaNpt78av9Vy6k";
+    const customerApiKey = configChaves.medicalsys_customer_apikey || configChaves.medicalsys_costumer_apikey || "SqdACjyxnXuYqL8ilnwTvXHroEOvFHFR";
 
-      // Busca por serviço cadastrado para capturar codigo_uri ou numero_especialista
-      const { data: srvMatch } = await supabase
-        .from("servicos")
-        .select("codigo_uri, numero_especialista")
-        .eq("empresa_id", empresaId)
-        .ilike("nome", `%${cleanMedicoNome}%`)
-        .maybeSingle();
+    // 3. Proxy Fixie para IP estático homologado
+    const proxyUrl = process.env.FIXIE_URL || "http://fixie:1c54Fc5I1jgmHG2@criterium.usefixie.com:80";
+    const proxyAgent = new HttpsProxyAgent(proxyUrl);
 
-      if (srvMatch?.numero_especialista && /^\d+$/.test(String(srvMatch.numero_especialista))) {
-        resolvedMedicoId = String(srvMatch.numero_especialista);
-      } else if (srvMatch?.codigo_uri && /^\d+$/.test(String(srvMatch.codigo_uri))) {
-        resolvedMedicoId = String(srvMatch.codigo_uri);
-      } else {
-        // Busca nos bloqueios importados da clínica para pegar o ID real do médico retornado pelo Medicalsys
-        const { data: bMatch } = await supabase
-          .from("bloqueios_horarios")
-          .select("raw_payload_completo")
-          .eq("empresa_id", empresaId)
-          .ilike("medico_profissional", `%${cleanMedicoNome}%`)
-          .not("raw_payload_completo", "is", null)
-          .limit(1)
-          .maybeSingle();
+    // E. Carregar histórico de bloqueios/agendamentos importados da clínica
+    const { data: bloqueiosMed } = await supabase
+      .from("bloqueios_horarios")
+      .select("medico_profissional, especialidade, convenio, raw_payload_completo")
+      .eq("empresa_id", empresaId)
+      .not("raw_payload_completo", "is", null)
+      .limit(100);
 
-        const rawMed = bMatch?.raw_payload_completo?.medico;
-        const rawMedId = rawMed?.id || (Array.isArray(rawMed) ? rawMed[0]?.id : null);
-        if (rawMedId && /^\d+$/.test(String(rawMedId))) {
-          resolvedMedicoId = String(rawMedId);
+    // 1. Resolução dinâmica de clinica_id na MedicalSys
+    let clinicaRealId = null;
+    try {
+      const resClin = await axios.get("https://gateway.medicalsys.com.br:9000/integracoes/clinica/", {
+        httpsAgent: proxyAgent,
+        proxy: false,
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": apiKey,
+          "msys-costumer-apikey": customerApiKey
+        },
+        timeout: 7000
+      });
+      const clinList = resClin.data?.results || resClin.data || [];
+      if (Array.isArray(clinList) && clinList.length > 0) {
+        console.log(`[Medicalsys] Clínicas autorizadas encontradas:`, clinList.map((c) => ({ id: c.id, nome: c.nome_clinica })));
+        if (configChaves.medicalsys_id_clinica) {
+          const matchConf = clinList.find((c) => String(c.id) === String(configChaves.medicalsys_id_clinica));
+          if (matchConf) clinicaRealId = Number(matchConf.id);
+        }
+        if (!clinicaRealId) {
+          clinicaRealId = Number(clinList[0].id);
+        }
+      }
+    } catch (eClin) {
+      console.warn("[Medicalsys] Consulta de clínicas online falhou:", eClin.message);
+    }
+
+    if (!clinicaRealId) {
+      for (const b of (bloqueiosMed || [])) {
+        const raw = b.raw_payload_completo;
+        const cId = raw?.clinica?.id || raw?.id_clinica || raw?.clinica_id;
+        if (cId && String(cId) !== "9") {
+          clinicaRealId = Number(cId);
+          break;
         }
       }
     }
 
-    const clinicaId = configChaves.medicalsys_id_clinica || "9";
-    const apiKey = configChaves.medicalsys_apikey || "8FxD2eUsODMO8IZWMHZaNpt78av9Vy6k";
-    const customerApiKey = configChaves.medicalsys_customer_apikey || configChaves.medicalsys_costumer_apikey || "SqdACjyxnXuYqL8ilnwTvXHroEOvFHFR";
+    if (!clinicaRealId) {
+      clinicaRealId = Number(clinicaIdConfig) || 9;
+    }
 
-    // 3. Montar Form Data conforme especificação Swagger
-    const formData = new URLSearchParams();
-    formData.append("paciente_provisorio", (nomePaciente || "Paciente Online").trim());
-    formData.append("momento", momento);
-    formData.append("horario_inicio", cleanHorarioInicio);
-    formData.append("horario_fim", cleanHorarioFim);
-    formData.append("meio_de_pagamento", cleanPagamento);
-    formData.append("tel_celular", cleanFone);
-    formData.append("id_clinica", String(clinicaId));
-    formData.append("medico", String(resolvedMedicoId));
+    // 2. Resolução robusta de Médicos reais da clínica
+    const medicosMap = new Map();
+    for (const b of (bloqueiosMed || [])) {
+      const rawMed = b.raw_payload_completo?.medico;
+      const medObj = Array.isArray(rawMed) ? rawMed[0] : rawMed;
+      if (medObj && medObj.id) {
+        const mId = Number(medObj.id);
+        const mNome = String(medObj.nome || b.medico_profissional || "").toLowerCase().replace(/dra?\./g, "").trim();
+        if (mNome) medicosMap.set(mNome, mId);
+        medicosMap.set(String(mId), mId);
+      }
+    }
 
-    console.log(`[Medicalsys] Disparando POST /agenda/ para ${momento} às ${cleanHorarioInicio} | Paciente: ${nomePaciente} | Médico ID: ${resolvedMedicoId} | Clínica ID: ${clinicaId}`);
+    try {
+      const resMed = await axios.get("https://gateway.medicalsys.com.br:9000/integracoes/medico/", {
+        httpsAgent: proxyAgent,
+        proxy: false,
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": apiKey,
+          "msys-costumer-apikey": customerApiKey
+        },
+        timeout: 6000
+      });
+      const medList = resMed.data?.results || resMed.data || [];
+      if (Array.isArray(medList)) {
+        medList.forEach((m) => {
+          if (m.id) {
+            const mId = Number(m.id);
+            const mNome = String(m.nome || "").toLowerCase().replace(/dra?\./g, "").trim();
+            if (mNome) medicosMap.set(mNome, mId);
+            medicosMap.set(String(mId), mId);
+          }
+        });
+      }
+    } catch (eMed) {
+      console.warn("[Medicalsys] Consulta de médicos online falhou:", eMed.message);
+    }
 
-    // 4. Proxy Fixie para IP estático homologado
-    const proxyUrl = process.env.FIXIE_URL || "http://fixie:1c54Fc5I1jgmHG2@criterium.usefixie.com:80";
-    const proxyAgent = new HttpsProxyAgent(proxyUrl);
+    let resolvedMedicoId = null;
+    if (medico && /^\d+$/.test(String(medico).trim())) {
+      resolvedMedicoId = Number(medico);
+    }
 
-    const response = await axios.post("https://gateway.medicalsys.com.br:9000/integracoes/agenda/", formData.toString(), {
-      httpsAgent: proxyAgent,
-      proxy: false,
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "apikey": apiKey,
-        "msys-costumer-apikey": customerApiKey,
-        "User-Agent": "RMCare-Platform/1.0"
-      },
-      timeout: 15000
-    });
+    if (!resolvedMedicoId && medico) {
+      const cleanMedicoNome = String(medico).trim().toLowerCase().replace(/dra?\./g, "").trim();
+      if (medicosMap.has(cleanMedicoNome)) {
+        resolvedMedicoId = medicosMap.get(cleanMedicoNome);
+      } else {
+        for (const [key, val] of medicosMap.entries()) {
+          if (isNaN(Number(key)) && (key.includes(cleanMedicoNome) || cleanMedicoNome.includes(key))) {
+            resolvedMedicoId = val;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!resolvedMedicoId && medicosMap.size > 0) {
+      for (const val of medicosMap.values()) {
+        if (typeof val === "number" && val > 0) {
+          resolvedMedicoId = val;
+          break;
+        }
+      }
+    }
+
+    if (!resolvedMedicoId) {
+      resolvedMedicoId = Number(configChaves.medicalsys_id_medico) || 650;
+    }
+
+    // 3. Resolução robusta de Procedimento (procedimentos_ids)
+    let resolvedProcedimentoId = null;
+    let listaProc = [];
+    const procedimentosMap = new Map();
+
+    try {
+      let resProc;
+      try {
+        resProc = await axios.get(`https://gateway.medicalsys.com.br:9000/integracoes/procedimento/?clinica=${clinicaRealId}`, {
+          httpsAgent: proxyAgent,
+          proxy: false,
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": apiKey,
+            "msys-costumer-apikey": customerApiKey
+          },
+          timeout: 7000
+        });
+      } catch (e1) {
+        resProc = await axios.get("https://gateway.medicalsys.com.br:9000/integracoes/procedimento/", {
+          httpsAgent: proxyAgent,
+          proxy: false,
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": apiKey,
+            "msys-costumer-apikey": customerApiKey
+          },
+          timeout: 7000
+        });
+      }
+
+      listaProc = resProc.data?.results || resProc.data || [];
+      if (Array.isArray(listaProc)) {
+        listaProc.forEach((p) => {
+          if (p.id) {
+            const pId = Number(p.id);
+            const pNome = String(p.nome || p.descricao || "").toLowerCase().trim();
+            if (pNome) procedimentosMap.set(pNome, pId);
+            procedimentosMap.set(String(pId), pId);
+          }
+        });
+        console.log(`[Medicalsys] ${procedimentosMap.size} procedimentos catalogados para resolução de ID.`);
+      }
+    } catch (eProc) {
+      console.warn("[Medicalsys] Catálogo de procedimentos não carregado:", eProc.message);
+    }
+
+    const cleanProcedimento = String(body.procedimento || body.subtipo_exame || body.especialidade || "Consulta").trim();
+    const cleanProcLower = cleanProcedimento.toLowerCase();
+
+    for (const [pNome, pId] of procedimentosMap.entries()) {
+      if (isNaN(Number(pNome))) {
+        if (cleanProcLower.includes("colonoscopia") && pNome.includes("colonoscopia")) {
+          resolvedProcedimentoId = pId;
+          break;
+        } else if (cleanProcLower.includes("endoscopia") && pNome.includes("endoscopia")) {
+          resolvedProcedimentoId = pId;
+          break;
+        } else if (pNome.includes(cleanProcLower) || cleanProcLower.includes(pNome)) {
+          resolvedProcedimentoId = pId;
+          break;
+        }
+      }
+    }
+
+    if (!resolvedProcedimentoId) {
+      for (const b of (bloqueiosMed || [])) {
+        const rawP = b.raw_payload_completo?.procedimento;
+        const pObj = Array.isArray(rawP) ? rawP[0] : rawP;
+        if (pObj?.id && Number(pObj.id) > 0) {
+          resolvedProcedimentoId = Number(pObj.id);
+          break;
+        }
+      }
+    }
+
+    if (!resolvedProcedimentoId && listaProc.length > 0) {
+      resolvedProcedimentoId = Number(listaProc[0].id);
+    }
+    if (!resolvedProcedimentoId) {
+      resolvedProcedimentoId = 5660;
+    }
+
+    // 4. Resolução de Convênio (convenio_id) obrigatório quando meio_de_pagamento = "conv"
+    let resolvedConvenioId = null;
+    const isConv = cleanPagamento === "conv";
+
+    if (isConv) {
+      if (body.convenio_id && /^\d+$/.test(String(body.convenio_id).trim())) {
+        resolvedConvenioId = Number(body.convenio_id);
+      }
+
+      const targetConvNome = String(body.convenio || body.modalidade || "").toLowerCase().trim();
+
+      if (!resolvedConvenioId && targetConvNome) {
+        const listaEmpConvs = configCampos.lista_convenios || [];
+        const matchConv = listaEmpConvs.find((c) => c.nome && c.nome.toLowerCase().trim() === targetConvNome);
+        if (matchConv?.codigo_medicalsys && /^\d+$/.test(String(matchConv.codigo_medicalsys))) {
+          resolvedConvenioId = Number(matchConv.codigo_medicalsys);
+        }
+      }
+
+      if (!resolvedConvenioId) {
+        try {
+          const resConv = await axios.get("https://gateway.medicalsys.com.br:9000/integracoes/convenio/", {
+            httpsAgent: proxyAgent,
+            proxy: false,
+            headers: {
+              "Content-Type": "application/json",
+              "apikey": apiKey,
+              "msys-costumer-apikey": customerApiKey
+            },
+            timeout: 7000
+          });
+          const convList = resConv.data?.results || resConv.data || [];
+          if (Array.isArray(convList) && convList.length > 0) {
+            if (targetConvNome) {
+              const matchOnline = convList.find((c) => c.nome && (c.nome.toLowerCase().includes(targetConvNome) || targetConvNome.includes(c.nome.toLowerCase())));
+              if (matchOnline?.id) resolvedConvenioId = Number(matchOnline.id);
+            }
+            if (!resolvedConvenioId) {
+              resolvedConvenioId = Number(convList[0].id);
+            }
+          }
+        } catch (eConv) {
+          console.warn("[Medicalsys] Consulta online de convênios falhou:", eConv.message);
+        }
+      }
+
+      if (!resolvedConvenioId) {
+        for (const b of (bloqueiosMed || [])) {
+          const rawC = b.raw_payload_completo?.convenio;
+          const cObj = Array.isArray(rawC) ? rawC[0] : rawC;
+          if (cObj?.id && Number(cObj.id) > 0) {
+            resolvedConvenioId = Number(cObj.id);
+            break;
+          }
+        }
+      }
+
+      if (!resolvedConvenioId) {
+        resolvedConvenioId = 10;
+      }
+    }
+
+    const clinicaNum = Number(clinicaRealId);
+    const medicoNum = Number(resolvedMedicoId);
+    const procIdNum = Number(resolvedProcedimentoId);
+
+    console.log(`[Medicalsys] Enviando para Medicalsys: Data=${momento} Hora=${cleanHorarioInicio} | Clinica=${clinicaNum} Medico=${medicoNum} Procedimento=${procIdNum} Meio=${cleanPagamento} ConvenioId=${resolvedConvenioId}`);
+
+    const payloadJson = {
+      clinica_id: clinicaNum,
+      id_clinica: String(clinicaNum),
+      medico_id: medicoNum,
+      medico: String(medicoNum),
+      procedimentos_ids: [procIdNum],
+      procedimento_id: procIdNum,
+      paciente_provisorio: (nomePaciente || "Paciente Online").trim(),
+      momento: momento,
+      horario_inicio: cleanHorarioInicio,
+      horario_fim: cleanHorarioFim,
+      meio_de_pagamento: cleanPagamento,
+      tel_celular: cleanFone,
+      observacoes: `Agendado via RM Agenda | Procedimento: ${cleanProcedimento}`
+    };
+
+    if (isConv && resolvedConvenioId) {
+      payloadJson.convenio_id = resolvedConvenioId;
+      payloadJson.convenio = resolvedConvenioId;
+    }
+
+    const headersBase = {
+      "apikey": apiKey,
+      "msys-costumer-apikey": customerApiKey,
+      "User-Agent": "RMCare-Platform/1.0"
+    };
+
+    let response;
+    try {
+      response = await axios.post(
+        "https://gateway.medicalsys.com.br:9000/integracoes/agenda/",
+        payloadJson,
+        {
+          httpsAgent: proxyAgent,
+          proxy: false,
+          headers: {
+            ...headersBase,
+            "Content-Type": "application/json"
+          },
+          timeout: 15000
+        }
+      );
+    } catch (errJson) {
+      console.warn("[Medicalsys] Falha no envio JSON, tentando x-www-form-urlencoded...", errJson.response?.data || errJson.message);
+
+      const fd = new URLSearchParams();
+      fd.append("clinica_id", String(clinicaNum));
+      fd.append("id_clinica", String(clinicaNum));
+      fd.append("medico_id", String(medicoNum));
+      fd.append("medico", String(medicoNum));
+      fd.append("procedimentos_ids", String(procIdNum));
+      if (isConv && resolvedConvenioId) {
+        fd.append("convenio_id", String(resolvedConvenioId));
+        fd.append("convenio", String(resolvedConvenioId));
+      }
+      fd.append("paciente_provisorio", (nomePaciente || "Paciente Online").trim());
+      fd.append("momento", momento);
+      fd.append("horario_inicio", cleanHorarioInicio);
+      fd.append("horario_fim", cleanHorarioFim);
+      fd.append("meio_de_pagamento", cleanPagamento);
+      fd.append("tel_celular", cleanFone);
+      fd.append("observacoes", `Agendado via RM Agenda | Procedimento: ${cleanProcedimento}`);
+
+      response = await axios.post(
+        "https://gateway.medicalsys.com.br:9000/integracoes/agenda/",
+        fd.toString(),
+        {
+          httpsAgent: proxyAgent,
+          proxy: false,
+          headers: {
+            ...headersBase,
+            "Content-Type": "application/x-www-form-urlencoded"
+          },
+          timeout: 15000
+        }
+      );
+    }
 
     const resultData = response.data;
     console.log("✅ [Medicalsys] Agendamento criado com sucesso no Medicalsys:", resultData);
@@ -194,8 +488,15 @@ export async function POST(request) {
       message: "Agendamento integrado ao Medicalsys com sucesso!"
     });
   } catch (error) {
-    console.error("❌ [Medicalsys] Erro ao integrar agendamento:", error?.response?.data || error.message);
-    const detalhes = error?.response?.data?.message || error?.response?.data || error.message;
-    return NextResponse.json({ success: false, enabled: true, error: detalhes }, { status: 500 });
+    const errorData = error?.response?.data || error.message;
+    console.error("❌ [Medicalsys] Erro ao integrar agendamento:", errorData);
+    let detalhesStr = typeof errorData === "object" ? JSON.stringify(errorData) : String(errorData);
+    return NextResponse.json({
+      success: false,
+      enabled: true,
+      error: detalhesStr,
+      status: error?.response?.status || 500,
+      details: error?.response?.data || null
+    }, { status: 200 });
   }
 }

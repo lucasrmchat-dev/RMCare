@@ -636,32 +636,81 @@ export default function AgendaView({
 
     const erp = bloqueios
       .filter((b) => b.status === "importado" || b.medicalsys_id)
-      .map((b) => ({
-        id: b.id,
-        pacienteId: null,
-        tipo: "medicalsys",
-        data: b.data,
-        horario: b.horario?.substring(0, 5),
-        nomePaciente: (b.nome_paciente || b.paciente_nome || b.nome || "Paciente ERP").trim(),
-        cpfPaciente: b.cpf_paciente || null,
-        telefonePaciente: b.telefone_paciente || null,
-        emailPaciente: null,
-        dataNascimento: null,
-        enfermidades: [],
-        medicoProfissional: b.medico_profissional || "ERP Medicalsys",
-        especialidade: b.especialidade || "Geral",
-        subtipoExame: null,
-        tipoServico: "Consulta",
-        convenio: b.convenio || "Convênio",
-        modalidade: b.convenio || "Convênio",
-        statusAtendimento: b.situacao === "canc" ? "cancelado" : "agendado",
-        pago: false,
-        remarcado: false,
-        medicalsysId: b.medicalsys_id,
-        rawItem: b
-      }));
+      .map((b) => {
+        let espOriginal = b.especialidade || "";
+        const rawPayload = b.raw_payload_completo;
+        const rawObs = String(b.observacoes || "").trim();
 
-    let result = [...locais, ...erp]
+        if ((!espOriginal || espOriginal === "Geral") && rawPayload) {
+          const proc =
+            (typeof rawPayload.procedimento === "object" ? (rawPayload.procedimento.nome || rawPayload.procedimento.descricao) : rawPayload.procedimento) ||
+            (Array.isArray(rawPayload.procedimentos) && rawPayload.procedimentos[0]?.nome) ||
+            rawPayload.nome_procedimento ||
+            rawPayload.desc_procedimento ||
+            null;
+          if (proc) espOriginal = String(proc).trim();
+        }
+
+        if ((!espOriginal || espOriginal === "Geral") && rawObs) {
+          const matchP = rawObs.match(/(?:procedimento|exame|servico|consulta)[:\s]+([^|\n,;]+)/i);
+          if (matchP && matchP[1]) {
+            espOriginal = matchP[1].trim();
+          }
+        }
+
+        const isColonoscopia = /colonoscopia/i.test(`${espOriginal} ${rawObs}`);
+        const isEndoscopia = /endoscopia/i.test(`${espOriginal} ${rawObs}`);
+        const isExame = isColonoscopia || isEndoscopia || /(exame|ultrassom|tomografia|ressonancia|raio-x|biopsia)/i.test(`${espOriginal} ${rawObs}`);
+
+        let espExibicao = espOriginal || "Geral";
+        let subExame = null;
+        if (isColonoscopia) {
+          espExibicao = "Colonoscopia";
+          subExame = "Colonoscopia";
+        } else if (isEndoscopia) {
+          espExibicao = "Endoscopia";
+          subExame = "Endoscopia Digestiva Alta";
+        }
+
+        return {
+          id: b.id,
+          pacienteId: null,
+          tipo: "medicalsys",
+          data: b.data,
+          horario: b.horario?.substring(0, 5),
+          nomePaciente: (b.nome_paciente || b.paciente_nome || b.nome || "Paciente ERP").trim(),
+          cpfPaciente: b.cpf_paciente || null,
+          telefonePaciente: b.telefone_paciente || null,
+          emailPaciente: null,
+          dataNascimento: null,
+          enfermidades: [],
+          medicoProfissional: b.medico_profissional || "ERP Medicalsys",
+          especialidade: espExibicao,
+          subtipoExame: subExame,
+          tipoServico: isExame ? "Exame" : "Consulta",
+          convenio: b.convenio || "Convênio",
+          modalidade: b.convenio || "Convênio",
+          statusAtendimento: b.situacao === "canc" ? "cancelado" : "agendado",
+          pago: false,
+          remarcado: false,
+          medicalsysId: b.medicalsys_id,
+          rawItem: b
+        };
+      });
+
+    // Vínculo e deduplicação automática entre agendamento RM e MedicalSys
+    const localMedicalsysIds = new Set(locais.map((l) => l.rawItem?.medicalsys_id).filter(Boolean));
+    const erpFiltrado = erp.filter((e) => {
+      if (e.medicalsysId && localMedicalsysIds.has(e.medicalsysId)) return false;
+      const duplicateLocal = locais.some((l) => 
+        l.data === e.data && 
+        l.horario === e.horario && 
+        (normalizeText(l.nomePaciente) === normalizeText(e.nomePaciente) || (l.cpfPaciente && e.cpfPaciente && l.cpfPaciente === e.cpfPaciente))
+      );
+      return !duplicateLocal;
+    });
+
+    let result = [...locais, ...erpFiltrado]
       .filter((item) => {
         if (statusFilter === "todos") return true;
         if (statusFilter === "cancelado") return item.statusAtendimento === "cancelado";
@@ -768,6 +817,31 @@ export default function AgendaView({
     sortConfig,
     servicos
   ]);
+
+  // Histórico de atendimentos do paciente ativo no modal de prontuário
+  const historicoPaciente = useMemo(() => {
+    if (!sensitiveModalItem) return [];
+    const currCpf = sensitiveModalItem.cpfPaciente ? sensitiveModalItem.cpfPaciente.replace(/\D/g, "") : "";
+    const currTel = sensitiveModalItem.telefonePaciente ? sensitiveModalItem.telefonePaciente.replace(/\D/g, "") : "";
+    const currNome = normalizeText(sensitiveModalItem.nomePaciente || "");
+
+    return (listaUnificadaTodosPacientes || [])
+      .filter((item) => {
+        if (item.id === sensitiveModalItem.id) return false;
+
+        const itemCpf = item.cpfPaciente ? item.cpfPaciente.replace(/\D/g, "") : "";
+        if (currCpf && itemCpf && currCpf === itemCpf) return true;
+
+        const itemTel = item.telefonePaciente ? item.telefonePaciente.replace(/\D/g, "") : "";
+        if (currTel && itemTel && currTel.slice(-8) === itemTel.slice(-8)) return true;
+
+        const itemNome = normalizeText(item.nomePaciente || "");
+        if (currNome && itemNome && currNome === itemNome) return true;
+
+        return false;
+      })
+      .sort((a, b) => new Date(`${b.data}T${b.horario || "00:00"}`) - new Date(`${a.data}T${a.horario || "00:00"}`));
+  }, [sensitiveModalItem, listaUnificadaTodosPacientes]);
 
   const handleSort = (key) => {
     let direction = "asc";
@@ -994,7 +1068,13 @@ export default function AgendaView({
 
       if (matchProf || matchEsp || !profTargetNorm) {
         const startMin = timeToMin(a.horario_agendamento);
-        const dur = 30;
+        let dur = 30;
+        const aEspText = `${a.especialidade || ""} ${a.subtipo_exame || ""}`.toLowerCase();
+        if (aEspText.includes("endoscopia")) {
+          dur = 20;
+        } else if (aEspText.includes("colonoscopia")) {
+          dur = 30;
+        }
         intervals.push({ startMin, endMin: startMin + dur, hora: a.horario_agendamento?.substring(0, 5) });
       }
     });
@@ -1012,7 +1092,16 @@ export default function AgendaView({
 
       if (matchProf || matchEsp) {
         const startMin = timeToMin(b.horario);
-        intervals.push({ startMin, endMin: startMin + 30, hora: b.horario?.substring(0, 5) });
+        let dur = 30;
+        if (b.horario_fim) {
+          const fimMin = timeToMin(b.horario_fim);
+          if (fimMin > startMin) dur = fimMin - startMin;
+        } else if (/endoscopia/i.test(b.especialidade || "")) {
+          dur = 20;
+        } else if (/colonoscopia/i.test(b.especialidade || "")) {
+          dur = 30;
+        }
+        intervals.push({ startMin, endMin: startMin + dur, hora: b.horario?.substring(0, 5) });
       }
     });
 
@@ -4022,6 +4111,34 @@ export default function AgendaView({
                       </span>
                     )}
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playDopamineSound("click");
+                      setFichaSubTab("historico");
+                    }}
+                    className={`relative px-4 py-1.5 text-xs font-semibold rounded-full transition-colors z-10 flex items-center gap-1.5 cursor-pointer ${
+                      fichaSubTab === "historico"
+                        ? "text-zinc-950 dark:text-white"
+                        : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                    }`}
+                  >
+                    {fichaSubTab === "historico" && (
+                      <motion.div
+                        layoutId="apple-segmented-pill"
+                        className="absolute inset-0 bg-white dark:bg-[#2C2C2E] rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.06)] dark:shadow-[0_2px_12px_rgba(0,0,0,0.5)] border border-black/[0.04] dark:border-white/[0.08] -z-10"
+                        transition={{ type: "spring", stiffness: 480, damping: 36 }}
+                      />
+                    )}
+                    <Clock size={14} className={fichaSubTab === "historico" ? "text-blue-500" : "text-zinc-400"} />
+                    <span>Histórico</span>
+                    {historicoPaciente.length > 0 && (
+                      <span className="ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-blue-500/15 text-blue-700 dark:text-blue-300">
+                        {historicoPaciente.length}
+                      </span>
+                    )}
+                  </button>
                 </div>
               </div>
 
@@ -4068,7 +4185,7 @@ export default function AgendaView({
                       : "text-zinc-500"
                   }`}
                 >
-                  Ficha & Observações
+                  Ficha
                 </button>
                 <button
                   type="button"
@@ -4084,6 +4201,20 @@ export default function AgendaView({
                   }`}
                 >
                   WhatsApp ({statsMensagensAgendamento.total})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    playDopamineSound("click");
+                    setFichaSubTab("historico");
+                  }}
+                  className={`flex-1 py-1.5 text-xs font-semibold rounded-full transition-all text-center ${
+                    fichaSubTab === "historico"
+                      ? "bg-white dark:bg-[#2C2C2E] text-zinc-950 dark:text-white shadow-xs"
+                      : "text-zinc-500"
+                  }`}
+                >
+                  Histórico ({historicoPaciente.length})
                 </button>
               </div>
             </div>
@@ -4131,6 +4262,16 @@ export default function AgendaView({
                                       <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-blue-500/10 text-blue-700 dark:text-blue-300">
                                         {sensitiveModalItem.statusAtendimento || "agendado"}
                                       </span>
+                                      {sensitiveModalItem.especialidade && (
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+                                          {sensitiveModalItem.especialidade}
+                                        </span>
+                                      )}
+                                      {sensitiveModalItem.subtipoExame && sensitiveModalItem.subtipoExame !== sensitiveModalItem.especialidade && (
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-purple-500/10 text-purple-700 dark:text-purple-300">
+                                          {sensitiveModalItem.subtipoExame}
+                                        </span>
+                                      )}
                                     </div>
                                   </div>
                                 </div>
@@ -4191,11 +4332,53 @@ export default function AgendaView({
                                     </span>
                                   </div>
 
-                                  {/* ESPECIALIDADE / PROCEDIMENTO */}
+                                  {/* ESPECIALIDADE */}
+                                  <div className="flex items-center justify-between py-2.5">
+                                    <span className="text-zinc-400 dark:text-zinc-500 font-medium">Especialidade</span>
+                                    <span className="font-semibold text-zinc-800 dark:text-zinc-200 text-right truncate max-w-[200px]">
+                                      {(() => {
+                                        const espNorm = String(sensitiveModalItem.especialidade || "").trim();
+                                        const subNorm = String(sensitiveModalItem.subtipoExame || "").trim();
+                                        if (/colonoscopia/i.test(`${espNorm} ${subNorm}`)) return "Colonoscopia";
+                                        if (/endoscopia/i.test(`${espNorm} ${subNorm}`)) return "Endoscopia";
+
+                                        if (espNorm && !/^(consulta|geral)$/i.test(espNorm)) {
+                                          return espNorm.split(",")[0].trim();
+                                        }
+
+                                        const srv = (servicos || []).find((s) => s.nome && sensitiveModalItem.medicoProfissional && s.nome.toLowerCase().includes(sensitiveModalItem.medicoProfissional.toLowerCase()));
+                                        if (srv?.especialidade) {
+                                          return srv.especialidade.split(",")[0].trim();
+                                        }
+
+                                        const raw = sensitiveModalItem.rawItem?.raw_payload_completo;
+                                        const rawEsp = raw?.medico?.especialidade?.nome || raw?.procedimento?.especialidade?.nome;
+                                        if (rawEsp) return String(rawEsp).split(",")[0].trim();
+
+                                        return "Clínica Geral";
+                                      })()}
+                                    </span>
+                                  </div>
+
+                                  {/* PROCEDIMENTO / EXAME */}
+                                  <div className="flex items-center justify-between py-2.5">
+                                    <span className="text-zinc-400 dark:text-zinc-500 font-medium">Procedimento</span>
+                                    <span className="font-semibold text-zinc-800 dark:text-zinc-200 text-right truncate max-w-[200px]">
+                                      {(() => {
+                                        const espNorm = String(sensitiveModalItem.especialidade || "").trim();
+                                        const subNorm = String(sensitiveModalItem.subtipoExame || "").trim();
+                                        if (/colonoscopia/i.test(`${espNorm} ${subNorm}`)) return "Colonoscopia";
+                                        if (/endoscopia/i.test(`${espNorm} ${subNorm}`)) return "Endoscopia Digestiva Alta";
+                                        return sensitiveModalItem.subtipoExame || sensitiveModalItem.especialidade || "Consulta Médica";
+                                      })()}
+                                    </span>
+                                  </div>
+
+                                  {/* TIPO DE SERVIÇO */}
                                   <div className="flex items-center justify-between py-2.5">
                                     <span className="text-zinc-400 dark:text-zinc-500 font-medium">Serviço</span>
                                     <span className="font-semibold text-zinc-800 dark:text-zinc-200 text-right truncate max-w-[200px]">
-                                      {sensitiveModalItem.especialidade}
+                                      {sensitiveModalItem.tipoServico || "Consulta"}
                                     </span>
                                   </div>
 
@@ -4480,6 +4663,79 @@ export default function AgendaView({
                           </div>
                         );
                       })()}
+                    </motion.div>
+                  ) : fichaSubTab === "historico" ? (
+                    <motion.div
+                      key="historico-tab"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.2 }}
+                      className="bg-white dark:bg-[#1C1C1E] rounded-3xl p-6 md:p-8 border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_18px_rgba(0,0,0,0.03)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.4)] space-y-6"
+                    >
+                      <div className="flex items-center justify-between border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
+                        <div>
+                          <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">
+                            <Clock size={18} className="text-blue-500" /> Histórico de Consultas e Atendimentos
+                          </h3>
+                          <p className="text-xs text-zinc-500 mt-1">
+                            Atendimentos anteriores vinculados a {sensitiveModalItem.nomePaciente}.
+                          </p>
+                        </div>
+                        <span className="px-3 py-1 rounded-full text-xs font-bold bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400">
+                          {historicoPaciente.length} atendimento(s) anterior(es)
+                        </span>
+                      </div>
+
+                      {historicoPaciente.length === 0 ? (
+                        <div className="p-8 text-center bg-zinc-50/60 dark:bg-zinc-900/40 rounded-2xl border border-zinc-100 dark:border-zinc-800 space-y-2">
+                          <Clock size={28} className="mx-auto text-zinc-400 opacity-60" />
+                          <p className="text-sm font-bold text-zinc-800 dark:text-zinc-200">Nenhum histórico anterior</p>
+                          <p className="text-xs text-zinc-400 max-w-sm mx-auto">
+                            Não foram encontrados outros atendimentos cadastrados para este paciente além do atendimento atual.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="divide-y divide-zinc-100 dark:divide-zinc-800 space-y-3">
+                          {historicoPaciente.map((hist) => (
+                            <div
+                              key={hist.id}
+                              className="pt-3 first:pt-0 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors border border-transparent hover:border-zinc-200/60 dark:hover:border-zinc-800"
+                            >
+                              <div className="space-y-1.5 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-bold text-sm text-zinc-950 dark:text-white">
+                                    {hist.data ? hist.data.split("-").reverse().join("/") : "--/--"} às {hist.horario || "--:--"}
+                                  </span>
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400">
+                                    {hist.modalidade || hist.convenio || "Particular"}
+                                  </span>
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                    hist.statusAtendimento === "cancelado"
+                                      ? "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400"
+                                      : "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400"
+                                  }`}>
+                                    {hist.statusAtendimento || "agendado"}
+                                  </span>
+                                  {hist.tipo === "medicalsys" && (
+                                    <span className="px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200/50">
+                                      MedicalSYS ERP
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-zinc-600 dark:text-zinc-300">
+                                  <strong>{hist.medicoProfissional}</strong> • {hist.subtipoExame || hist.especialidade} ({hist.tipoServico})
+                                </div>
+                                {hist.rawItem?.observacoes && (
+                                  <div className="text-[11px] text-zinc-500 font-mono bg-zinc-50 dark:bg-zinc-900 p-2 rounded-xl">
+                                    Obs: {hist.rawItem.observacoes}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </motion.div>
                   ) : (
                     <motion.div

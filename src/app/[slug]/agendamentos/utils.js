@@ -755,38 +755,42 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
 
 // ENVIAR PARA MEDICALSYS SE HABILITADO
 export const enviarParaMedicalsysSeHabilitado = async (formData, empresaDados, agendamentoId = null) => {
+  const confCampos = empresaDados?.config_campos || {};
+
+  const nomePaciente = `${formData.nome || ""} ${formData.sobrenome || ""}`.trim();
+  const modalidadeEfetiva = formData.modalidade 
+    || (confCampos.ocultar_modalidade ? (confCampos.modalidade_padrao || "Convênio") : (confCampos.modalidade_padrao || "Particular"));
+  const isConvenio = modalidadeEfetiva === "Convênio" || modalidadeEfetiva?.toLowerCase().includes("conv");
+
+  const procNome = formData.subtipo_exame || formData.especialidade || "Consulta";
+
+  const payload = {
+    appointmentId: agendamentoId,
+    empresaId: empresaDados?.id,
+    nomePaciente: nomePaciente || "Paciente Online",
+    telefoneCelular: formData.telefone_whatsapp || "",
+    data: formData.data_agendamento,
+    horarioInicio: formData.horario_agendamento,
+    medico: formData.medico_profissional || procNome,
+    procedimento: procNome,
+    subtipo_exame: formData.subtipo_exame || null,
+    especialidade: formData.especialidade || null,
+    meioPagamento: isConvenio ? "conv" : "espe",
+    convenio: formData.convenio || null,
+    convenio_id: formData.convenio_id || null
+  };
+
+  console.log("🚀 [Medicalsys Integration] Disparando agendamento para o Medicalsys:", {
+    agendamentoId,
+    paciente: payload.nomePaciente,
+    data: payload.data,
+    horario: payload.horarioInicio,
+    medico: payload.medico,
+    procedimento: payload.procedimento,
+    meioPagamento: payload.meioPagamento
+  });
+
   try {
-    const confCampos = empresaDados?.config_campos || {};
-    const confChaves = empresaDados?.config_chaves || {};
-
-    // Trava de segurança: se a sincronização não estiver ativada, não envia ao Medicalsys
-    const isEnabled = Boolean(
-      confCampos.enviar_agendamentos_medicalsys ??
-      confCampos.medicalsys_enabled ??
-      confChaves.medicalsys_enabled
-    );
-
-    if (!isEnabled) {
-      console.log("ℹ️ [Medicalsys] Sincronização automática desabilitada nas configurações da clínica. Agendamento salvo exclusivamente na RMCare.");
-      return { success: true, enabled: false, message: "Sincronização desabilitada nas configurações." };
-    }
-
-    const nomePaciente = `${formData.nome || ""} ${formData.sobrenome || ""}`.trim();
-    const modalidadeEfetiva = formData.modalidade 
-      || (confCampos.ocultar_modalidade ? (confCampos.modalidade_padrao || "Convênio") : (confCampos.modalidade_padrao || "Particular"));
-    const isConvenio = modalidadeEfetiva === "Convênio" || modalidadeEfetiva?.toLowerCase().includes("conv");
-
-    const payload = {
-      appointmentId: agendamentoId,
-      empresaId: empresaDados?.id,
-      nomePaciente: nomePaciente || "Paciente Online",
-      telefoneCelular: formData.telefone_whatsapp || "",
-      data: formData.data_agendamento,
-      horarioInicio: formData.horario_agendamento,
-      medico: formData.medico_profissional || formData.subtipo_exame || formData.especialidade,
-      meioPagamento: isConvenio ? "conv" : "espe"
-    };
-
     const res = await fetch("/api/medicalsys/agendar", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -794,9 +798,22 @@ export const enviarParaMedicalsysSeHabilitado = async (formData, empresaDados, a
     });
 
     const result = await res.json();
+
+    if (result.success && result.medicalsysId) {
+      console.log("✅ [Medicalsys Integration] Sucesso! Agendamento registrado no Medicalsys com ID:", result.medicalsysId, result);
+    } else if (result.enabled === false) {
+      console.warn("⚠️ [Medicalsys Integration] Sincronização automática ignorada:", result.message);
+    } else {
+      const errTexto = typeof result.error === "object" ? JSON.stringify(result.error) : (result.error || result.message || "Erro desconhecido");
+      console.error(`❌ [Medicalsys Integration] Erro retornado ao agendar no Medicalsys: ${errTexto}`, {
+        status: result.status,
+        detalhes: result.details || result
+      });
+    }
+
     return result;
   } catch (err) {
-    console.error("❌ Erro ao enviar para Medicalsys:", err);
+    console.error("❌ [Medicalsys Integration] Falha de conexão na requisição:", err);
     return { success: false, error: err.message };
   }
 };

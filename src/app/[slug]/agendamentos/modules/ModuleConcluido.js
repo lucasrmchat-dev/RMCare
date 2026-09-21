@@ -15,13 +15,14 @@ import {
   Stethoscope,
   Shield,
   Clock,
-  CheckCircle2
+  CheckCircle2,
+  AlertTriangle
 } from "lucide-react";
 import { useAgendamento } from "../context";
 import { playDopamineSound, triggerConfetti, triggerHaptic } from "@/lib/dopamine";
 
 export default function ModuleConcluido() {
-  const { formData, pixData, timeLeft, showIsland, handleNovoAgendamento, empresaDados } =
+  const { formData, pixData, timeLeft, showIsland, handleNovoAgendamento, empresaDados, medicalsysResult } =
     useAgendamento();
 
   useEffect(() => {
@@ -234,6 +235,49 @@ export default function ModuleConcluido() {
           </span>
         </div>
       </div>
+
+      {/* STATUS DA INTEGRAÇÃO COM O MEDICALSYS */}
+      {medicalsysResult && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={`w-full mt-4 p-4 sm:p-5 rounded-3xl border text-left space-y-2 ${
+            medicalsysResult.success && medicalsysResult.medicalsysId
+              ? "bg-emerald-50/80 dark:bg-emerald-950/30 border-emerald-200/80 dark:border-emerald-900/50"
+              : "bg-amber-50/90 dark:bg-amber-950/30 border-amber-200/80 dark:border-amber-900/50"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {medicalsysResult.success && medicalsysResult.medicalsysId ? (
+              <CheckCircle2 size={17} className="text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+            ) : (
+              <AlertTriangle size={17} className="text-amber-600 dark:text-amber-400 flex-shrink-0" />
+            )}
+            <h4 className="text-xs font-black uppercase tracking-wider text-zinc-900 dark:text-white">
+              {medicalsysResult.success && medicalsysResult.medicalsysId
+                ? "Sincronizado no MedicalSYS"
+                : "Status da Integração com o MedicalSYS"}
+            </h4>
+          </div>
+
+          {medicalsysResult.success && medicalsysResult.medicalsysId ? (
+            <p className="text-xs text-emerald-800 dark:text-emerald-300 leading-relaxed font-medium">
+              Agendamento espelhado com sucesso no ERP sob o ID <strong>#{medicalsysResult.medicalsysId}</strong>.
+            </p>
+          ) : (
+            <div className="space-y-1.5 text-xs text-amber-900 dark:text-amber-200">
+              <p className="leading-relaxed font-medium">
+                O agendamento foi registrado no RM Agenda. O retorno da MedicalSYS foi:
+              </p>
+              <div className="p-3 bg-white/80 dark:bg-black/50 rounded-xl font-mono text-[11px] text-zinc-800 dark:text-zinc-200 border border-amber-200 dark:border-amber-900/40 break-words">
+                {typeof medicalsysResult.error === "object"
+                  ? JSON.stringify(medicalsysResult.error)
+                  : String(medicalsysResult.error || medicalsysResult.message || "Erro de validação na MedicalSYS")}
+              </div>
+            </div>
+          )}
+        </motion.div>
+      )}
 
       {/* BOTÕES DE AÇÃO COM VISIBILIDADE TOTAL E ESPAÇAMENTO CONFORTÁVEL */}
       <div className="mt-6 flex flex-col gap-3 w-full">

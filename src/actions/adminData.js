@@ -1595,6 +1595,32 @@ export async function actionReprocessarMapeamentoBanco() {
       }
     }
 
+    // Extração do procedimento a partir do payload bruto da Medicalsys
+    if (item.raw_payload_completo) {
+      const raw = item.raw_payload_completo;
+      let proc =
+        (typeof raw.procedimento === "object" ? (raw.procedimento.nome || raw.procedimento.descricao) : raw.procedimento) ||
+        (Array.isArray(raw.procedimentos) && raw.procedimentos[0]?.nome) ||
+        raw.nome_procedimento ||
+        raw.desc_procedimento ||
+        null;
+
+      if (proc && (novaEsp === "Geral" || !novaEsp)) {
+        novaEsp = String(proc).trim();
+        corrigidosCount++;
+      }
+    }
+
+    // Normalização estrita de Colonoscopia e Endoscopia
+    const checkText = `${novaEsp} ${currentObs}`.toLowerCase();
+    if (checkText.includes("colonoscopia") && novaEsp !== "Colonoscopia") {
+      novaEsp = "Colonoscopia";
+      corrigidosCount++;
+    } else if (checkText.includes("endoscopia") && novaEsp !== "Endoscopia" && novaEsp !== "Endoscopia Digestiva Alta") {
+      novaEsp = "Endoscopia";
+      corrigidosCount++;
+    }
+
     if (novoConv !== currentConv || novaEsp !== currentEsp) {
       await supabaseAdmin
         .from("bloqueios_horarios")
@@ -1607,6 +1633,169 @@ export async function actionReprocessarMapeamentoBanco() {
   }
 
   return { success: true, count: corrigidosCount };
+}
+
+export async function actionBuscarConvenios(empresaIdParam = null) {
+  try {
+    let targetEmpresaId = empresaIdParam;
+    if (!targetEmpresaId) {
+      const admin = await getAdminLogado(true);
+      targetEmpresaId = admin?.empresa_id;
+    }
+    if (!targetEmpresaId) return [];
+
+    // 1. Tenta buscar da tabela convenios
+    const { data: convTable, error: errTable } = await supabaseAdmin
+      .from("convenios")
+      .select("*")
+      .eq("empresa_id", targetEmpresaId)
+      .order("nome", { ascending: true });
+
+    if (!errTable && Array.isArray(convTable) && convTable.length > 0) {
+      return convTable;
+    }
+
+    // 2. Fallback para config_campos.lista_convenios
+    const { data: emp } = await supabaseAdmin
+      .from("empresas")
+      .select("config_campos")
+      .eq("id", targetEmpresaId)
+      .maybeSingle();
+
+    const lista = emp?.config_campos?.lista_convenios;
+    if (Array.isArray(lista) && lista.length > 0) {
+      return lista;
+    }
+
+    // 3. Fallback inicial com convênios clássicos
+    return [
+      { id: "1", nome: "Unimed", codigo_medicalsys: "10", ativo: true },
+      { id: "2", nome: "GEAP", codigo_medicalsys: "12", ativo: true },
+      { id: "3", nome: "Bradesco Saúde", codigo_medicalsys: "14", ativo: true },
+      { id: "4", nome: "CASSI", codigo_medicalsys: "31", ativo: true },
+      { id: "5", nome: "SulAmérica", codigo_medicalsys: "15", ativo: true }
+    ];
+  } catch (err) {
+    console.warn("Aviso ao buscar convênios:", err);
+    return [];
+  }
+}
+
+export async function actionSalvarConvenio(dados) {
+  const admin = await getAdminLogado(true);
+  const empresaId = admin.empresa_id;
+
+  const convenioId = dados.id || `conv_${Date.now()}`;
+  const payload = {
+    id: convenioId,
+    empresa_id: empresaId,
+    nome: dados.nome.trim(),
+    codigo_medicalsys: String(dados.codigo_medicalsys || "").trim() || null,
+    ativo: dados.ativo !== false,
+    updated_at: new Date().toISOString()
+  };
+
+  // 1. Tenta salvar na tabela convenios
+  try {
+    await supabaseAdmin
+      .from("convenios")
+      .upsert(payload);
+  } catch (e) {}
+
+  // 2. Persistir em config_campos.lista_convenios para redundância imediata
+  try {
+    const { data: emp } = await supabaseAdmin
+      .from("empresas")
+      .select("config_campos")
+      .eq("id", empresaId)
+      .single();
+
+    const conf = emp?.config_campos || {};
+    let lista = Array.isArray(conf.lista_convenios) ? [...conf.lista_convenios] : [];
+    const idx = lista.findIndex((c) => c.id === convenioId || c.nome?.toLowerCase() === dados.nome?.toLowerCase().trim());
+    if (idx >= 0) {
+      lista[idx] = { ...lista[idx], ...payload };
+    } else {
+      lista.push(payload);
+    }
+
+    await supabaseAdmin
+      .from("empresas")
+      .update({
+        config_campos: { ...conf, lista_convenios: lista }
+      })
+      .eq("id", empresaId);
+  } catch (eConf) {
+    console.warn("Aviso ao salvar convenio em config_campos:", eConf);
+  }
+
+  return { success: true, data: payload };
+}
+
+export async function actionExcluirConvenio(id) {
+  const admin = await getAdminLogado(true);
+  const empresaId = admin.empresa_id;
+
+  try {
+    await supabaseAdmin
+      .from("convenios")
+      .delete()
+      .eq("id", id)
+      .eq("empresa_id", empresaId);
+  } catch (e) {}
+
+  try {
+    const { data: emp } = await supabaseAdmin
+      .from("empresas")
+      .select("config_campos")
+      .eq("id", empresaId)
+      .single();
+
+    const conf = emp?.config_campos || {};
+    let lista = Array.isArray(conf.lista_convenios) ? conf.lista_convenios.filter((c) => c.id !== id) : [];
+    await supabaseAdmin
+      .from("empresas")
+      .update({
+        config_campos: { ...conf, lista_convenios: lista }
+      })
+      .eq("id", empresaId);
+  } catch (e) {}
+
+  return { success: true };
+}
+
+export async function actionSincronizarConveniosMedicalsys() {
+  const admin = await getAdminLogado(true);
+  const empresaId = admin.empresa_id;
+
+  const { data: emp } = await supabaseAdmin
+    .from("empresas")
+    .select("config_chaves, config_campos")
+    .eq("id", empresaId)
+    .single();
+
+  const configChaves = emp?.config_chaves || {};
+  const apiKey = configChaves.medicalsys_apikey || "8FxD2eUsODMO8IZWMHZaNpt78av9Vy6k";
+  const customerApiKey = configChaves.medicalsys_customer_apikey || configChaves.medicalsys_costumer_apikey || "SqdACjyxnXuYqL8ilnwTvXHroEOvFHFR";
+
+  const { HttpsProxyAgent } = await import("https-proxy-agent");
+  const axios = (await import("axios")).default;
+  const proxyUrl = process.env.FIXIE_URL || "http://fixie:1c54Fc5I1jgmHG2@criterium.usefixie.com:80";
+  const proxyAgent = new HttpsProxyAgent(proxyUrl);
+
+  const res = await axios.get("https://gateway.medicalsys.com.br:9000/integracoes/convenio/", {
+    httpsAgent: proxyAgent,
+    proxy: false,
+    headers: {
+      "Content-Type": "application/json",
+      "apikey": apiKey,
+      "msys-costumer-apikey": customerApiKey
+    },
+    timeout: 10000
+  });
+
+  const conveniosApi = res.data?.results || res.data || [];
+  return { success: true, results: conveniosApi };
 }
 
 export async function actionSalvarChavesEmpresaMaster(empresaId, config_chaves) {
@@ -2942,6 +3131,28 @@ export async function actionCriarAgendamentoManualAdmin(dados) {
       });
     } catch (errDisparo) {
       console.warn("Aviso ao disparar mensagens automáticas para agendamento manual:", errDisparo);
+    }
+
+    // 5. Integrar com Medicalsys
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      fetch(`${baseUrl}/api/medicalsys/agendar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          appointmentId: agendamentoCriado.id,
+          empresaId: admin.empresa_id,
+          nomePaciente: nome.trim(),
+          telefoneCelular: cleanFone,
+          data: data_agendamento,
+          horarioInicio: horario_agendamento,
+          medico: medico_profissional || especialidade,
+          procedimento: subtipo_exame || especialidade,
+          meioPagamento: modalidade?.toLowerCase().includes("conv") ? "conv" : "espe"
+        })
+      }).catch((e) => console.warn("Aviso ao integrar agendamento manual com Medicalsys:", e));
+    } catch (eMed) {
+      console.warn("Aviso ao disparar medicalsys para agendamento manual:", eMed);
     }
 
     return { success: true, data: agendamentoCriado };

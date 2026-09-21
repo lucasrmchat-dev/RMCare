@@ -7,6 +7,132 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+
+// EXTRAÇÃO ROBUSTA DE PROCEDIMENTO E ESPECIALIDADE DO MEDICALSYS (SWAGGER / MEDICALSYS API)
+function extrairProcedimentoEEspecialidade(item, mapaProcedimentosPorId = new Map()) {
+  let procNome = null;
+  let espNome = null;
+
+  // 1. Objeto ou string 'procedimento' (singular)
+  if (item?.procedimento) {
+    if (typeof item.procedimento === "object") {
+      procNome = item.procedimento.nome || item.procedimento.descricao || item.procedimento.desc_procedimento || null;
+      if (item.procedimento.especialidade) {
+        if (Array.isArray(item.procedimento.especialidade) && item.procedimento.especialidade[0]?.nome) {
+          espNome = item.procedimento.especialidade[0].nome;
+        } else if (typeof item.procedimento.especialidade === "object" && item.procedimento.especialidade.nome) {
+          espNome = item.procedimento.especialidade.nome;
+        } else if (typeof item.procedimento.especialidade === "string") {
+          espNome = item.procedimento.especialidade;
+        }
+      }
+      if (!procNome && item.procedimento.id && mapaProcedimentosPorId.has(Number(item.procedimento.id))) {
+        procNome = mapaProcedimentosPorId.get(Number(item.procedimento.id));
+      }
+    } else if (typeof item.procedimento === "string" && item.procedimento.trim()) {
+      procNome = item.procedimento.trim();
+    } else if (typeof item.procedimento === "number" && mapaProcedimentosPorId.has(item.procedimento)) {
+      procNome = mapaProcedimentosPorId.get(item.procedimento);
+    }
+  }
+
+  // 2. Objeto ou array 'procedimentos' (plural)
+  if (!procNome && item?.procedimentos) {
+    if (Array.isArray(item.procedimentos) && item.procedimentos.length > 0) {
+      const primeiro = item.procedimentos[0];
+      if (typeof primeiro === "object") {
+        procNome = primeiro.nome || primeiro.descricao || primeiro.desc_procedimento || null;
+        if (primeiro.especialidade) {
+          espNome = typeof primeiro.especialidade === "object" ? primeiro.especialidade.nome : primeiro.especialidade;
+        }
+        if (!procNome && primeiro.id && mapaProcedimentosPorId.has(Number(primeiro.id))) {
+          procNome = mapaProcedimentosPorId.get(Number(primeiro.id));
+        }
+      } else if (typeof primeiro === "string" && primeiro.trim()) {
+        procNome = primeiro.trim();
+      } else if (typeof primeiro === "number" && mapaProcedimentosPorId.has(primeiro)) {
+        procNome = mapaProcedimentosPorId.get(primeiro);
+      }
+    } else if (typeof item.procedimentos === "string" && item.procedimentos.trim()) {
+      procNome = item.procedimentos.trim();
+    }
+  }
+
+  // 3. Outras propriedades diretas comuns no ERP MedicalSys
+  if (!procNome) {
+    procNome =
+      item?.nome_procedimento ||
+      item?.procedimento_nome ||
+      item?.desc_procedimento ||
+      item?.descricao_procedimento ||
+      item?.procedimento_padrao ||
+      item?.agenda?.procedimento?.nome ||
+      item?.agenda?.procedimento ||
+      null;
+  }
+
+  // 4. Se veio como ID em procedimento_id
+  if (!procNome && item?.procedimento_id && mapaProcedimentosPorId.has(Number(item.procedimento_id))) {
+    procNome = mapaProcedimentosPorId.get(Number(item.procedimento_id));
+  }
+
+  // 5. Especialidade direta do agendamento
+  if (!espNome && item?.especialidade) {
+    if (typeof item.especialidade === "object") {
+      if (Array.isArray(item.especialidade) && item.especialidade[0]?.nome) {
+        espNome = item.especialidade[0].nome;
+      } else if (item.especialidade.nome) {
+        espNome = item.especialidade.nome;
+      }
+    } else if (typeof item.especialidade === "string" && item.especialidade.trim()) {
+      espNome = item.especialidade.trim();
+    }
+  }
+
+  // 6. Especialidade do médico
+  if (!espNome && item?.medico) {
+    const medObj = Array.isArray(item.medico) ? item.medico[0] : item.medico;
+    if (medObj && typeof medObj === "object") {
+      if (medObj.especialidade?.nome) espNome = medObj.especialidade.nome;
+      else if (typeof medObj.especialidade === "string") espNome = medObj.especialidade;
+    }
+  }
+
+  // 7. Extração via observações / texto clínico
+  const rawObs = String(item?.observacoes || item?.observacao || item?.obs || "").trim();
+  if (rawObs) {
+    if (!procNome) {
+      const matchP = rawObs.match(/(?:procedimento|exame|servico|consulta)[:\s]+([^|\n,;]+)/i);
+      if (matchP && matchP[1]) {
+        procNome = matchP[1].trim();
+      } else if (/colonoscopia/i.test(rawObs)) {
+        procNome = "Colonoscopia";
+      } else if (/endoscopia/i.test(rawObs)) {
+        procNome = "Endoscopia Digestiva Alta";
+      }
+    }
+  }
+
+  // 8. Normalização e diferenciação explícita entre Colonoscopia e Endoscopia
+  const combined = `${procNome || ""} ${espNome || ""} ${rawObs || ""}`.toLowerCase();
+  if (combined.includes("colonoscopia")) {
+    procNome = "Colonoscopia";
+    espNome = "Colonoscopia";
+  } else if (combined.includes("endoscopia")) {
+    procNome = "Endoscopia Digestiva Alta";
+    espNome = "Endoscopia";
+  }
+
+  // Regra de ouro: Procedimento ou Procedimentos é mapeado um para um com Especialidade
+  const finalEspecialidade = procNome || espNome || "Geral";
+  const finalProcedimento = procNome || espNome || "Consulta";
+
+  return {
+    procedimento: finalProcedimento,
+    especialidade: finalEspecialidade
+  };
+}
+
 export async function POST(request) {
   try {
     let requestBody = {};
@@ -30,11 +156,46 @@ export async function POST(request) {
     }
     const empresaId = empresa.id;
     const configCampos = empresa.config_campos || {};
+    const configChaves = empresa.config_chaves || {};
     const enviarMensagensErp = Boolean(configCampos.enviar_mensagens_importados_erp);
     const mapCols = configCampos.medicalsys_column_mapping || {
       convenio: "coluna_convenio",
       especialidade: "especialidade"
     };
+
+    // 2. CREDENCIAIS E PROXY FIXIE MEDICALSYS
+    const clinicaId = configChaves.medicalsys_id_clinica || "9";
+    const apiKey = configChaves.medicalsys_apikey || "8FxD2eUsODMO8IZWMHZaNpt78av9Vy6k";
+    const customerApiKey = configChaves.medicalsys_customer_apikey || configChaves.medicalsys_costumer_apikey || "SqdACjyxnXuYqL8ilnwTvXHroEOvFHFR";
+
+    const proxyUrl = process.env.FIXIE_URL || "http://fixie:1c54Fc5I1jgmHG2@criterium.usefixie.com:80";
+    const proxyAgent = new HttpsProxyAgent(proxyUrl);
+
+    // Pré-carregar catálogo de procedimentos do MedicalSys para resolução de IDs
+    const mapaProcedimentosPorId = new Map();
+    try {
+      const urlProc = `https://gateway.medicalsys.com.br:9000/integracoes/procedimento/?clinica=${clinicaId}`;
+      const resProc = await axios.get(urlProc, {
+        httpsAgent: proxyAgent,
+        proxy: false,
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": apiKey,
+          "msys-costumer-apikey": customerApiKey
+        },
+        timeout: 8000
+      });
+      const listaProc = resProc.data?.results || resProc.data || [];
+      if (Array.isArray(listaProc)) {
+        listaProc.forEach((p) => {
+          if (p.id && p.nome) mapaProcedimentosPorId.set(Number(p.id), p.nome);
+          if (p.cod_procedimento && p.nome) mapaProcedimentosPorId.set(String(p.cod_procedimento), p.nome);
+        });
+        console.log(`[Importação Medicalsys] Catálogo com ${mapaProcedimentosPorId.size} procedimentos carregado.`);
+      }
+    } catch (eProc) {
+      console.warn("[Importação Medicalsys] Catálogo de procedimentos não pôde ser pré-carregado:", eProc.message);
+    }
 
     // MODO DE RE-PROCESSAMENTO / CORREÇÃO RETROATIVA DE BANCO DE DADOS
     if (mode === "reprocess_mapping" || reprocessar_existentes) {
@@ -72,6 +233,26 @@ export async function POST(request) {
           }
         }
 
+        // Re-extração inteligente de procedimento/especialidade do payload original salvo
+        if (item.raw_payload_completo) {
+          const extraido = extrairProcedimentoEEspecialidade(item.raw_payload_completo, mapaProcedimentosPorId);
+          if (extraido.especialidade && extraido.especialidade !== "Geral" && (novaEsp === "Geral" || !novaEsp)) {
+            novaEsp = extraido.especialidade;
+            corrigidosCount++;
+          }
+        }
+
+        // Análise de observações para exames chave (Endoscopia e Colonoscopia)
+        if (currentObs) {
+          if (/colonoscopia/i.test(currentObs)) {
+            novaEsp = "Colonoscopia";
+            corrigidosCount++;
+          } else if (/endoscopia/i.test(currentObs)) {
+            novaEsp = "Endoscopia";
+            corrigidosCount++;
+          }
+        }
+
         if (novoConv !== currentConv || novaEsp !== currentEsp) {
           await supabase
             .from("bloqueios_horarios")
@@ -90,16 +271,14 @@ export async function POST(request) {
       });
     }
 
-    // 2. PROXY FIXIE E REQUISIÇÃO DA API MEDICALSYS
-    const proxyUrl = process.env.FIXIE_URL || "http://fixie:1c54Fc5I1jgmHG2@criterium.usefixie.com:80";
-    const proxyAgent = new HttpsProxyAgent(proxyUrl);
-
+    // 3. CONSULTA DA AGENDA MEDICALSYS
     const hoje = new Date();
     const dataDeHoje = hoje.toISOString().slice(0, 10);
     const anoAtual = hoje.getFullYear();
     const dataFimDeAno = `${anoAtual}-12-31`;
 
-    let urlAtual = `https://gateway.medicalsys.com.br:9000/integracoes/agenda/?momento_inicio=${dataDeHoje}&momento_final=${dataFimDeAno}`;
+    const clinicaParam = clinicaId ? `&clinica=${clinicaId}` : "";
+    let urlAtual = `https://gateway.medicalsys.com.br:9000/integracoes/agenda/?momento_inicio=${dataDeHoje}&momento_final=${dataFimDeAno}${clinicaParam}`;
 
     let todosAgendamentos = [];
     let limiteDePaginas = 0;
@@ -114,9 +293,10 @@ export async function POST(request) {
         proxy: false,
         headers: {
           "Content-Type": "application/json",
-          "apikey": "8FxD2eUsODMO8IZWMHZaNpt78av9Vy6k",
-          "msys-costumer-apikey": "SqdACjyxnXuYqL8ilnwTvXHroEOvFHFR"
-        }
+          "apikey": apiKey,
+          "msys-costumer-apikey": customerApiKey
+        },
+        timeout: 15000
       });
 
       const dados = response.data;
@@ -205,8 +385,11 @@ export async function POST(request) {
         rawConvenio = item.convenio.trim();
       }
 
-      let rawEspecialidade = item.especialidade?.nome || item.medico?.especialidade?.nome || item.procedimento?.especialidade?.nome || null;
       let rawObservacoes = item.observacoes || item.observacao || item.obs || null;
+
+      // Extração precisa do procedimento/especialidade mapeando 1 para 1
+      const dadosProc = extrairProcedimentoEEspecialidade(item, mapaProcedimentosPorId);
+      let rawEspecialidade = dadosProc.especialidade;
 
       let finalConvenio = rawConvenio;
       let finalEspecialidade = rawEspecialidade || "Geral";
