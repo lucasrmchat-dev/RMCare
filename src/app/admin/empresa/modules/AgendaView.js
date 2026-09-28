@@ -437,6 +437,20 @@ export default function AgendaView({
     return perms.includes("sigilo_clinico") || perms.includes("dados_sensiveis");
   }, [isOwner, permissoes]);
 
+  // Verificação estrita de permissão para Auditoria Técnica e Payload MedicalSYS
+  // Restrito exclusivamente a Administradores da Empresa ou donos
+  const ehAdminEmpresa = useMemo(() => {
+    if (isOwner) return true;
+    if (loggedAdmin?.is_owner) return true;
+    if (loggedAdmin?.role === "sistema" || loggedAdmin?.role === "admin") return true;
+    const perms = Array.isArray(permissoes)
+      ? permissoes
+      : Array.isArray(loggedAdmin?.permissoes)
+      ? loggedAdmin.permissoes
+      : [];
+    return perms.includes("admin") || perms.includes("integracoes") || perms.includes("conta") || perms.includes("seguranca");
+  }, [isOwner, loggedAdmin, permissoes]);
+
   const [searchTerm, setSearchTerm] = useState("");
   const [origemFilter, setOrigemFilter] = useState("todos");
   const [statusFilter, setStatusFilter] = useState("todos");
@@ -502,7 +516,15 @@ export default function AgendaView({
 
   // Modal de Dados Sensíveis, Enfermidades & Mensagens da Fila
   const [sensitiveModalItem, setSensitiveModalItem] = useState(null);
-  const [fichaSubTab, setFichaSubTab] = useState("dados"); // "dados" | "mensagens"
+  const [fichaSubTab, setFichaSubTab] = useState("dados"); // "dados" | "mensagens" | "historico" | "medicalsys"
+  const [medicalsysPayloadModo, setMedicalsysPayloadModo] = useState("paciente"); // "paciente" | "dia"
+
+  // Salvaguarda: se usuário perder/não tiver permissão de admin, remove da aba técnica
+  useEffect(() => {
+    if (fichaSubTab === "medicalsys" && !ehAdminEmpresa) {
+      setFichaSubTab("dados");
+    }
+  }, [fichaSubTab, ehAdminEmpresa]);
   const [enfermidadesPaciente, setEnfermidadesPaciente] = useState([]);
   const [catalogoEnfermidades, setCatalogoEnfermidades] = useState([
     "Refluxo",
@@ -1077,6 +1099,64 @@ export default function AgendaView({
       })
       .sort((a, b) => new Date(`${b.data}T${b.horario || "00:00"}`) - new Date(`${a.data}T${a.horario || "00:00"}`));
   }, [sensitiveModalItem, listaUnificadaTodosPacientes]);
+
+  // Data alvo do agendamento aberto no modal de prontuário
+  const diaAlvoModal = sensitiveModalItem?.data
+    ? String(sensitiveModalItem.data).split("T")[0]
+    : selectedDay;
+
+  // Agendamentos brutos do ERP MedicalSYS consolidados para o dia do agendamento
+  const agendamentosErpDoDia = useMemo(() => {
+    if (!diaAlvoModal) return [];
+    const mapa = new Map();
+
+    // 1. A partir dos bloqueios importados da clínica
+    (bloqueios || []).forEach((b) => {
+      if (!(b.status === "importado" || b.medicalsys_id || b.raw_payload_completo)) return;
+      const bData = b.data ? String(b.data).split("T")[0] : "";
+      if (bData === diaAlvoModal) {
+        const idKey = b.medicalsys_id ? `medsys_${b.medicalsys_id}` : `blk_${b.id}`;
+        mapa.set(idKey, {
+          id: b.id,
+          medicalsys_id: b.medicalsys_id,
+          horario: b.horario ? b.horario.substring(0, 5) : "--:--",
+          data: bData,
+          nome_paciente: b.nome_paciente || b.raw_payload_completo?.paciente?.nome || "Paciente MedicalSYS",
+          medico_profissional: b.medico_profissional || "ERP MedicalSYS",
+          especialidade: b.especialidade || "Consulta",
+          convenio: b.convenio || "Convênio",
+          situacao: b.situacao || "agen",
+          raw_payload: b.raw_payload_completo || b
+        });
+      }
+    });
+
+    // 2. A partir de listaUnificadaTodosPacientes (garante cobertura de todos os itens mapeados do dia)
+    (listaUnificadaTodosPacientes || []).forEach((p) => {
+      if (p.tipo === "medicalsys" || p.rawItem?.raw_payload_completo) {
+        const pData = p.data ? String(p.data).split("T")[0] : "";
+        if (pData === diaAlvoModal) {
+          const idKey = p.medicalsysId ? `medsys_${p.medicalsysId}` : `item_${p.id}`;
+          if (!mapa.has(idKey)) {
+            mapa.set(idKey, {
+              id: p.id,
+              medicalsys_id: p.medicalsysId,
+              horario: p.horario || "--:--",
+              data: pData,
+              nome_paciente: p.nomePaciente || "Paciente MedicalSYS",
+              medico_profissional: p.medicoProfissional || "ERP MedicalSYS",
+              especialidade: p.especialidade || "Consulta",
+              convenio: p.convenio || "Convênio",
+              situacao: p.rawItem?.situacao || "agen",
+              raw_payload: p.rawItem?.raw_payload_completo || p.rawItem || p
+            });
+          }
+        }
+      }
+    });
+
+    return Array.from(mapa.values()).sort((a, b) => (a.horario || "").localeCompare(b.horario || ""));
+  }, [bloqueios, listaUnificadaTodosPacientes, diaAlvoModal]);
 
   const handleSort = (key) => {
     let direction = "asc";
@@ -4678,28 +4758,30 @@ export default function AgendaView({
                     )}
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      playDopamineSound("click");
-                      setFichaSubTab("medicalsys");
-                    }}
-                    className={`relative px-4 py-1.5 text-xs font-semibold rounded-full transition-colors z-10 flex items-center gap-1.5 cursor-pointer ${
-                      fichaSubTab === "medicalsys"
-                        ? "text-zinc-950 dark:text-white"
-                        : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
-                    }`}
-                  >
-                    {fichaSubTab === "medicalsys" && (
-                      <motion.div
-                        layoutId="apple-segmented-pill"
-                        className="absolute inset-0 bg-white dark:bg-[#2C2C2E] rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.06)] dark:shadow-[0_2px_12px_rgba(0,0,0,0.5)] border border-black/[0.04] dark:border-white/[0.08] -z-10"
-                        transition={{ type: "spring", stiffness: 480, damping: 36 }}
-                      />
-                    )}
-                    <Database size={14} className={fichaSubTab === "medicalsys" ? "text-amber-500" : "text-zinc-400"} />
-                    <span>MedicalSYS</span>
-                  </button>
+                  {ehAdminEmpresa && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        playDopamineSound("click");
+                        setFichaSubTab("medicalsys");
+                      }}
+                      className={`relative px-4 py-1.5 text-xs font-semibold rounded-full transition-colors z-10 flex items-center gap-1.5 cursor-pointer ${
+                        fichaSubTab === "medicalsys"
+                          ? "text-zinc-950 dark:text-white"
+                          : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                      }`}
+                    >
+                      {fichaSubTab === "medicalsys" && (
+                        <motion.div
+                          layoutId="apple-segmented-pill"
+                          className="absolute inset-0 bg-white dark:bg-[#2C2C2E] rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.06)] dark:shadow-[0_2px_12px_rgba(0,0,0,0.5)] border border-black/[0.04] dark:border-white/[0.08] -z-10"
+                          transition={{ type: "spring", stiffness: 480, damping: 36 }}
+                        />
+                      )}
+                      <Database size={14} className={fichaSubTab === "medicalsys" ? "text-amber-500" : "text-zinc-400"} />
+                      <span>MedicalSYS</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -4777,20 +4859,22 @@ export default function AgendaView({
                 >
                   Histórico ({historicoPaciente.length})
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    playDopamineSound("click");
-                    setFichaSubTab("medicalsys");
-                  }}
-                  className={`flex-1 py-1.5 text-xs font-semibold rounded-full transition-all text-center ${
-                    fichaSubTab === "medicalsys"
-                      ? "bg-white dark:bg-[#2C2C2E] text-zinc-950 dark:text-white shadow-xs"
-                      : "text-zinc-500"
-                  }`}
-                >
-                  MedicalSYS
-                </button>
+                {ehAdminEmpresa && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playDopamineSound("click");
+                      setFichaSubTab("medicalsys");
+                    }}
+                    className={`flex-1 py-1.5 text-xs font-semibold rounded-full transition-all text-center ${
+                      fichaSubTab === "medicalsys"
+                        ? "bg-white dark:bg-[#2C2C2E] text-zinc-950 dark:text-white shadow-xs"
+                        : "text-zinc-500"
+                    }`}
+                  >
+                    MedicalSYS
+                  </button>
+                )}
               </div>
             </div>
 
@@ -5531,7 +5615,7 @@ export default function AgendaView({
                         </div>
                       )}
                     </motion.div>
-                  ) : fichaSubTab === "medicalsys" ? (
+                  ) : fichaSubTab === "medicalsys" && ehAdminEmpresa ? (
                     <motion.div
                       key="medicalsys-tab"
                       initial={{ opacity: 0, y: 10 }}
@@ -5540,17 +5624,23 @@ export default function AgendaView({
                       transition={{ duration: 0.2 }}
                       className="bg-white dark:bg-[#1C1C1E] rounded-3xl p-6 md:p-8 border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_18px_rgba(0,0,0,0.03)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.4)] space-y-6"
                     >
-                      {/* HEADER DA ABA MEDICALSYS */}
+                      {/* HEADER DA ABA MEDICALSYS COM BADGES DE STATUS */}
                       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
                         <div>
-                          <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">
-                            <Database size={18} className="text-amber-500" />
-                            Dados Brutos & Auditoria do ERP MedicalSYS
-                          </h3>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">
+                              <Database size={18} className="text-amber-500" />
+                              Auditoria & Payloads Brutos do ERP MedicalSYS
+                            </h3>
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20">
+                              Área Restrita do Administrador
+                            </span>
+                          </div>
                           <p className="text-xs text-zinc-500 mt-1">
-                            Audite os dados exatamente como foram recebidos do Gateway MedicalSYS (Porta 9000).
+                            Inspecione o payload individual deste paciente ou o payload consolidado de todos os agendamentos do dia ({diaAlvoModal}).
                           </p>
                         </div>
+
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase ${
                             sensitiveModalItem.tipo === "medicalsys"
@@ -5567,131 +5657,296 @@ export default function AgendaView({
                         </div>
                       </div>
 
-                      {/* CARD 1: COMPARATIVO DE HORÁRIOS & GRADE */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-zinc-50/70 dark:bg-zinc-900/40 rounded-2xl border border-zinc-100 dark:border-zinc-800">
-                        <div className="space-y-0.5">
-                          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Horário Original ERP</span>
-                          <p className="text-sm font-mono font-bold text-zinc-900 dark:text-white">
-                            {sensitiveModalItem.horarioOriginal || sensitiveModalItem.rawItem?.horario || sensitiveModalItem.rawItem?.horario_inicio || sensitiveModalItem.horario || "--:--"}
-                          </p>
-                          <span className="text-[10px] text-zinc-500">Dado original recebido</span>
-                        </div>
-                        <div className="space-y-0.5">
-                          <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wider">Horário na Grade RMAgenda</span>
-                          <p className="text-sm font-mono font-bold text-blue-600 dark:text-blue-400">
-                            {sensitiveModalItem.horario || "--:--"}
-                          </p>
-                          <span className="text-[10px] text-blue-500/80">
-                            {sensitiveModalItem.horarioAjustadoPorGrade ? "Ajustado pela grade sequencial" : "Horário exato mantido"}
-                          </span>
-                        </div>
-                        <div className="space-y-0.5">
-                          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Duração + Descanso</span>
-                          <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
-                            {sensitiveModalItem.duracaoMinutos || 30}m + {sensitiveModalItem.intervaloMinutos || 0}m
-                          </p>
-                          <span className="text-[10px] text-zinc-500">Duração e higienização</span>
-                        </div>
-                        <div className="space-y-0.5">
-                          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Liberação da Grade</span>
-                          <p className="text-sm font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                            {sensitiveModalItem.horarioLiberacaoGrade || "--:--"}
-                          </p>
-                          <span className="text-[10px] text-zinc-500">Próximo slot vago</span>
-                        </div>
-                      </div>
-
-                      {/* CARD 2: CAMPOS MAPEADOS DO ERP */}
-                      <div className="space-y-3">
-                        <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
-                          <Tag size={13} className="text-amber-500" /> Propriedades Extraídas do MedicalSYS
-                        </h4>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                          <div className="p-3 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200/80 dark:border-zinc-800 space-y-1">
-                            <span className="text-[10px] font-bold text-zinc-400 uppercase">Paciente (Cadastro / Provisório)</span>
-                            <p className="font-semibold text-zinc-900 dark:text-white">
-                              {sensitiveModalItem.nomePaciente}
-                            </p>
-                            <p className="text-[11px] text-zinc-500 font-mono">
-                              CPF: {sensitiveModalItem.cpfPaciente || "Não informado"} • Tel: {sensitiveModalItem.telefonePaciente || "Não informado"}
-                            </p>
-                          </div>
-
-                          <div className="p-3 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200/80 dark:border-zinc-800 space-y-1">
-                            <span className="text-[10px] font-bold text-zinc-400 uppercase">Médico & Procedimento</span>
-                            <p className="font-semibold text-zinc-900 dark:text-white">
-                              {sensitiveModalItem.medicoProfissional}
-                            </p>
-                            <p className="text-[11px] text-zinc-500">
-                              Procedimento: {sensitiveModalItem.especialidade} ({sensitiveModalItem.tipoServico})
-                            </p>
-                          </div>
-
-                          <div className="p-3 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200/80 dark:border-zinc-800 space-y-1">
-                            <span className="text-[10px] font-bold text-zinc-400 uppercase">Convênio & Pagamento</span>
-                            <p className="font-semibold text-zinc-900 dark:text-white">
-                              {sensitiveModalItem.convenio || "Particular"}
-                            </p>
-                            <p className="text-[11px] text-zinc-500">
-                              Situação ERP: <span className="font-mono font-bold uppercase">{sensitiveModalItem.rawItem?.situacao || sensitiveModalItem.statusAtendimento || "agen"}</span>
-                            </p>
-                          </div>
-
-                          <div className="p-3 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200/80 dark:border-zinc-800 space-y-1">
-                            <span className="text-[10px] font-bold text-zinc-400 uppercase">Observações do ERP</span>
-                            <p className="text-zinc-700 dark:text-zinc-300 italic text-[11px]">
-                              {sensitiveModalItem.rawItem?.observacoes || sensitiveModalItem.rawItem?.observacao || "Nenhuma observação informada no MedicalSYS."}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* CARD 3: PAYLOAD JSON BRUTO INTEGRAL (APPLE TERMINAL STYLE) */}
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
-                            <FileText size={13} className="text-blue-500" />
-                            Payload JSON Bruto Retornado pelo MedicalSYS
-                          </h4>
+                      {/* SELETOR PRINCIPAL: PAYLOAD DO PACIENTE vs PAYLOAD DO DIA */}
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-2 bg-zinc-100/80 dark:bg-zinc-900/80 rounded-2xl border border-black/[0.04] dark:border-white/[0.06]">
+                        <div className="flex items-center gap-1.5 flex-1">
                           <button
                             type="button"
                             onClick={() => {
-                              const jsonStr = JSON.stringify(
-                                sensitiveModalItem.rawItem?.raw_payload_completo || sensitiveModalItem.rawItem || sensitiveModalItem,
-                                null,
-                                2
-                              );
-                              navigator.clipboard.writeText(jsonStr);
-                              if (showToast) showToast("JSON copiado para a área de transferência!");
+                              playDopamineSound("click");
+                              setMedicalsysPayloadModo("paciente");
                             }}
-                            className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 flex items-center gap-1 transition-all cursor-pointer"
+                            className={`flex-1 sm:flex-initial px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                              medicalsysPayloadModo === "paciente"
+                                ? "bg-white dark:bg-[#2C2C2E] text-zinc-950 dark:text-white shadow-xs ring-1 ring-black/[0.04] dark:ring-white/[0.08]"
+                                : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                            }`}
                           >
-                            <Copy size={12} />
-                            <span>Copiar JSON</span>
+                            <User size={14} className={medicalsysPayloadModo === "paciente" ? "text-blue-500" : ""} />
+                            <span>Payload deste Paciente</span>
+                            <span className="text-[10px] opacity-70 font-mono">({sensitiveModalItem.nomePaciente?.split(" ")[0]})</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              playDopamineSound("click");
+                              setMedicalsysPayloadModo("dia");
+                            }}
+                            className={`flex-1 sm:flex-initial px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                              medicalsysPayloadModo === "dia"
+                                ? "bg-white dark:bg-[#2C2C2E] text-zinc-950 dark:text-white shadow-xs ring-1 ring-black/[0.04] dark:ring-white/[0.08]"
+                                : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                            }`}
+                          >
+                            <Calendar size={14} className={medicalsysPayloadModo === "dia" ? "text-amber-500" : ""} />
+                            <span>Payload do Dia ({diaAlvoModal})</span>
+                            <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-300 font-mono text-[10px] font-black">
+                              {agendamentosErpDoDia.length} no ERP
+                            </span>
                           </button>
                         </div>
 
-                        <div className="rounded-2xl bg-[#0D1117] text-zinc-100 border border-zinc-800 overflow-hidden shadow-inner">
-                          <div className="flex items-center justify-between px-4 py-2.5 bg-[#161B22] border-b border-zinc-800 text-[11px] text-zinc-400 font-mono">
-                            <div className="flex items-center gap-1.5">
-                              <span className="w-2.5 h-2.5 rounded-full bg-red-500/80 inline-block" />
-                              <span className="w-2.5 h-2.5 rounded-full bg-amber-500/80 inline-block" />
-                              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80 inline-block" />
-                              <span className="ml-2 font-sans font-medium text-zinc-400">medicalsys_gateway_payload.json</span>
-                            </div>
-                            <span className="text-[10px] text-zinc-500">Swagger REST API / JSON</span>
-                          </div>
-                          <div className="p-4 overflow-x-auto max-h-96 custom-scrollbar">
-                            <pre className="text-[11px] font-mono leading-relaxed text-emerald-400 selection:bg-emerald-900 selection:text-white">
-                              {JSON.stringify(
-                                sensitiveModalItem.rawItem?.raw_payload_completo || sensitiveModalItem.rawItem || sensitiveModalItem,
-                                null,
-                                2
-                              )}
-                            </pre>
-                          </div>
+                        <div className="text-[11px] text-zinc-500 px-2 text-right hidden sm:block">
+                          {medicalsysPayloadModo === "paciente"
+                            ? "Inspecionando objeto individual deste agendamento"
+                            : `Consolidação de todos os ${agendamentosErpDoDia.length} agendamentos importados de ${diaAlvoModal}`}
                         </div>
                       </div>
+
+                      {/* CONTEÚDO MODO PACIENTE */}
+                      {medicalsysPayloadModo === "paciente" && (
+                        <>
+                          {/* CARD 1: COMPARATIVO DE HORÁRIOS & GRADE */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-zinc-50/70 dark:bg-zinc-900/40 rounded-2xl border border-zinc-100 dark:border-zinc-800">
+                            <div className="space-y-0.5">
+                              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Horário Original ERP</span>
+                              <p className="text-sm font-mono font-bold text-zinc-900 dark:text-white">
+                                {sensitiveModalItem.horarioOriginal || sensitiveModalItem.rawItem?.horario || sensitiveModalItem.rawItem?.horario_inicio || sensitiveModalItem.horario || "--:--"}
+                              </p>
+                              <span className="text-[10px] text-zinc-500">Dado original recebido</span>
+                            </div>
+                            <div className="space-y-0.5">
+                              <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wider">Horário na Grade RMAgenda</span>
+                              <p className="text-sm font-mono font-bold text-blue-600 dark:text-blue-400">
+                                {sensitiveModalItem.horario || "--:--"}
+                              </p>
+                              <span className="text-[10px] text-blue-500/80">
+                                {sensitiveModalItem.horarioAjustadoPorGrade ? "Ajustado pela grade sequencial" : "Horário exato mantido"}
+                              </span>
+                            </div>
+                            <div className="space-y-0.5">
+                              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Duração + Descanso</span>
+                              <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+                                {sensitiveModalItem.duracaoMinutos || 30}m + {sensitiveModalItem.intervaloMinutos || 0}m
+                              </p>
+                              <span className="text-[10px] text-zinc-500">Duração e higienização</span>
+                            </div>
+                            <div className="space-y-0.5">
+                              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Liberação da Grade</span>
+                              <p className="text-sm font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                                {sensitiveModalItem.horarioLiberacaoGrade || "--:--"}
+                              </p>
+                              <span className="text-[10px] text-zinc-500">Próximo slot vago</span>
+                            </div>
+                          </div>
+
+                          {/* CARD 2: CAMPOS MAPEADOS DO ERP */}
+                          <div className="space-y-3">
+                            <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
+                              <Tag size={13} className="text-amber-500" /> Propriedades Extraídas do MedicalSYS
+                            </h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                              <div className="p-3 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200/80 dark:border-zinc-800 space-y-1">
+                                <span className="text-[10px] font-bold text-zinc-400 uppercase">Paciente (Cadastro / Provisório)</span>
+                                <p className="font-semibold text-zinc-900 dark:text-white">
+                                  {sensitiveModalItem.nomePaciente}
+                                </p>
+                                <p className="text-[11px] text-zinc-500 font-mono">
+                                  CPF: {sensitiveModalItem.cpfPaciente || "Não informado"} • Tel: {sensitiveModalItem.telefonePaciente || "Não informado"}
+                                </p>
+                              </div>
+
+                              <div className="p-3 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200/80 dark:border-zinc-800 space-y-1">
+                                <span className="text-[10px] font-bold text-zinc-400 uppercase">Médico & Procedimento</span>
+                                <p className="font-semibold text-zinc-900 dark:text-white">
+                                  {sensitiveModalItem.medicoProfissional}
+                                </p>
+                                <p className="text-[11px] text-zinc-500">
+                                  Procedimento: {sensitiveModalItem.especialidade} ({sensitiveModalItem.tipoServico})
+                                </p>
+                              </div>
+
+                              <div className="p-3 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200/80 dark:border-zinc-800 space-y-1">
+                                <span className="text-[10px] font-bold text-zinc-400 uppercase">Convênio & Pagamento</span>
+                                <p className="font-semibold text-zinc-900 dark:text-white">
+                                  {sensitiveModalItem.convenio || "Particular"}
+                                </p>
+                                <p className="text-[11px] text-zinc-500">
+                                  Situação ERP: <span className="font-mono font-bold uppercase">{sensitiveModalItem.rawItem?.situacao || sensitiveModalItem.statusAtendimento || "agen"}</span>
+                                </p>
+                              </div>
+
+                              <div className="p-3 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200/80 dark:border-zinc-800 space-y-1">
+                                <span className="text-[10px] font-bold text-zinc-400 uppercase">Observações do ERP</span>
+                                <p className="text-zinc-700 dark:text-zinc-300 italic text-[11px]">
+                                  {sensitiveModalItem.rawItem?.observacoes || sensitiveModalItem.rawItem?.observacao || "Nenhuma observação informada no MedicalSYS."}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* CARD 3: PAYLOAD JSON BRUTO DO PACIENTE */}
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
+                                <FileText size={13} className="text-blue-500" />
+                                Payload JSON Bruto do Paciente: {sensitiveModalItem.nomePaciente}
+                              </h4>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const jsonStr = JSON.stringify(
+                                    sensitiveModalItem.rawItem?.raw_payload_completo || sensitiveModalItem.rawItem || sensitiveModalItem,
+                                    null,
+                                    2
+                                  );
+                                  navigator.clipboard.writeText(jsonStr);
+                                  if (showToast) showToast("JSON do paciente copiado!");
+                                }}
+                                className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 flex items-center gap-1 transition-all cursor-pointer"
+                              >
+                                <Copy size={12} />
+                                <span>Copiar JSON do Paciente</span>
+                              </button>
+                            </div>
+
+                            <div className="rounded-2xl bg-[#0D1117] text-zinc-100 border border-zinc-800 overflow-hidden shadow-inner">
+                              <div className="flex items-center justify-between px-4 py-2.5 bg-[#161B22] border-b border-zinc-800 text-[11px] text-zinc-400 font-mono">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="w-2.5 h-2.5 rounded-full bg-red-500/80 inline-block" />
+                                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500/80 inline-block" />
+                                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80 inline-block" />
+                                  <span className="ml-2 font-sans font-medium text-zinc-400">paciente_medicalsys_payload.json</span>
+                                </div>
+                                <span className="text-[10px] text-zinc-500">Objeto Individual</span>
+                              </div>
+                              <div className="p-4 overflow-x-auto max-h-96 custom-scrollbar">
+                                <pre className="text-[11px] font-mono leading-relaxed text-emerald-400 selection:bg-emerald-900 selection:text-white">
+                                  {JSON.stringify(
+                                    sensitiveModalItem.rawItem?.raw_payload_completo || sensitiveModalItem.rawItem || sensitiveModalItem,
+                                    null,
+                                    2
+                                  )}
+                                </pre>
+                              </div>
+                            </div>
+                          </div>
+                        </>
+                      )}
+
+                      {/* CONTEÚDO MODO DIA INTEIRO */}
+                      {medicalsysPayloadModo === "dia" && (
+                        <div className="space-y-4">
+                          {/* LISTA RESUMO DOS AGENDAMENTOS DO DIA NO ERP */}
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
+                                <Calendar size={13} className="text-amber-500" />
+                                Todos os Agendamentos do ERP para {diaAlvoModal} ({agendamentosErpDoDia.length} encontrados)
+                              </h4>
+                              <span className="text-[11px] text-zinc-500 font-mono">
+                                Data: {diaAlvoModal}
+                              </span>
+                            </div>
+
+                            {agendamentosErpDoDia.length === 0 ? (
+                              <div className="p-6 text-center bg-zinc-50 dark:bg-zinc-900/40 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 text-xs text-zinc-400">
+                                Nenhum agendamento do ERP MedicalSYS encontrado para esta data ({diaAlvoModal}).
+                              </div>
+                            ) : (
+                              <div className="max-h-60 overflow-y-auto custom-scrollbar border border-zinc-200/80 dark:border-zinc-800 rounded-2xl bg-zinc-50/50 dark:bg-zinc-900/40 divide-y divide-zinc-200/60 dark:divide-zinc-800">
+                                {agendamentosErpDoDia.map((it, idx) => (
+                                  <div
+                                    key={idx}
+                                    className={`p-3 text-xs flex items-center justify-between gap-3 transition-colors ${
+                                      it.medicalsys_id === sensitiveModalItem.medicalsysId || it.id === sensitiveModalItem.id
+                                        ? "bg-amber-500/10 dark:bg-amber-500/15 font-semibold"
+                                        : "hover:bg-zinc-100/60 dark:hover:bg-zinc-800/40"
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-3 min-w-0">
+                                      <span className="px-2 py-1 rounded-lg bg-zinc-200/80 dark:bg-zinc-800 font-mono font-bold text-zinc-800 dark:text-zinc-200 text-[11px]">
+                                        {it.horario}
+                                      </span>
+                                      <div className="min-w-0">
+                                        <p className="font-bold text-zinc-900 dark:text-white truncate">
+                                          {it.nome_paciente}
+                                          {(it.medicalsys_id === sensitiveModalItem.medicalsysId || it.id === sensitiveModalItem.id) && (
+                                            <span className="ml-2 text-[10px] text-amber-600 dark:text-amber-400 font-normal">
+                                              (Ficha Aberta)
+                                            </span>
+                                          )}
+                                        </p>
+                                        <p className="text-[11px] text-zinc-500 truncate">
+                                          {it.medico_profissional} • {it.especialidade}
+                                        </p>
+                                      </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <span className="text-[10px] font-mono text-zinc-400">
+                                        ID #{it.medicalsys_id || it.id}
+                                      </span>
+                                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300">
+                                        {it.situacao}
+                                      </span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* CODE VIEWER DO PAYLOAD COMPLETO DO DIA */}
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
+                                <FileText size={13} className="text-amber-500" />
+                                Payload JSON Consolidado do Dia ({agendamentosErpDoDia.length} agendamentos)
+                              </h4>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const payloadDiaCompleto = agendamentosErpDoDia.map((it) => it.raw_payload);
+                                  const jsonStr = JSON.stringify(payloadDiaCompleto, null, 2);
+                                  navigator.clipboard.writeText(jsonStr);
+                                  if (showToast) showToast(`JSON do dia (${agendamentosErpDoDia.length} registros) copiado!`);
+                                }}
+                                className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 flex items-center gap-1 transition-all cursor-pointer"
+                              >
+                                <Copy size={12} />
+                                <span>Copiar JSON do Dia Inteiro</span>
+                              </button>
+                            </div>
+
+                            <div className="rounded-2xl bg-[#0D1117] text-zinc-100 border border-zinc-800 overflow-hidden shadow-inner">
+                              <div className="flex items-center justify-between px-4 py-2.5 bg-[#161B22] border-b border-zinc-800 text-[11px] text-zinc-400 font-mono">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="w-2.5 h-2.5 rounded-full bg-red-500/80 inline-block" />
+                                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500/80 inline-block" />
+                                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80 inline-block" />
+                                  <span className="ml-2 font-sans font-medium text-zinc-400">
+                                    medicalsys_dia_{diaAlvoModal}_payload.json
+                                  </span>
+                                </div>
+                                <span className="text-[10px] text-amber-400 font-bold">
+                                  Array [{agendamentosErpDoDia.length} agendamentos]
+                                </span>
+                              </div>
+                              <div className="p-4 overflow-x-auto max-h-96 custom-scrollbar">
+                                <pre className="text-[11px] font-mono leading-relaxed text-amber-300 selection:bg-amber-900 selection:text-white">
+                                  {JSON.stringify(
+                                    agendamentosErpDoDia.map((it) => it.raw_payload),
+                                    null,
+                                    2
+                                  )}
+                                </pre>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </motion.div>
                   ) : null}
                 </AnimatePresence>
