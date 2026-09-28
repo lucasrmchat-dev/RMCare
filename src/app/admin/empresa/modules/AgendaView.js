@@ -8,6 +8,7 @@ import {
   User,
   CalendarDays,
   Server,
+  Database,
   Filter,
   Trash2,
   RotateCcw,
@@ -21,6 +22,7 @@ import {
   LayoutGrid,
   List,
   CheckCircle2,
+  Clock,
   Clock3,
   ShieldCheck,
   ShieldAlert,
@@ -51,7 +53,8 @@ import {
   DollarSign,
   ArrowRight,
   ArrowLeft,
-  Copy
+  Copy,
+  XCircle
 } from "lucide-react";
 import {
   getHojeLocal,
@@ -66,6 +69,7 @@ import {
   actionExcluirAgendamentoAdmin,
   actionRemarcarAgendamentoAdmin,
   actionAprovarPagamentoAgendamento,
+  actionAprovarExameAgendamento,
   actionRejeitarPagamentoAgendamento,
   actionCriarAgendamentoManualAdmin,
   fetchAdminCustomization,
@@ -149,6 +153,14 @@ const renderStatusAtendimentoBadge = (item) => {
       <span className="text-[10.5px] font-semibold px-2.5 py-0.5 rounded-full bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/20 inline-flex items-center gap-1">
         <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
         Cancelado
+      </span>
+    );
+  }
+  if (item.statusAtendimento === "pendente_aprovacao" || item.statusAtendimento === "pre_reservado") {
+    return (
+      <span className="text-[10.5px] font-bold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 inline-flex items-center gap-1 shadow-xs">
+        <Clock3 size={11} strokeWidth={2.5} className="animate-pulse text-amber-600" />
+        Pré-reserva (Exame)
       </span>
     );
   }
@@ -375,6 +387,33 @@ export default function AgendaView({
     return () => clearInterval(autoSyncInterval);
   }, [fetchAgendamentos, fetchBloqueios]);
 
+  const [isSyncingMedicalsys, setIsSyncingMedicalsys] = useState(false);
+
+  const handleSincronizarMedicalsys = async () => {
+    setIsSyncingMedicalsys(true);
+    playDopamineSound("select");
+    triggerHaptic("medium");
+    try {
+      if (showToast) showToast("Buscando e alinhando horários com o Medicalsys...", "info");
+      const res = await fetch("/api/importar-agenda", { method: "POST" });
+      const data = await res.json();
+      if (data?.success) {
+        if (showToast) showToast(data.message || "Agenda sincronizada e alinhada com o Medicalsys!");
+        playDopamineSound("success");
+        triggerHaptic("success");
+        if (fetchAgendamentos) await fetchAgendamentos();
+        if (fetchBloqueios) await fetchBloqueios();
+        setLastSyncedAt(new Date());
+      } else {
+        if (showToast) showToast(data?.error || "Falha na sincronização com o Medicalsys.", "error");
+      }
+    } catch (err) {
+      if (showToast) showToast(`Erro: ${err.message}`, "error");
+    } finally {
+      setIsSyncingMedicalsys(false);
+    }
+  };
+
   const handleManualRefresh = async () => {
     setIsRefreshing(true);
     playDopamineSound("click");
@@ -427,6 +466,12 @@ export default function AgendaView({
   const [mensagemCustomCancel, setMensagemCustomCancel] = useState("");
   const [enviarMensagemCancel, setEnviarMensagemCancel] = useState(true);
   const [confirmarCancelamentoStep, setConfirmarCancelamentoStep] = useState(false);
+
+  // Modal de Decisão de Exames Pré-Reservados
+  const [decisaoExameModalItem, setDecisaoExameModalItem] = useState(null);
+  const [decisaoExameModo, setDecisaoExameModo] = useState("inicio"); // "inicio" | "cancelar"
+  const [motivoCancelExame, setMotivoCancelExame] = useState("");
+  const [isProcessingDecisaoExame, setIsProcessingDecisaoExame] = useState(false);
 
   // Modal Inteligente de Remarcação (com Calendário e Horários em Tempo Real)
   const [rescheduleModalItem, setRescheduleModalItem] = useState(null);
@@ -672,21 +717,60 @@ export default function AgendaView({
           subExame = "Endoscopia Digestiva Alta";
         }
 
+        const rawP = b.raw_payload_completo;
+        const nomeReal =
+          (rawP?.paciente && typeof rawP.paciente === "object" ? (rawP.paciente.nome || rawP.paciente.nome_paciente || rawP.paciente.nome_completo) : null) ||
+          b.nome_paciente ||
+          b.paciente_nome ||
+          b.nome ||
+          (rawP?.paciente_provisorio ? String(rawP.paciente_provisorio).trim() : null) ||
+          "Paciente MedicalSYS";
+
+        const procEspFinal = subExame || espExibicao || "Consulta";
+
+        // Data e Horário originais extraídos do ERP Medicalsys
+        let horarioFormatado = b.horario ? b.horario.substring(0, 5) : "08:00";
+        let dataFormatada = b.data ? String(b.data).split("T")[0] : b.data;
+
+        if (rawP && typeof rawP === "object") {
+          const rawMomento = String(rawP.momento || rawP.data || "").trim();
+          if (rawMomento.includes("T")) {
+            dataFormatada = rawMomento.split("T")[0];
+            const tp = rawMomento.split("T")[1];
+            const m = tp.match(/(\d{1,2})[:hH](\d{2})/);
+            if (m) horarioFormatado = `${m[1].padStart(2, "0")}:${m[2].padStart(2, "0")}`;
+          } else if (rawMomento.includes(" ")) {
+            dataFormatada = rawMomento.split(" ")[0];
+            const tp = rawMomento.split(" ")[1];
+            const m = tp.match(/(\d{1,2})[:hH](\d{2})/);
+            if (m) horarioFormatado = `${m[1].padStart(2, "0")}:${m[2].padStart(2, "0")}`;
+          }
+
+          const candHora = rawP.horario_inicio || rawP.hora_inicio || rawP.hora || rawP.horario;
+          if (candHora) {
+            const m = String(candHora).match(/(\d{1,2})[:hH](\d{2})/);
+            if (m) {
+              horarioFormatado = `${m[1].padStart(2, "0")}:${m[2].padStart(2, "0")}`;
+            }
+          }
+        }
+
         return {
           id: b.id,
           pacienteId: null,
           tipo: "medicalsys",
-          data: b.data,
-          horario: b.horario?.substring(0, 5),
-          nomePaciente: (b.nome_paciente || b.paciente_nome || b.nome || "Paciente ERP").trim(),
-          cpfPaciente: b.cpf_paciente || null,
-          telefonePaciente: b.telefone_paciente || null,
+          data: dataFormatada,
+          horario: horarioFormatado,
+          horarioOriginal: horarioFormatado,
+          nomePaciente: String(nomeReal).trim(),
+          cpfPaciente: b.cpf_paciente || (rawP?.paciente?.cpf || null),
+          telefonePaciente: b.telefone_paciente || (rawP?.tel_celular || rawP?.paciente?.tel_celular || null),
           emailPaciente: null,
           dataNascimento: null,
           enfermidades: [],
           medicoProfissional: b.medico_profissional || "ERP Medicalsys",
-          especialidade: espExibicao,
-          subtipoExame: subExame,
+          especialidade: procEspFinal,
+          subtipoExame: procEspFinal,
           tipoServico: isExame ? "Exame" : "Consulta",
           convenio: b.convenio || "Convênio",
           modalidade: b.convenio || "Convênio",
@@ -698,19 +782,168 @@ export default function AgendaView({
         };
       });
 
-    // Vínculo e deduplicação automática entre agendamento RM e MedicalSys
-    const localMedicalsysIds = new Set(locais.map((l) => l.rawItem?.medicalsys_id).filter(Boolean));
-    const erpFiltrado = erp.filter((e) => {
-      if (e.medicalsysId && localMedicalsysIds.has(e.medicalsysId)) return false;
-      const duplicateLocal = locais.some((l) => 
-        l.data === e.data && 
-        l.horario === e.horario && 
-        (normalizeText(l.nomePaciente) === normalizeText(e.nomePaciente) || (l.cpfPaciente && e.cpfPaciente && l.cpfPaciente === e.cpfPaciente))
-      );
-      return !duplicateLocal;
+    // Vínculo e sobreposição: a sincronização mais recente do ERP MedicalSys tem precedência sobre horários locais
+    const erpMedicalsysIds = new Set(erp.map((e) => e.medicalsysId).filter(Boolean));
+    const erpPacientesDiaMap = new Map();
+    const erpSlotsMap = new Map();
+
+    erp.forEach((e) => {
+      const cleanMed = normalizeText(e.medicoProfissional || "");
+      erpSlotsMap.set(`${e.data}|${e.horario}|${cleanMed}`, e);
+      erpPacientesDiaMap.set(`${e.data}|${normalizeText(e.nomePaciente)}`, e);
     });
 
-    let result = [...locais, ...erpFiltrado]
+    const locaisFiltrados = locais.filter((l) => {
+      const lMedId = l.rawItem?.medicalsys_id;
+      if (lMedId && erpMedicalsysIds.has(String(lMedId))) {
+        return false;
+      }
+
+      // Se o ERP já tem esse mesmo paciente no mesmo dia, o ERP tem precedência absoluta
+      if (erpPacientesDiaMap.has(`${l.data}|${normalizeText(l.nomePaciente)}`)) {
+        return false;
+      }
+
+      const cleanMed = normalizeText(l.medicoProfissional || "");
+      if (erpSlotsMap.has(`${l.data}|${l.horario}|${cleanMed}`)) {
+        return false;
+      }
+
+      return true;
+    });
+
+    // =========================================================================
+    // REGRA UNIVERSAL: DURAÇÃO DE ESPECIALIDADE, INTERVALO/HIGIENIZAÇÃO E GRADE DE 15 MIN
+    // =========================================================================
+    const catalogoEsps = empresaConfig?.especialidades || [];
+
+    const getDuracaoEIntervalo = (espNome, subNome) => {
+      const eNorm = normalizeText(espNome || "");
+      const sNorm = normalizeText(subNome || "");
+
+      let dur = 30;
+      let intervalo = 0;
+
+      // 1. Catálogo de especialidades da clínica (empresaConfig.especialidades)
+      if (Array.isArray(catalogoEsps)) {
+        const found = catalogoEsps.find((c) => {
+          const cNome = typeof c === "object" ? normalizeText(c.nome || "") : normalizeText(c || "");
+          if (!cNome) return false;
+          if (cNome === eNorm || cNome === sNorm) return true;
+          if (sNorm && (cNome.includes(sNorm) || sNorm.includes(cNome))) return true;
+          if (eNorm && (cNome.includes(eNorm) || eNorm.includes(cNome))) return true;
+          return false;
+        });
+
+        if (found && typeof found === "object") {
+          if (found.duracao_minutos !== undefined && found.duracao_minutos !== null) {
+            dur = Number(found.duracao_minutos) || 30;
+          }
+          if (found.intervalo_minutos !== undefined && found.intervalo_minutos !== null) {
+            intervalo = Number(found.intervalo_minutos) || 0;
+          }
+        }
+      }
+
+      // 2. Regras de agenda configuradas na clínica
+      if (Array.isArray(regrasAgenda)) {
+        const ruleMatch = regrasAgenda.find((r) => {
+          if (r.ativo === false) return false;
+          const rEsp = normalizeText(r.especialidade || "");
+          const permitidos = (r.tipos_permitidos || []).map(normalizeText);
+          return (
+            rEsp === eNorm ||
+            rEsp === sNorm ||
+            permitidos.includes(eNorm) ||
+            permitidos.includes(sNorm)
+          );
+        });
+
+        if (ruleMatch) {
+          if (ruleMatch.duracao_slot_minutos > 0) dur = Number(ruleMatch.duracao_slot_minutos);
+          if (ruleMatch.intervalo_slot_minutos !== undefined && ruleMatch.intervalo_slot_minutos !== null) {
+            intervalo = Number(ruleMatch.intervalo_slot_minutos);
+          }
+        }
+      }
+
+      // 3. Padrões clínicos para Colonoscopia e Endoscopia
+      const isColono = /colonoscopia/i.test(`${espNome} ${subNome}`);
+      const isEndo = /endoscopia/i.test(`${espNome} ${subNome}`);
+
+      if (isColono) {
+        if (dur < 30) dur = 30;
+        if (intervalo === 0) intervalo = 15; // 15 min de descanso e higienização
+      } else if (isEndo) {
+        if (dur < 20) dur = 20;
+        if (intervalo === 0) intervalo = 10; // 10 min de descanso e higienização
+      }
+
+      return { duracao: dur, intervalo: intervalo, tempoTotalOcupado: dur + intervalo };
+    };
+
+    // Agrupar agendamentos por data e agenda/médico para alinhar a sequência na grade
+    const todosItensBrutos = [...erp, ...locaisFiltrados];
+    const gruposSequenciais = new Map();
+    todosItensBrutos.forEach((item) => {
+      const chaveGrupo = `${item.data || "hoje"}|${normalizeText(item.medicoProfissional || "geral")}`;
+      if (!gruposSequenciais.has(chaveGrupo)) gruposSequenciais.set(chaveGrupo, []);
+      gruposSequenciais.get(chaveGrupo).push(item);
+    });
+
+    const resultadoFinalAlinhado = [];
+
+    gruposSequenciais.forEach((itensDoGrupo) => {
+      // Ordenação cronológica base pelo horário nominal original
+      itensDoGrupo.sort((a, b) => (a.horario || "08:00").localeCompare(b.horario || "08:00"));
+
+      let fimOcupadoMin = 0;
+
+      itensDoGrupo.forEach((item) => {
+        const { duracao, intervalo, tempoTotalOcupado } = getDuracaoEIntervalo(
+          item.especialidade,
+          item.subtipoExame
+        );
+
+        const [h, m] = (item.horario || "08:00").split(":").map(Number);
+        const startMinOriginal = (isNaN(h) ? 8 : h) * 60 + (isNaN(m) ? 0 : m);
+
+        let startMinEfetivo = startMinOriginal;
+
+        // Se o horário colide com a duração + descanso do paciente anterior
+        if (startMinOriginal < fimOcupadoMin) {
+          // Liberação da grade de 15 em 15 minutos (:00, :15, :30, :45)
+          startMinEfetivo = Math.ceil(fimOcupadoMin / 15) * 15;
+        }
+
+        const fimProcedimentoMin = startMinEfetivo + duracao;
+        const fimTotalMin = startMinEfetivo + tempoTotalOcupado;
+
+        fimOcupadoMin = fimTotalMin;
+
+        const formatMin = (tot) => {
+          const hh = String(Math.floor(tot / 60) % 24).padStart(2, "0");
+          const mm = String(tot % 60).padStart(2, "0");
+          return `${hh}:${mm}`;
+        };
+
+        const horarioFormatadoNovo = formatMin(startMinEfetivo);
+        const horarioOriginalLimpo = item.horarioOriginal || item.horario;
+
+        resultadoFinalAlinhado.push({
+          ...item,
+          horario: horarioFormatadoNovo,
+          horarioOriginal: horarioOriginalLimpo,
+          horarioAjustadoPorGrade: horarioFormatadoNovo !== horarioOriginalLimpo,
+          duracaoMinutos: duracao,
+          intervaloMinutos: intervalo,
+          horarioFimProcedimento: formatMin(fimProcedimentoMin),
+          horarioLiberacaoGrade: formatMin(fimTotalMin)
+        });
+      });
+    });
+
+    let result = resultadoFinalAlinhado
       .filter((item) => {
         if (statusFilter === "todos") return true;
         if (statusFilter === "cancelado") return item.statusAtendimento === "cancelado";
@@ -815,7 +1048,9 @@ export default function AgendaView({
     filterMedico,
     searchTerm,
     sortConfig,
-    servicos
+    servicos,
+    empresaConfig,
+    regrasAgenda
   ]);
 
   // Histórico de atendimentos do paciente ativo no modal de prontuário
@@ -1265,6 +1500,80 @@ export default function AgendaView({
       if (showToast) showToast(`Erro: ${e.message}`, "error");
     } finally {
       setApprovingPaymentId(null);
+    }
+  };
+
+  const [approvingExamId, setApprovingExamId] = useState(null);
+
+  // ABRIR POP-UP GRÁFICO DE DECISÃO DE EXAME PRÉ-RESERVADO (ACEITAR, CANCELAR OU VOLTAR)
+  const handleAbrirDecisaoExame = (item) => {
+    if (!item) return;
+    playDopamineSound("select");
+    triggerHaptic("medium");
+    setDecisaoExameModalItem(item);
+    setDecisaoExameModo("inicio");
+    setMotivoCancelExame("");
+  };
+
+  const handleAprovarExame = (item) => {
+    handleAbrirDecisaoExame(item);
+  };
+
+  const handleConfirmarAprovacaoExameModal = async () => {
+    if (!decisaoExameModalItem) return;
+    setIsProcessingDecisaoExame(true);
+    setApprovingExamId(decisaoExameModalItem.id);
+    playDopamineSound("select");
+    triggerHaptic("medium");
+
+    try {
+      const res = await actionAprovarExameAgendamento(decisaoExameModalItem.id);
+      if (res?.success) {
+        if (showToast) showToast("Exame aprovado com sucesso! Confirmação enviada.");
+        playDopamineSound("success");
+        triggerHaptic("success");
+        if (fetchAgendamentos) await fetchAgendamentos();
+        if (sensitiveModalItem?.id === decisaoExameModalItem.id) {
+          setSensitiveModalItem((prev) => ({ ...prev, statusAtendimento: "agendado" }));
+        }
+        setDecisaoExameModalItem(null);
+      } else {
+        if (showToast) showToast(res?.error || "Erro ao aprovar exame.", "error");
+      }
+    } catch (e) {
+      if (showToast) showToast(`Erro: ${e.message}`, "error");
+    } finally {
+      setIsProcessingDecisaoExame(false);
+      setApprovingExamId(null);
+    }
+  };
+
+  const handleConfirmarCancelamentoExameModal = async () => {
+    if (!decisaoExameModalItem) return;
+    setIsProcessingDecisaoExame(true);
+    playDopamineSound("click");
+    try {
+      const motivoFinal =
+        motivoCancelExame.trim() ||
+        "Readequação operacional da grade de atendimentos da clínica";
+
+      await actionCancelarAgendamentoAdmin(
+        decisaoExameModalItem.id,
+        motivoFinal,
+        null
+      );
+      if (showToast) showToast("Exame recusado e cancelado. Horário liberado na agenda!");
+      playDopamineSound("success");
+      triggerHaptic("success");
+      if (fetchAgendamentos) await fetchAgendamentos();
+      if (sensitiveModalItem?.id === decisaoExameModalItem.id) {
+        setSensitiveModalItem((prev) => ({ ...prev, statusAtendimento: "cancelado" }));
+      }
+      setDecisaoExameModalItem(null);
+    } catch (e) {
+      if (showToast) showToast(`Erro ao cancelar exame: ${e.message}`, "error");
+    } finally {
+      setIsProcessingDecisaoExame(false);
     }
   };
 
@@ -2229,6 +2538,11 @@ export default function AgendaView({
                                 <span className="text-sm sm:text-base font-bold text-zinc-950 dark:text-white tracking-tight">
                                   {item.horario || "--:--"}
                                 </span>
+                                {item.horarioAjustadoPorGrade && (
+                                  <div className="text-[9px] font-mono font-bold text-amber-600 dark:text-amber-400" title={`Horário original: ${item.horarioOriginal}. Ajustado conforme duração/intervalo do paciente anterior.`}>
+                                    Grade
+                                  </div>
+                                )}
                               </div>
 
                               <div className="min-w-0 flex-1">
@@ -2529,6 +2843,23 @@ export default function AgendaView({
                                         <span>Aprovar</span>
                                       </button>
                                     )}
+
+                                  {(item.statusAtendimento === "pendente_aprovacao" || item.statusAtendimento === "pre_reservado") && (
+                                    <button
+                                      type="button"
+                                      disabled={approvingExamId === item.id}
+                                      onClick={() => handleAprovarExame(item)}
+                                      className="min-h-[34px] px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-[11px] font-black inline-flex items-center gap-1 shadow-sm cursor-pointer disabled:opacity-50"
+                                      title="Aprovar Pré-reserva de Exame"
+                                    >
+                                      {approvingExamId === item.id ? (
+                                        <RefreshCw size={12} className="animate-spin" />
+                                      ) : (
+                                        <CheckCircle2 size={12} />
+                                      )}
+                                      <span>Aprovar Exame</span>
+                                    </button>
+                                  )}
 
                                   {temPermissaoSigiloClinico && (
                                     <button
@@ -3030,6 +3361,23 @@ export default function AgendaView({
                                       <span>Aprovar</span>
                                     </button>
                                   )}
+
+                                {(item.statusAtendimento === "pendente_aprovacao" || item.statusAtendimento === "pre_reservado") && (
+                                  <button
+                                    type="button"
+                                    disabled={approvingExamId === item.id}
+                                    onClick={() => handleAprovarExame(item)}
+                                    className="min-h-[34px] px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-[11px] font-black inline-flex items-center gap-1 shadow-sm cursor-pointer disabled:opacity-50"
+                                    title="Aprovar Pré-reserva de Exame"
+                                  >
+                                    {approvingExamId === item.id ? (
+                                      <RefreshCw size={12} className="animate-spin" />
+                                    ) : (
+                                      <CheckCircle2 size={12} />
+                                    )}
+                                    <span>Aprovar Exame</span>
+                                  </button>
+                                )}
 
                                 {temPermissaoSigiloClinico && (
                                   <button
@@ -4009,6 +4357,196 @@ export default function AgendaView({
           </div>
         )}
 
+        {/* MODAL GRÁFICO DE DECISÃO DE EXAMES PRÉ-RESERVADOS (ACEITAR, CANCELAR OU VOLTAR) */}
+        {decisaoExameModalItem && (
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-md z-[99999] flex items-center justify-center p-4 animate-in fade-in duration-200"
+            onClick={() => setDecisaoExameModalItem(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white/95 dark:bg-[#121216]/95 backdrop-blur-3xl rounded-3xl p-6 sm:p-7 max-w-lg w-full shadow-2xl border border-black/[0.06] dark:border-white/[0.08] space-y-5 text-left"
+            >
+              {/* CABEÇALHO */}
+              <div className="flex items-center justify-between border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shadow-xs">
+                    <Stethoscope size={22} strokeWidth={2.2} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-zinc-950 dark:text-white tracking-tight">
+                      {decisaoExameModo === "cancelar" ? "Recusar / Cancelar Exame" : "Decisão de Exame Pré-reservado"}
+                    </h3>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">
+                      {decisaoExameModo === "cancelar" ? "Confirme a recusa para liberar o horário" : "Análise e confirmação de agendamento online"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDecisaoExameModalItem(null)}
+                  className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* CARD DE DETALHES DO AGENDAMENTO */}
+              <div className="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800/80 space-y-2.5 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-zinc-400 dark:text-zinc-500 font-medium">Paciente</span>
+                  <span className="font-bold text-zinc-900 dark:text-white text-right">
+                    {decisaoExameModalItem.nomePaciente || decisaoExameModalItem.pacientes?.nome_completo || decisaoExameModalItem.nome_paciente || "Paciente"}
+                  </span>
+                </div>
+                {decisaoExameModalItem.cpfPaciente && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-zinc-400 dark:text-zinc-500 font-medium">CPF</span>
+                    <span className="font-mono text-zinc-700 dark:text-zinc-300">
+                      {decisaoExameModalItem.cpfPaciente}
+                    </span>
+                  </div>
+                )}
+                {decisaoExameModalItem.telefonePaciente && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-zinc-400 dark:text-zinc-500 font-medium">WhatsApp</span>
+                    <span className="font-mono text-zinc-700 dark:text-zinc-300">
+                      {decisaoExameModalItem.telefonePaciente}
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between pt-1 border-t border-black/[0.04] dark:border-white/[0.06]">
+                  <span className="text-zinc-400 dark:text-zinc-500 font-medium">Exame</span>
+                  <span className="font-bold text-amber-700 dark:text-amber-400 text-right">
+                    {decisaoExameModalItem.subtipoExame || decisaoExameModalItem.especialidade || "Exame Clínico"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-zinc-400 dark:text-zinc-500 font-medium">Profissional</span>
+                  <span className="font-medium text-zinc-800 dark:text-zinc-200 text-right">
+                    {decisaoExameModalItem.medicoProfissional || "Corpo Clínico"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-zinc-400 dark:text-zinc-500 font-medium">Data e Horário</span>
+                  <span className="font-bold text-zinc-900 dark:text-white text-right">
+                    {decisaoExameModalItem.data ? decisaoExameModalItem.data.split("-").reverse().join("/") : (decisaoExameModalItem.data_agendamento ? decisaoExameModalItem.data_agendamento.split("-").reverse().join("/") : "--/--")} às {decisaoExameModalItem.horario || decisaoExameModalItem.horario_agendamento || "--:--"}h
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-zinc-400 dark:text-zinc-500 font-medium">Modalidade</span>
+                  <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                    {decisaoExameModalItem.modalidade || decisaoExameModalItem.convenio || "Particular"}
+                  </span>
+                </div>
+              </div>
+
+              {decisaoExameModo === "inicio" ? (
+                <>
+                  <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-900 dark:text-amber-300 flex items-start gap-2.5">
+                    <Info size={16} className="text-amber-500 shrink-0 mt-0.5" />
+                    <p className="leading-relaxed">
+                      Este exame está <strong>pré-reservado</strong> aguardando confirmação. Ao <strong>Aprovar</strong>, o sistema confirma o horário, sincroniza com o MedicalSys e envia o WhatsApp de confirmação. Ao <strong>Recusar</strong>, o horário é liberado.
+                    </p>
+                  </div>
+
+                  {/* 3 BOTÕES CLAROS: VOLTAR, CANCELAR OU ACEITAR */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2 border-t border-black/[0.04] dark:border-white/[0.06]">
+                    <button
+                      type="button"
+                      onClick={() => setDecisaoExameModalItem(null)}
+                      disabled={isProcessingDecisaoExame}
+                      className="py-3 px-4 rounded-xl border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 font-bold text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors cursor-pointer text-center"
+                    >
+                      Voltar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isProcessingDecisaoExame}
+                      onClick={() => {
+                        playDopamineSound("click");
+                        setDecisaoExameModo("cancelar");
+                      }}
+                      className="py-3 px-4 rounded-xl border border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <XCircle size={15} />
+                      <span>Recusar / Cancelar</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isProcessingDecisaoExame || approvingExamId === decisaoExameModalItem.id}
+                      onClick={handleConfirmarAprovacaoExameModal}
+                      className="py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/20 transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      {isProcessingDecisaoExame || approvingExamId === decisaoExameModalItem.id ? (
+                        <RefreshCw size={14} className="animate-spin" />
+                      ) : (
+                        <CheckCircle2 size={15} />
+                      )}
+                      <span>Aprovar Exame</span>
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* ETAPA DE CONFIRMAÇÃO DE CANCELAMENTO / RECUSA */}
+                  <div className="p-3.5 bg-red-500/10 border border-red-500/20 rounded-2xl text-xs text-red-900 dark:text-red-300 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle size={16} className="text-red-500 flex-shrink-0 mt-0.5" />
+                      <p>
+                        O horário será <strong>cancelado e liberado</strong> imediatamente na agenda. Se você cadastrou mensagem de cancelamento, o paciente receberá o aviso no WhatsApp.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5 text-xs">
+                    <label className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-400">
+                      Justificativa da Recusa (Opcional)
+                    </label>
+                    <input
+                      type="text"
+                      value={motivoCancelExame}
+                      onChange={(e) => setMotivoCancelExame(e.target.value)}
+                      placeholder="Ex: Preparo prévio incompatível, vaga indisponível..."
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs text-zinc-900 dark:text-white outline-none focus:border-red-500"
+                    />
+                    <p className="text-[10px] text-zinc-400">
+                      Deixe em branco para usar o motivo padrão profissional: <em>&ldquo;Readequação operacional da grade de atendimentos da clínica&rdquo;</em>.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-black/[0.04] dark:border-white/[0.06]">
+                    <button
+                      type="button"
+                      onClick={() => setDecisaoExameModo("inicio")}
+                      disabled={isProcessingDecisaoExame}
+                      className="py-3 px-4 rounded-xl border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 font-bold text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors cursor-pointer text-center"
+                    >
+                      Voltar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isProcessingDecisaoExame}
+                      onClick={handleConfirmarCancelamentoExameModal}
+                      className="py-3 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-red-600/20 transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      {isProcessingDecisaoExame ? (
+                        <RefreshCw size={14} className="animate-spin" />
+                      ) : (
+                        <Trash2 size={15} />
+                      )}
+                      <span>Confirmar Cancelamento</span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </motion.div>
+          </div>
+        )}
+
       {/* TELA COMPLETA ESTILO APPLE: FICHA CLÍNICA, DADOS DO PACIENTE, OBSERVAÇÕES & MENSAGENS */}
       <AnimatePresence>
         {sensitiveModalItem && temPermissaoSigiloClinico && (
@@ -4139,6 +4677,29 @@ export default function AgendaView({
                       </span>
                     )}
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playDopamineSound("click");
+                      setFichaSubTab("medicalsys");
+                    }}
+                    className={`relative px-4 py-1.5 text-xs font-semibold rounded-full transition-colors z-10 flex items-center gap-1.5 cursor-pointer ${
+                      fichaSubTab === "medicalsys"
+                        ? "text-zinc-950 dark:text-white"
+                        : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                    }`}
+                  >
+                    {fichaSubTab === "medicalsys" && (
+                      <motion.div
+                        layoutId="apple-segmented-pill"
+                        className="absolute inset-0 bg-white dark:bg-[#2C2C2E] rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.06)] dark:shadow-[0_2px_12px_rgba(0,0,0,0.5)] border border-black/[0.04] dark:border-white/[0.08] -z-10"
+                        transition={{ type: "spring", stiffness: 480, damping: 36 }}
+                      />
+                    )}
+                    <Database size={14} className={fichaSubTab === "medicalsys" ? "text-amber-500" : "text-zinc-400"} />
+                    <span>MedicalSYS</span>
+                  </button>
                 </div>
               </div>
 
@@ -4216,6 +4777,20 @@ export default function AgendaView({
                 >
                   Histórico ({historicoPaciente.length})
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    playDopamineSound("click");
+                    setFichaSubTab("medicalsys");
+                  }}
+                  className={`flex-1 py-1.5 text-xs font-semibold rounded-full transition-all text-center ${
+                    fichaSubTab === "medicalsys"
+                      ? "bg-white dark:bg-[#2C2C2E] text-zinc-950 dark:text-white shadow-xs"
+                      : "text-zinc-500"
+                  }`}
+                >
+                  MedicalSYS
+                </button>
               </div>
             </div>
 
@@ -4235,8 +4810,74 @@ export default function AgendaView({
                         const { obsImportada, ehImportado, notasManuais } = extrairObservacoes(sensitiveModalItem);
                         const iniciais = getIniciais(sensitiveModalItem.nomePaciente);
 
+                        const procedimentoEspecialidade = (() => {
+                          const subNorm = String(sensitiveModalItem.subtipoExame || "").trim();
+                          const espNorm = String(sensitiveModalItem.especialidade || "").trim();
+                          const rawObs = String(sensitiveModalItem.rawItem?.observacoes || "").trim();
+                          const raw = sensitiveModalItem.rawItem?.raw_payload_completo;
+
+                          if (/colonoscopia/i.test(`${subNorm} ${espNorm} ${rawObs}`)) return "Colonoscopia";
+                          if (/endoscopia/i.test(`${subNorm} ${espNorm} ${rawObs}`)) return "Endoscopia Digestiva Alta";
+                          if (/ultrassom|ecografia/i.test(`${subNorm} ${espNorm} ${rawObs}`)) return "Ultrassonografia";
+                          if (/tomografia/i.test(`${subNorm} ${espNorm} ${rawObs}`)) return "Tomografia";
+
+                          if (subNorm && !/^(consulta|exame|geral)$/i.test(subNorm)) {
+                            return subNorm;
+                          }
+                          if (espNorm && !/^(consulta|exame|geral|clinica geral)$/i.test(espNorm)) {
+                            return espNorm.split(",")[0].trim();
+                          }
+
+                          const rawProc = raw?.procedimento?.nome || (Array.isArray(raw?.procedimentos) && raw?.procedimentos[0]?.nome) || raw?.nome_procedimento || raw?.desc_procedimento;
+                          if (rawProc) return String(rawProc).trim();
+
+                          const rawEsp = raw?.medico?.especialidade?.nome || raw?.procedimento?.especialidade?.nome;
+                          if (rawEsp && !/^(consulta|geral)$/i.test(rawEsp)) return String(rawEsp).split(",")[0].trim();
+
+                          const srv = (servicos || []).find((s) => s.nome && sensitiveModalItem.medicoProfissional && s.nome.toLowerCase().includes(sensitiveModalItem.medicoProfissional.toLowerCase()));
+                          if (srv?.especialidade) return srv.especialidade.split(",")[0].trim();
+
+                          return subNorm || espNorm || "Consulta Médica";
+                        })();
+
+                        const ehExame = /(colonoscopia|endoscopia|ultrassom|tomografia|ressonancia|raio-x|biopsia|exame)/i.test(
+                          `${procedimentoEspecialidade} ${sensitiveModalItem.tipoServico || ""}`
+                        );
+
                         return (
-                          <div className="grid lg:grid-cols-12 gap-8 items-start">
+                          <div className="space-y-6">
+                            {(sensitiveModalItem.statusAtendimento === "pendente_aprovacao" || sensitiveModalItem.statusAtendimento === "pre_reservado") && (
+                              <div className="p-5 rounded-3xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center flex-shrink-0 shadow-sm">
+                                    <Clock3 size={20} strokeWidth={2.5} className="animate-pulse" />
+                                  </div>
+                                  <div>
+                                    <h4 className="text-sm font-black text-amber-950 dark:text-amber-100">
+                                      Exame Pré-reservado Aguardando Aprovação da Recepção
+                                    </h4>
+                                    <p className="text-xs text-amber-800/80 dark:text-amber-200/80 mt-0.5">
+                                      Valide o pedido médico e as orientações de preparo. Ao aprovar, o agendamento será confirmado no RM Agenda, integrado à MedicalSYS e notificado ao paciente.
+                                    </p>
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  disabled={approvingExamId === sensitiveModalItem.id}
+                                  onClick={() => handleAprovarExame(sensitiveModalItem)}
+                                  className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-extrabold rounded-2xl shadow-md flex items-center justify-center gap-2 cursor-pointer transition-all shrink-0 min-h-[42px] disabled:opacity-50"
+                                >
+                                  {approvingExamId === sensitiveModalItem.id ? (
+                                    <RefreshCw size={14} className="animate-spin" />
+                                  ) : (
+                                    <CheckCircle2 size={15} />
+                                  )}
+                                  <span>Aprovar Exame</span>
+                                </button>
+                              </div>
+                            )}
+
+                            <div className="grid lg:grid-cols-12 gap-8 items-start">
                             {/* COLUNA ESQUERDA (5 COLUNAS): DOSSIER CLÍNICO & DADOS */}
                             <div className="lg:col-span-5 space-y-6">
                               {/* 1. HERO PROFILE CARD */}
@@ -4262,16 +4903,9 @@ export default function AgendaView({
                                       <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-blue-500/10 text-blue-700 dark:text-blue-300">
                                         {sensitiveModalItem.statusAtendimento || "agendado"}
                                       </span>
-                                      {sensitiveModalItem.especialidade && (
-                                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
-                                          {sensitiveModalItem.especialidade}
-                                        </span>
-                                      )}
-                                      {sensitiveModalItem.subtipoExame && sensitiveModalItem.subtipoExame !== sensitiveModalItem.especialidade && (
-                                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-purple-500/10 text-purple-700 dark:text-purple-300">
-                                          {sensitiveModalItem.subtipoExame}
-                                        </span>
-                                      )}
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+                                        {procedimentoEspecialidade}
+                                      </span>
                                     </div>
                                   </div>
                                 </div>
@@ -4332,53 +4966,19 @@ export default function AgendaView({
                                     </span>
                                   </div>
 
-                                  {/* ESPECIALIDADE */}
+                                  {/* PROCEDIMENTO / ESPECIALIDADE UNIFICADO */}
                                   <div className="flex items-center justify-between py-2.5">
-                                    <span className="text-zinc-400 dark:text-zinc-500 font-medium">Especialidade</span>
-                                    <span className="font-semibold text-zinc-800 dark:text-zinc-200 text-right truncate max-w-[200px]">
-                                      {(() => {
-                                        const espNorm = String(sensitiveModalItem.especialidade || "").trim();
-                                        const subNorm = String(sensitiveModalItem.subtipoExame || "").trim();
-                                        if (/colonoscopia/i.test(`${espNorm} ${subNorm}`)) return "Colonoscopia";
-                                        if (/endoscopia/i.test(`${espNorm} ${subNorm}`)) return "Endoscopia";
-
-                                        if (espNorm && !/^(consulta|geral)$/i.test(espNorm)) {
-                                          return espNorm.split(",")[0].trim();
-                                        }
-
-                                        const srv = (servicos || []).find((s) => s.nome && sensitiveModalItem.medicoProfissional && s.nome.toLowerCase().includes(sensitiveModalItem.medicoProfissional.toLowerCase()));
-                                        if (srv?.especialidade) {
-                                          return srv.especialidade.split(",")[0].trim();
-                                        }
-
-                                        const raw = sensitiveModalItem.rawItem?.raw_payload_completo;
-                                        const rawEsp = raw?.medico?.especialidade?.nome || raw?.procedimento?.especialidade?.nome;
-                                        if (rawEsp) return String(rawEsp).split(",")[0].trim();
-
-                                        return "Clínica Geral";
-                                      })()}
+                                    <span className="text-zinc-400 dark:text-zinc-500 font-medium">Especialidade / Procedimento</span>
+                                    <span className="font-semibold text-zinc-800 dark:text-zinc-200 text-right truncate max-w-[200px]" title={procedimentoEspecialidade}>
+                                      {procedimentoEspecialidade}
                                     </span>
                                   </div>
 
-                                  {/* PROCEDIMENTO / EXAME */}
+                                  {/* CATEGORIA DO ATENDIMENTO */}
                                   <div className="flex items-center justify-between py-2.5">
-                                    <span className="text-zinc-400 dark:text-zinc-500 font-medium">Procedimento</span>
+                                    <span className="text-zinc-400 dark:text-zinc-500 font-medium">Categoria</span>
                                     <span className="font-semibold text-zinc-800 dark:text-zinc-200 text-right truncate max-w-[200px]">
-                                      {(() => {
-                                        const espNorm = String(sensitiveModalItem.especialidade || "").trim();
-                                        const subNorm = String(sensitiveModalItem.subtipoExame || "").trim();
-                                        if (/colonoscopia/i.test(`${espNorm} ${subNorm}`)) return "Colonoscopia";
-                                        if (/endoscopia/i.test(`${espNorm} ${subNorm}`)) return "Endoscopia Digestiva Alta";
-                                        return sensitiveModalItem.subtipoExame || sensitiveModalItem.especialidade || "Consulta Médica";
-                                      })()}
-                                    </span>
-                                  </div>
-
-                                  {/* TIPO DE SERVIÇO */}
-                                  <div className="flex items-center justify-between py-2.5">
-                                    <span className="text-zinc-400 dark:text-zinc-500 font-medium">Serviço</span>
-                                    <span className="font-semibold text-zinc-800 dark:text-zinc-200 text-right truncate max-w-[200px]">
-                                      {sensitiveModalItem.tipoServico || "Consulta"}
+                                      {ehExame ? "Exame" : (sensitiveModalItem.tipoServico || "Consulta")}
                                     </span>
                                   </div>
 
@@ -4661,7 +5261,8 @@ export default function AgendaView({
                               </motion.div>
                             </div>
                           </div>
-                        );
+                        </div>
+                      );
                       })()}
                     </motion.div>
                   ) : fichaSubTab === "historico" ? (
@@ -4737,7 +5338,7 @@ export default function AgendaView({
                         </div>
                       )}
                     </motion.div>
-                  ) : (
+                  ) : fichaSubTab === "mensagens" ? (
                     <motion.div
                       key="mensagens-tab"
                       initial={{ opacity: 0, y: 10 }}
@@ -4930,7 +5531,169 @@ export default function AgendaView({
                         </div>
                       )}
                     </motion.div>
-                  )}
+                  ) : fichaSubTab === "medicalsys" ? (
+                    <motion.div
+                      key="medicalsys-tab"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.2 }}
+                      className="bg-white dark:bg-[#1C1C1E] rounded-3xl p-6 md:p-8 border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_18px_rgba(0,0,0,0.03)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.4)] space-y-6"
+                    >
+                      {/* HEADER DA ABA MEDICALSYS */}
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
+                        <div>
+                          <h3 className="text-base font-bold text-zinc-950 dark:text-white flex items-center gap-2">
+                            <Database size={18} className="text-amber-500" />
+                            Dados Brutos & Auditoria do ERP MedicalSYS
+                          </h3>
+                          <p className="text-xs text-zinc-500 mt-1">
+                            Audite os dados exatamente como foram recebidos do Gateway MedicalSYS (Porta 9000).
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase ${
+                            sensitiveModalItem.tipo === "medicalsys"
+                              ? "bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-300/40"
+                              : "bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-300/40"
+                          }`}>
+                            {sensitiveModalItem.tipo === "medicalsys" ? "Sincronizado via ERP" : "Agendamento Local RMAgenda"}
+                          </span>
+                          {sensitiveModalItem.medicalsysId && (
+                            <span className="px-2.5 py-1 rounded-full text-xs font-mono font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700">
+                              ID #{sensitiveModalItem.medicalsysId}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* CARD 1: COMPARATIVO DE HORÁRIOS & GRADE */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-zinc-50/70 dark:bg-zinc-900/40 rounded-2xl border border-zinc-100 dark:border-zinc-800">
+                        <div className="space-y-0.5">
+                          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Horário Original ERP</span>
+                          <p className="text-sm font-mono font-bold text-zinc-900 dark:text-white">
+                            {sensitiveModalItem.horarioOriginal || sensitiveModalItem.rawItem?.horario || sensitiveModalItem.rawItem?.horario_inicio || sensitiveModalItem.horario || "--:--"}
+                          </p>
+                          <span className="text-[10px] text-zinc-500">Dado original recebido</span>
+                        </div>
+                        <div className="space-y-0.5">
+                          <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wider">Horário na Grade RMAgenda</span>
+                          <p className="text-sm font-mono font-bold text-blue-600 dark:text-blue-400">
+                            {sensitiveModalItem.horario || "--:--"}
+                          </p>
+                          <span className="text-[10px] text-blue-500/80">
+                            {sensitiveModalItem.horarioAjustadoPorGrade ? "Ajustado pela grade sequencial" : "Horário exato mantido"}
+                          </span>
+                        </div>
+                        <div className="space-y-0.5">
+                          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Duração + Descanso</span>
+                          <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+                            {sensitiveModalItem.duracaoMinutos || 30}m + {sensitiveModalItem.intervaloMinutos || 0}m
+                          </p>
+                          <span className="text-[10px] text-zinc-500">Duração e higienização</span>
+                        </div>
+                        <div className="space-y-0.5">
+                          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Liberação da Grade</span>
+                          <p className="text-sm font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                            {sensitiveModalItem.horarioLiberacaoGrade || "--:--"}
+                          </p>
+                          <span className="text-[10px] text-zinc-500">Próximo slot vago</span>
+                        </div>
+                      </div>
+
+                      {/* CARD 2: CAMPOS MAPEADOS DO ERP */}
+                      <div className="space-y-3">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
+                          <Tag size={13} className="text-amber-500" /> Propriedades Extraídas do MedicalSYS
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                          <div className="p-3 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200/80 dark:border-zinc-800 space-y-1">
+                            <span className="text-[10px] font-bold text-zinc-400 uppercase">Paciente (Cadastro / Provisório)</span>
+                            <p className="font-semibold text-zinc-900 dark:text-white">
+                              {sensitiveModalItem.nomePaciente}
+                            </p>
+                            <p className="text-[11px] text-zinc-500 font-mono">
+                              CPF: {sensitiveModalItem.cpfPaciente || "Não informado"} • Tel: {sensitiveModalItem.telefonePaciente || "Não informado"}
+                            </p>
+                          </div>
+
+                          <div className="p-3 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200/80 dark:border-zinc-800 space-y-1">
+                            <span className="text-[10px] font-bold text-zinc-400 uppercase">Médico & Procedimento</span>
+                            <p className="font-semibold text-zinc-900 dark:text-white">
+                              {sensitiveModalItem.medicoProfissional}
+                            </p>
+                            <p className="text-[11px] text-zinc-500">
+                              Procedimento: {sensitiveModalItem.especialidade} ({sensitiveModalItem.tipoServico})
+                            </p>
+                          </div>
+
+                          <div className="p-3 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200/80 dark:border-zinc-800 space-y-1">
+                            <span className="text-[10px] font-bold text-zinc-400 uppercase">Convênio & Pagamento</span>
+                            <p className="font-semibold text-zinc-900 dark:text-white">
+                              {sensitiveModalItem.convenio || "Particular"}
+                            </p>
+                            <p className="text-[11px] text-zinc-500">
+                              Situação ERP: <span className="font-mono font-bold uppercase">{sensitiveModalItem.rawItem?.situacao || sensitiveModalItem.statusAtendimento || "agen"}</span>
+                            </p>
+                          </div>
+
+                          <div className="p-3 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200/80 dark:border-zinc-800 space-y-1">
+                            <span className="text-[10px] font-bold text-zinc-400 uppercase">Observações do ERP</span>
+                            <p className="text-zinc-700 dark:text-zinc-300 italic text-[11px]">
+                              {sensitiveModalItem.rawItem?.observacoes || sensitiveModalItem.rawItem?.observacao || "Nenhuma observação informada no MedicalSYS."}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* CARD 3: PAYLOAD JSON BRUTO INTEGRAL (APPLE TERMINAL STYLE) */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
+                            <FileText size={13} className="text-blue-500" />
+                            Payload JSON Bruto Retornado pelo MedicalSYS
+                          </h4>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const jsonStr = JSON.stringify(
+                                sensitiveModalItem.rawItem?.raw_payload_completo || sensitiveModalItem.rawItem || sensitiveModalItem,
+                                null,
+                                2
+                              );
+                              navigator.clipboard.writeText(jsonStr);
+                              if (showToast) showToast("JSON copiado para a área de transferência!");
+                            }}
+                            className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 flex items-center gap-1 transition-all cursor-pointer"
+                          >
+                            <Copy size={12} />
+                            <span>Copiar JSON</span>
+                          </button>
+                        </div>
+
+                        <div className="rounded-2xl bg-[#0D1117] text-zinc-100 border border-zinc-800 overflow-hidden shadow-inner">
+                          <div className="flex items-center justify-between px-4 py-2.5 bg-[#161B22] border-b border-zinc-800 text-[11px] text-zinc-400 font-mono">
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-2.5 h-2.5 rounded-full bg-red-500/80 inline-block" />
+                              <span className="w-2.5 h-2.5 rounded-full bg-amber-500/80 inline-block" />
+                              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80 inline-block" />
+                              <span className="ml-2 font-sans font-medium text-zinc-400">medicalsys_gateway_payload.json</span>
+                            </div>
+                            <span className="text-[10px] text-zinc-500">Swagger REST API / JSON</span>
+                          </div>
+                          <div className="p-4 overflow-x-auto max-h-96 custom-scrollbar">
+                            <pre className="text-[11px] font-mono leading-relaxed text-emerald-400 selection:bg-emerald-900 selection:text-white">
+                              {JSON.stringify(
+                                sensitiveModalItem.rawItem?.raw_payload_completo || sensitiveModalItem.rawItem || sensitiveModalItem,
+                                null,
+                                2
+                              )}
+                            </pre>
+                          </div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ) : null}
                 </AnimatePresence>
               </div>
             </div>

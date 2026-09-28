@@ -550,6 +550,18 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
       continue;
     }
 
+    // Se for exame pendente de aprovação manual pela recepção:
+    if (formData?.isExamePendenteAprovacao) {
+      if (regra.gatilho !== "exame_pre_reservado") {
+        console.log(`⏩ [Regra #${idx + 1}] Ignorada: exame pendente de aprovação manual (gatilho ${regra.gatilho} aguarda aprovação da recepção).`);
+        continue;
+      }
+    } else {
+      if (regra.gatilho === "exame_pre_reservado") {
+        continue;
+      }
+    }
+
     // Filtro de gatilho específico quando passado
     if (gatilhoFiltro && regra.gatilho !== gatilhoFiltro) {
       console.log(`⏩ [Regra #${idx + 1}] Ignorada por gatilho (${regra.gatilho} !== ${gatilhoFiltro})`);
@@ -662,7 +674,7 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
 
     mensagensProcessadasHistorico.set(dedupKey, Date.now());
 
-    if (["imediato", "remarcado", "cancelado", "pagamento_aprovado", "antes_pagamento"].includes(regra.gatilho)) {
+    if (["imediato", "remarcado", "cancelado", "pagamento_aprovado", "antes_pagamento", "exame", "exame_pre_reservado"].includes(regra.gatilho)) {
       if (telefone_whatsapp || regra.tipo_envio === "webhook") {
         const isWebhook = regra.tipo_envio === "webhook";
         const targetUrl = (regra.url_webhook_customizada || rmchatWebhookUrl)?.trim();

@@ -462,6 +462,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
     ocultar_valor_particular: false,
     ocultar_valor_consulta: false,
     enviar_agendamentos_medicalsys: false,
+    exigir_aprovacao_exames: false,
     logo_url: "",
     formato_logo: "arredondada",
     enviar_mensagens_importados_erp: true,
@@ -670,6 +671,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
               emp.config_chaves?.medicalsys_enabled ??
               prev.enviar_agendamentos_medicalsys
             ),
+            exigir_aprovacao_exames: Boolean(emp.config_campos?.exigir_aprovacao_exames),
             tema: {
               ...prev.tema,
               ...(emp.config_campos.tema || {}),
@@ -966,6 +968,8 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
 
   const gatilhoOptions = [
     { value: "imediato", label: "Na hora do Agendamento (Instantâneo / 0 dias)" },
+    { value: "exame", label: "Confirmação / Aprovação de Exame (Quando Aprovado pela Recepção)" },
+    { value: "exame_pre_reservado", label: "Pré-reserva de Exame (Aguardando Análise da Recepção)" },
     { value: "agendado", label: "Antes do Atendimento (Lembrete Programado)" },
     { value: "pos_atendimento", label: "Após Consulta / Exame (Pós-Atendimento)" },
     { value: "remarcado", label: "Quando Remarcado / Reagendado (Imediato)" },
@@ -1884,6 +1888,52 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                       campos.enviar_agendamentos_medicalsys
                         ? "Sincronização Ativada"
                         : "Desativado (Só RMCare)"
+                    }
+                  />
+                </div>
+              </section>
+
+              {/* FLUXO DE APROVAÇÃO MANUAL DE EXAMES PELA RECEPÇÃO */}
+              <section className="bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-6 md:p-8 rounded-3xl shadow-sm space-y-5">
+                <div className="flex items-center gap-3 border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
+                  <div className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/40 flex items-center justify-center text-amber-600 dark:text-amber-400">
+                    <ShieldCheck size={18} strokeWidth={1.5} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-zinc-950 dark:text-white">
+                      Confirmação e Aprovação Manual de Exames
+                    </h3>
+                    <p className="text-xs text-zinc-500">
+                      Exigir validação prévia da recepção/secretária antes de confirmar agendamentos de exames.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-5 rounded-2xl bg-zinc-50/80 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+                  <div className="space-y-1">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-900 dark:text-white flex items-center gap-2">
+                      <Clock3 size={14} className={campos.exigir_aprovacao_exames ? "text-amber-500" : "text-zinc-400"} />
+                      Exigir Aprovação da Recepção para Exames
+                    </h4>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed max-w-xl">
+                      {campos.exigir_aprovacao_exames
+                        ? "Habilitado: Quando o paciente agendar um exame, o horário ficará pré-reservado e aparecerá na agenda um botão para a secretária aprovar manualmente. A confirmação final e o envio ao Medicalsys só ocorrem após a aprovação."
+                        : "Desabilitado: Exames agendados são confirmados e sincronizados de forma direta e automática, sem necessidade de aprovação manual."}
+                    </p>
+                  </div>
+
+                  <ToggleSwitch
+                    checked={Boolean(campos.exigir_aprovacao_exames)}
+                    onChange={(v) =>
+                      setCampos((prev) => ({
+                        ...prev,
+                        exigir_aprovacao_exames: v
+                      }))
+                    }
+                    label={
+                      campos.exigir_aprovacao_exames
+                        ? "Aprovação Exigida (Pré-reserva)"
+                        : "Aprovação Direta (Automático)"
                     }
                   />
                 </div>

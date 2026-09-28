@@ -133,6 +133,155 @@ function extrairProcedimentoEEspecialidade(item, mapaProcedimentosPorId = new Ma
   };
 }
 
+// EXTRAÇÃO RIGOROSA E EXATA DE DATA E HORA DO MEDICALSYS (ALINHADO COM A GRADE DO ERP)
+function extrairDataEHoraMedicalsys(item, offsetHoras = 1) {
+  // 1. Prioridade absoluta para campos explícitos de hora
+  const candidatosHora = [
+    item?.horario_inicio,
+    item?.hora_inicio,
+    item?.horario,
+    item?.hora,
+    item?.hora_agendamento,
+    item?.horario_agendamento,
+    item?.hora_marcada,
+    item?.horario_marcado,
+    item?.hora_atendimento,
+    item?.horario_atendimento,
+    item?.inicio,
+    item?.agenda?.horario_inicio,
+    item?.agenda?.hora,
+    item?.agenda?.horario
+  ];
+
+  let horaEncontrada = null;
+
+  for (const cand of candidatosHora) {
+    if (!cand) continue;
+    let str = "";
+    if (typeof cand === "string") {
+      str = cand.trim();
+    } else if (typeof cand === "object") {
+      str = cand.hora || cand.horario || cand.time || cand.inicio || "";
+    } else if (typeof cand === "number") {
+      str = String(cand);
+    }
+    if (!str) continue;
+
+    const m = str.match(/(\d{1,2})[:hH](\d{2})/);
+    if (m) {
+      const h = parseInt(m[1], 10);
+      const min = String(m[2]).padStart(2, "0");
+      horaEncontrada = `${String(h).padStart(2, "0")}:${min}`;
+      break;
+    }
+  }
+
+  // 2. Extração de Data e Hora de momento / data / data_agendamento
+  const rawMomento = String(item?.momento || item?.data || item?.data_agendamento || "").trim();
+  let dataFormatada = null;
+  let horaDeTimestamp = false;
+
+  if (rawMomento) {
+    const temIndicadorFuso = /[zZ]|([+-]\d{2}:?\d{2})$/.test(rawMomento);
+
+    if (temIndicadorFuso && !isNaN(Date.parse(rawMomento))) {
+      const d = new Date(rawMomento);
+      try {
+        // O MedicalSys armazena e serializa os horários da agenda no fuso UTC-2 (America/Noronha)
+        // Isso alinha com exatidão matemática a hora do gateway com a grade visual do ERP (ex: 10:30Z -> 08:30)
+        const tzTarget = offsetHoras === 1 ? "America/Noronha" : "America/Sao_Paulo";
+        const parts = new Intl.DateTimeFormat("en-US", {
+          timeZone: tzTarget,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false
+        }).formatToParts(d);
+
+        const mapParts = {};
+        parts.forEach((p) => { mapParts[p.type] = p.value; });
+        dataFormatada = `${mapParts.year}-${mapParts.month}-${mapParts.day}`;
+
+        if (!horaEncontrada && mapParts.hour && mapParts.minute) {
+          const hh = mapParts.hour === "24" ? "00" : mapParts.hour.padStart(2, "0");
+          horaEncontrada = `${hh}:${mapParts.minute.padStart(2, "0")}`;
+          horaDeTimestamp = true;
+        }
+      } catch (eFmt) {
+        const dLocal = new Date(d.getTime() - (3 - offsetHoras) * 3600 * 1000);
+        dataFormatada = dLocal.toISOString().slice(0, 10);
+        if (!horaEncontrada) {
+          horaEncontrada = dLocal.toISOString().slice(11, 16);
+          horaDeTimestamp = true;
+        }
+      }
+    } else {
+      if (rawMomento.includes("/")) {
+        const [dia, mes, ano] = rawMomento.split(" ")[0].split("/");
+        if (ano && mes && dia) {
+          dataFormatada = `${ano}-${mes.padStart(2, "0")}-${dia.padStart(2, "0")}`;
+        }
+      } else if (rawMomento.includes("T")) {
+        dataFormatada = rawMomento.split("T")[0];
+        if (!horaEncontrada) {
+          const possivelHora = rawMomento.split("T")[1];
+          const m = possivelHora.match(/(\d{1,2})[:hH](\d{2})/);
+          if (m) horaEncontrada = `${m[1].padStart(2, "0")}:${m[2].padStart(2, "0")}`;
+        }
+      } else if (rawMomento.includes(" ")) {
+        dataFormatada = rawMomento.split(" ")[0];
+        if (!horaEncontrada) {
+          const possivelHora = rawMomento.split(" ")[1];
+          const m = possivelHora.match(/(\d{1,2})[:hH](\d{2})/);
+          if (m) horaEncontrada = `${m[1].padStart(2, "0")}:${m[2].padStart(2, "0")}`;
+        }
+      } else {
+        dataFormatada = rawMomento.slice(0, 10);
+      }
+    }
+  }
+
+  // 3. Se o horário veio de um campo explícito de texto (ex: horario_inicio: "07:30")
+  // e não de timestamp UTC ajustado, aplicamos o offset de alinhamento com a grade visual do Medicalsys
+  if (horaEncontrada && offsetHoras !== 0 && !horaDeTimestamp) {
+    const [h, m] = horaEncontrada.split(":").map(Number);
+    const totalMin = (h * 60 + m + offsetHoras * 60 + 1440) % 1440;
+    const finalH = Math.floor(totalMin / 60);
+    const finalM = totalMin % 60;
+    horaEncontrada = `${String(finalH).padStart(2, "0")}:${String(finalM).padStart(2, "0")}`;
+  }
+
+  // 4. Horário Fim
+  let horaFimFormatada = null;
+  const candidatosFim = [item?.horario_fim, item?.hora_fim, item?.fim, item?.agenda?.horario_fim];
+  for (const cand of candidatosFim) {
+    if (!cand) continue;
+    const str = typeof cand === "string" ? cand.trim() : typeof cand === "object" ? (cand.hora || cand.horario || "") : "";
+    const m = str.match(/(\d{1,2})[:hH](\d{2})/);
+    if (m) {
+      const h = parseInt(m[1], 10);
+      const min = String(m[2]).padStart(2, "0");
+      if (offsetHoras !== 0 && !horaDeTimestamp) {
+        const totalMin = (h * 60 + parseInt(min, 10) + offsetHoras * 60 + 1440) % 1440;
+        const finalH = Math.floor(totalMin / 60);
+        const finalM = totalMin % 60;
+        horaFimFormatada = `${String(finalH).padStart(2, "0")}:${String(finalM).padStart(2, "0")}`;
+      } else {
+        horaFimFormatada = `${String(h).padStart(2, "0")}:${min}`;
+      }
+      break;
+    }
+  }
+
+  return {
+    data: dataFormatada,
+    horarioInicio: horaEncontrada || "08:00",
+    horarioFim: horaFimFormatada
+  };
+}
+
 export async function POST(request) {
   try {
     let requestBody = {};
@@ -157,6 +306,9 @@ export async function POST(request) {
     const empresaId = empresa.id;
     const configCampos = empresa.config_campos || {};
     const configChaves = empresa.config_chaves || {};
+    const offsetHoras = configChaves.medicalsys_offset_horas !== undefined
+      ? Number(configChaves.medicalsys_offset_horas)
+      : (configCampos.medicalsys_offset_horas !== undefined ? Number(configCampos.medicalsys_offset_horas) : 1);
     const enviarMensagensErp = Boolean(configCampos.enviar_mensagens_importados_erp);
     const mapCols = configCampos.medicalsys_column_mapping || {
       convenio: "coluna_convenio",
@@ -272,23 +424,10 @@ export async function POST(request) {
     }
 
     // 3. CONSULTA DA AGENDA MEDICALSYS
-    const hoje = new Date();
-    const dataDeHoje = hoje.toISOString().slice(0, 10);
-    const anoAtual = hoje.getFullYear();
-    const dataFimDeAno = `${anoAtual}-12-31`;
-
-    const clinicaParam = clinicaId ? `&clinica=${clinicaId}` : "";
-    let urlAtual = `https://gateway.medicalsys.com.br:9000/integracoes/agenda/?momento_inicio=${dataDeHoje}&momento_final=${dataFimDeAno}${clinicaParam}`;
-
-    let todosAgendamentos = [];
-    let limiteDePaginas = 0;
-
-    console.log(`[Importação Medicalsys] Buscando agendamentos de ${dataDeHoje} até ${dataFimDeAno}...`);
-
-    while (urlAtual && limiteDePaginas < 50) {
-      limiteDePaginas++;
-
-      const response = await axios.get(urlAtual, {
+    // Resolver dinamicamente a clínica real autorizada
+    let clinicaRealId = null;
+    try {
+      const resClin = await axios.get("https://gateway.medicalsys.com.br:9000/integracoes/clinica/", {
         httpsAgent: proxyAgent,
         proxy: false,
         headers: {
@@ -296,61 +435,129 @@ export async function POST(request) {
           "apikey": apiKey,
           "msys-costumer-apikey": customerApiKey
         },
-        timeout: 15000
+        timeout: 7000
       });
+      const clinList = resClin.data?.results || resClin.data || [];
+      if (Array.isArray(clinList) && clinList.length > 0) {
+        console.log(`[Importação Medicalsys] Clínicas autorizadas encontradas:`, clinList.map((c) => ({ id: c.id, nome: c.nome_clinica })));
+        if (configChaves.medicalsys_id_clinica && configChaves.medicalsys_id_clinica !== "9") {
+          const matchConf = clinList.find((c) => String(c.id) === String(configChaves.medicalsys_id_clinica));
+          if (matchConf) clinicaRealId = matchConf.id;
+        }
+        if (!clinicaRealId) {
+          clinicaRealId = clinList[0].id;
+        }
+      }
+    } catch (eClin) {
+      console.warn("[Importação Medicalsys] Consulta de clínicas online falhou:", eClin.message);
+    }
 
-      const dados = response.data;
+    const hoje = new Date();
+    // Busca dos últimos 30 dias até o fim do próximo ano para sincronização retroativa e futura
+    const dataInicio = new Date(hoje.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const anoAtual = hoje.getFullYear();
+    const dataFimDeAno = `${anoAtual + 1}-12-31`;
 
-      if (!Array.isArray(dados) && dados.results) {
-        todosAgendamentos = todosAgendamentos.concat(dados.results);
-        urlAtual = dados.next ? dados.next.replace("http://", "https://") : null;
-      } else if (Array.isArray(dados)) {
-        todosAgendamentos = todosAgendamentos.concat(dados);
-        urlAtual = null;
-      } else {
-        urlAtual = null;
+    let todosAgendamentos = [];
+
+    const tentarBuscaAgenda = async (comClinicaId = null) => {
+      const paramClin = comClinicaId ? `&clinica=${comClinicaId}` : "";
+      let urlAtual = `https://gateway.medicalsys.com.br:9000/integracoes/agenda/?momento_inicio=${dataInicio}&momento_final=${dataFimDeAno}${paramClin}`;
+      let ags = [];
+      let limiteDePaginas = 0;
+
+      console.log(`[Importação Medicalsys] Tentando URL: ${urlAtual}...`);
+      while (urlAtual && limiteDePaginas < 50) {
+        limiteDePaginas++;
+        const response = await axios.get(urlAtual, {
+          httpsAgent: proxyAgent,
+          proxy: false,
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": apiKey,
+            "msys-costumer-apikey": customerApiKey
+          },
+          timeout: 15000
+        });
+
+        const dados = response.data;
+        if (!Array.isArray(dados) && dados.results) {
+          ags = ags.concat(dados.results);
+          urlAtual = dados.next ? dados.next.replace("http://", "https://") : null;
+        } else if (Array.isArray(dados)) {
+          ags = ags.concat(dados);
+          urlAtual = null;
+        } else {
+          urlAtual = null;
+        }
+      }
+      return ags;
+    };
+
+    // Busca ampla: primeiro busca geral da clínica e depois busca global sem filtro de clínica
+    let agsGlobais = [];
+    try {
+      agsGlobais = await tentarBuscaAgenda(null);
+    } catch (eGlob) {
+      console.warn("[Importação Medicalsys] Busca global falhou:", eGlob.message);
+    }
+
+    let agsClinica = [];
+    if (clinicaRealId && String(clinicaRealId) !== "null") {
+      try {
+        agsClinica = await tentarBuscaAgenda(clinicaRealId);
+      } catch (eClinId) {
+        console.warn("[Importação Medicalsys] Busca por clinicaId falhou:", eClinId.message);
       }
     }
 
+    const mapaTodosAgs = new Map();
+    [...agsGlobais, ...agsClinica].forEach((ag) => {
+      const k = ag.id ? String(ag.id) : `${ag.momento || ag.data}_${ag.horario_inicio || ag.horario}_${ag.paciente?.nome || ag.nome_paciente || Math.random()}`;
+      mapaTodosAgs.set(k, ag);
+    });
+    todosAgendamentos = Array.from(mapaTodosAgs.values());
+
     if (todosAgendamentos.length === 0) {
-      return NextResponse.json({ success: true, message: `Nenhum agendamento retornado pelo Medicalsys.` });
+      return NextResponse.json({
+        success: true,
+        novos: 0,
+        atualizados: 0,
+        message: `Nenhum agendamento retornado pelo Medicalsys no período de ${dataInicio} a ${dataFimDeAno}.`
+      });
     }
 
-    // 3. CARREGAR REGISTROS EXISTENTES
-    const { data: bloqueiosExistentes, error: erroBusca } = await supabase
-      .from("bloqueios_horarios")
-      .select("*")
-      .eq("empresa_id", empresaId);
-
-    if (erroBusca) throw erroBusca;
-
-    const mapaExistentesId = new Map();
-    const mapaExistentesChave = new Map();
-
-    (bloqueiosExistentes || []).forEach((b) => {
-      if (b.medicalsys_id) mapaExistentesId.set(b.medicalsys_id, b);
-      mapaExistentesChave.set(`${b.data}|${b.horario}|${b.medico_profissional}`, b);
-    });
-
-    const registrosNovos = [];
-    let registrosAtualizados = 0;
+    // 4. PROCESSAR E DEDUPLICAR AGENDAMENTOS DO MEDICALSYS
+    const registrosProcessados = [];
+    const mapaPorMedicalsysId = new Map();
+    const mapaSlotsMedicalsys = new Map(); // data|horario|medico -> payloadDado
     const rascunhosMensagensFila = [];
 
-    // 4. PROCESSAR REGISTROS GARANTINDO CAPTURA DE TODAS AS COLUNAS (CPF, OBSERVAÇÕES, METADADOS)
     for (const item of todosAgendamentos) {
-      if (item.momento < dataDeHoje) continue;
+      const { data: dataLimpa, horarioInicio: horaInicioFormatada, horarioFim: horaFimFormatada } = extrairDataEHoraMedicalsys(item, offsetHoras);
+      if (!dataLimpa) continue;
 
-      const horaInicioFormatada = item.horario_inicio ? item.horario_inicio.slice(0, 5) : "00:00";
-      const horaFimFormatada = item.horario_fim ? item.horario_fim.slice(0, 5) : null;
-
-      // Nome do Paciente
-      let nomePaciente = "Paciente Importado";
-      if (typeof item.paciente_provisorio === "string" && item.paciente_provisorio.trim()) {
+      // Nome do Paciente - Extração profunda e prioritária do cadastro real
+      let nomePaciente = null;
+      if (item.paciente && typeof item.paciente === "object") {
+        nomePaciente =
+          item.paciente.nome ||
+          item.paciente.nome_paciente ||
+          item.paciente.nome_completo ||
+          item.paciente.razao_social ||
+          null;
+      }
+      if (!nomePaciente) {
+        nomePaciente = item.nome_paciente || item.paciente_nome || item.nome || null;
+      }
+      if (!nomePaciente && typeof item.paciente === "string" && item.paciente.trim() && !/^\d+$/.test(item.paciente.trim())) {
+        nomePaciente = item.paciente.trim();
+      }
+      if (!nomePaciente && typeof item.paciente_provisorio === "string" && item.paciente_provisorio.trim()) {
         nomePaciente = item.paciente_provisorio.trim();
-      } else if (item.paciente && typeof item.paciente === "object" && item.paciente.nome) {
-        nomePaciente = item.paciente.nome;
-      } else if (typeof item.paciente === "string") {
-        nomePaciente = item.paciente;
+      }
+      if (!nomePaciente) {
+        nomePaciente = "Paciente MedicalSYS";
       }
 
       // CPF do Paciente - Extração robusta
@@ -358,7 +565,7 @@ export async function POST(request) {
         item.cpf_paciente ||
         item.cpf ||
         item.paciente_cpf ||
-        (item.paciente && typeof item.paciente === "object" ? item.paciente.cpf : null);
+        (item.paciente && typeof item.paciente === "object" ? (item.paciente.cpf || item.paciente.cpf_paciente) : null);
 
       if (cpfPaciente) {
         const cleanCpfNum = String(cpfPaciente).replace(/\D/g, "");
@@ -373,8 +580,10 @@ export async function POST(request) {
         medicoNome = item.medico.nome;
       } else if (Array.isArray(item.medico) && item.medico[0]?.nome) {
         medicoNome = item.medico[0].nome;
-      } else if (typeof item.medico === "string") {
-        medicoNome = item.medico;
+      } else if (typeof item.medico === "string" && item.medico.trim() && !/^\d+$/.test(item.medico.trim())) {
+        medicoNome = item.medico.trim();
+      } else if (item.medico_nome || item.nome_medico) {
+        medicoNome = item.medico_nome || item.nome_medico;
       }
 
       // Separação de Convênio vs Especialidade
@@ -411,11 +620,22 @@ export async function POST(request) {
         finalEspecialidade = "Geral";
       }
 
-      let fone = item.tel_celular || item.paciente?.tel_celular || null;
+      let fone =
+        item.tel_celular ||
+        item.telefone ||
+        item.celular ||
+        (item.paciente && typeof item.paciente === "object" ? (item.paciente.tel_celular || item.paciente.telefone || item.paciente.celular) : null) ||
+        null;
+
+      const itemMedIdStr = item.id ? String(item.id) : null;
+      // Garante chave estritamente única para NENHUM paciente ser sobregravado ou descartado
+      const chaveItem = itemMedIdStr
+        ? `medsys_${itemMedIdStr}`
+        : `slot_${dataLimpa}_${horaInicioFormatada}_${nomePaciente}_${medicoNome}_${Math.random()}`;
 
       const payloadDado = {
         empresa_id: empresaId,
-        data: item.momento,
+        data: dataLimpa,
         horario: horaInicioFormatada,
         horario_fim: horaFimFormatada,
         medico_profissional: medicoNome,
@@ -427,30 +647,18 @@ export async function POST(request) {
         situacao: item.situacao || "agen",
         observacoes: finalObservacoes || null,
         meio_de_pagamento: item.meio_de_pagamento || "espe",
-        medicalsys_id: item.id || null,
+        medicalsys_id: itemMedIdStr,
         raw_payload_completo: item,
         status: "importado"
       };
 
-      const existente = (item.id && mapaExistentesId.get(item.id)) || mapaExistentesChave.get(`${item.momento}|${horaInicioFormatada}|${medicoNome}`);
-
-      if (existente) {
-        let { error: errUp } = await supabase
-          .from("bloqueios_horarios")
-          .update(payloadDado)
-          .eq("id", existente.id);
-
-        if (errUp && (errUp.code === "42703" || errUp.message?.includes("column"))) {
-          delete payloadDado.raw_payload_completo;
-          await supabase.from("bloqueios_horarios").update(payloadDado).eq("id", existente.id);
-        }
-        registrosAtualizados++;
-      } else {
-        registrosNovos.push(payloadDado);
+      if (itemMedIdStr) {
+        mapaPorMedicalsysId.set(itemMedIdStr, item);
       }
+      mapaSlotsMedicalsys.set(chaveItem, payloadDado);
 
       if (enviarMensagensErp && fone) {
-        const dataFormatada = item.momento.split("-").reverse().join("/");
+        const dataFormatada = dataLimpa.split("-").reverse().join("/");
         const msgTexto = `Olá ${nomePaciente}, confirmamos seu agendamento de ${finalEspecialidade} (${finalConvenio ? "Convenio: " + finalConvenio : "Particular"}) com ${medicoNome} no dia ${dataFormatada} às ${horaInicioFormatada}h.`;
 
         const { data: msgExistente } = await supabase
@@ -458,7 +666,7 @@ export async function POST(request) {
           .select("id, status")
           .eq("empresa_id", empresaId)
           .eq("telefone_whatsapp", fone)
-          .eq("data_hora_programada", `${item.momento}T${horaInicioFormatada}:00-03:00`)
+          .eq("data_hora_programada", `${dataLimpa}T${horaInicioFormatada}:00-03:00`)
           .maybeSingle();
 
         if (!msgExistente) {
@@ -467,7 +675,7 @@ export async function POST(request) {
             telefone_whatsapp: fone,
             nome_paciente: nomePaciente,
             mensagem: msgTexto,
-            data_hora_programada: `${item.momento}T${horaInicioFormatada}:00-03:00`,
+            data_hora_programada: `${dataLimpa}T${horaInicioFormatada}:00-03:00`,
             status: "rascunho",
             gatilho: "importado_erp"
           });
@@ -475,16 +683,81 @@ export async function POST(request) {
       }
     }
 
-    if (registrosNovos.length > 0) {
-      let { error: errInsert } = await supabase.from("bloqueios_horarios").insert(registrosNovos);
-      if (errInsert && (errInsert.code === "42703" || errInsert.message?.includes("column"))) {
-        const fallbackList = registrosNovos.map((r) => {
-          const copy = { ...r };
-          delete copy.raw_payload_completo;
-          return copy;
-        });
-        await supabase.from("bloqueios_horarios").insert(fallbackList);
+    const registrosParaInserir = Array.from(mapaSlotsMedicalsys.values());
+
+    // 5. SOBREPOSIÇÃO MANDATÓRIA:
+    // A sincronização atual substitui rigorosamente os registros do Medicalsys no período consultado.
+    // Assim, se um horário mudou de paciente ou foi cancelado no Medicalsys, o banco é 100% atualizado.
+    const { data: bloqueiosImportadosAntigos, error: errBuscaAntigos } = await supabase
+      .from("bloqueios_horarios")
+      .select("id, status, medicalsys_id, raw_payload_completo")
+      .eq("empresa_id", empresaId)
+      .gte("data", dataInicio)
+      .lte("data", dataFimDeAno);
+
+    if (!errBuscaAntigos && Array.isArray(bloqueiosImportadosAntigos)) {
+      const idsImportadosParaExcluir = bloqueiosImportadosAntigos
+        .filter((b) => b.status === "importado" || b.medicalsys_id || b.raw_payload_completo)
+        .map((b) => b.id);
+
+      if (idsImportadosParaExcluir.length > 0) {
+        for (let i = 0; i < idsImportadosParaExcluir.length; i += 400) {
+          const chunk = idsImportadosParaExcluir.slice(i, i + 400);
+          await supabase.from("bloqueios_horarios").delete().in("id", chunk);
+        }
+        console.log(`[Importação Medicalsys] ${idsImportadosParaExcluir.length} registros antigos substituídos pela nova grade do ERP.`);
       }
+    }
+
+    // 6. INSERIR A GRADE ATUALIZADA DO MEDICALSYS
+    let inseridosComSucesso = 0;
+    if (registrosParaInserir.length > 0) {
+      for (let i = 0; i < registrosParaInserir.length; i += 400) {
+        const chunk = registrosParaInserir.slice(i, i + 400);
+        let { error: errInsert } = await supabase.from("bloqueios_horarios").insert(chunk);
+        if (errInsert && (errInsert.code === "42703" || errInsert.message?.includes("column"))) {
+          const fallbackChunk = chunk.map((r) => {
+            const copy = { ...r };
+            delete copy.raw_payload_completo;
+            return copy;
+          });
+          await supabase.from("bloqueios_horarios").insert(fallbackChunk);
+        }
+        inseridosComSucesso += chunk.length;
+      }
+    }
+
+    // 7. SINCRONIZAR AGENDAMENTOS ONLINE QUE POSSUEM MEDICALSYS_ID
+    try {
+      const { data: agsLocais } = await supabase
+        .from("agendamentos")
+        .select("id, medicalsys_id, data_agendamento, horario_agendamento, status_atendimento")
+        .eq("empresa_id", empresaId)
+        .not("medicalsys_id", "is", null);
+
+      if (agsLocais && agsLocais.length > 0) {
+        for (const ag of agsLocais) {
+          const medItem = mapaPorMedicalsysId.get(String(ag.medicalsys_id));
+          if (medItem) {
+            const { data: medData, horarioInicio: medHora } = extrairDataEHoraMedicalsys(medItem);
+            const isCanc = medItem.situacao === "canc" || medItem.cancelado === true;
+            const newStatus = isCanc ? "cancelado" : ag.status_atendimento;
+
+            if (medData !== ag.data_agendamento || medHora !== ag.horario_agendamento || (isCanc && ag.status_atendimento !== "cancelado")) {
+              await supabase
+                .from("agendamentos")
+                .update({
+                  data_agendamento: medData || ag.data_agendamento,
+                  horario_agendamento: medHora || ag.horario_agendamento,
+                  status_atendimento: newStatus
+                })
+                .eq("id", ag.id);
+            }
+          }
+        }
+      }
+    } catch (eAg) {
+      console.warn("[Importação Medicalsys] Aviso ao sincronizar agendamentos locais:", eAg.message);
     }
 
     if (rascunhosMensagensFila.length > 0) {
@@ -493,10 +766,10 @@ export async function POST(request) {
 
     return NextResponse.json({
       success: true,
-      novos: registrosNovos.length,
-      atualizados: registrosAtualizados,
+      novos: registrosParaInserir.length,
+      atualizados: inseridosComSucesso,
       mensagensRascunhoGeradas: rascunhosMensagensFila.length,
-      message: `Sincronização concluída com sucesso: ${registrosNovos.length} novos agendamentos criados e ${registrosAtualizados} atualizados.`
+      message: `Sincronização concluída com sucesso: ${registrosParaInserir.length} horários atualizados e sincronizados com fidelidade total ao Medicalsys.`
     });
   } catch (error) {
     console.error("[Importação Medicalsys Error]:", error);

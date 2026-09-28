@@ -154,7 +154,45 @@ export async function fetchAdminBloqueios() {
     .order("horario", { ascending: true });
 
   if (error) throw error;
-  return data || [];
+
+  return (data || []).map((b) => {
+    if (b.status === "importado" || b.medicalsys_id || b.raw_payload_completo) {
+      let horarioLimpo = b.horario ? b.horario.substring(0, 5) : "08:00";
+      let dataLimpa = b.data ? String(b.data).split("T")[0] : b.data;
+
+      const rawP = b.raw_payload_completo;
+      if (rawP && typeof rawP === "object") {
+        const rawMomento = String(rawP.momento || rawP.data || "").trim();
+        if (rawMomento.includes("T")) {
+          dataLimpa = rawMomento.split("T")[0];
+          const timePart = rawMomento.split("T")[1];
+          const m = timePart.match(/(\d{1,2})[:hH](\d{2})/);
+          if (m) horarioLimpo = `${m[1].padStart(2, "0")}:${m[2].padStart(2, "0")}`;
+        } else if (rawMomento.includes(" ")) {
+          dataLimpa = rawMomento.split(" ")[0];
+          const timePart = rawMomento.split(" ")[1];
+          const m = timePart.match(/(\d{1,2})[:hH](\d{2})/);
+          if (m) horarioLimpo = `${m[1].padStart(2, "0")}:${m[2].padStart(2, "0")}`;
+        }
+
+        const candHora = rawP.horario_inicio || rawP.hora_inicio || rawP.hora || rawP.horario;
+        if (candHora) {
+          const m = String(candHora).match(/(\d{1,2})[:hH](\d{2})/);
+          if (m) {
+            horarioLimpo = `${m[1].padStart(2, "0")}:${m[2].padStart(2, "0")}`;
+          }
+        }
+      }
+
+      return {
+        ...b,
+        data: dataLimpa,
+        horario: horarioLimpo,
+        horario_original_erp: horarioLimpo
+      };
+    }
+    return b;
+  });
 }
 
 export async function fetchAdminAgendamentos() {
@@ -272,6 +310,102 @@ export async function actionAprovarPagamentoAgendamento(id) {
     return { success: true, data: updated };
   } catch (err) {
     console.error("Erro em actionAprovarPagamentoAgendamento:", err);
+    return { success: false, error: err.message };
+  }
+}
+
+export async function actionAprovarExameAgendamento(id) {
+  try {
+    const admin = await getAdminLogado(true);
+    const { data: ag, error: errAg } = await supabaseAdmin
+      .from("agendamentos")
+      .select("*, pacientes(*)")
+      .eq("id", id)
+      .eq("empresa_id", admin.empresa_id)
+      .maybeSingle();
+
+    if (errAg || !ag) throw new Error("Agendamento não encontrado.");
+
+    let { data: updated, error: errUpdate } = await supabaseAdmin
+      .from("agendamentos")
+      .update({
+        status_atendimento: "agendado"
+      })
+      .eq("id", id)
+      .eq("empresa_id", admin.empresa_id)
+      .select("*, pacientes(*)")
+      .single();
+
+    if (errUpdate) throw errUpdate;
+
+    // Se a empresa possui sincronização ativa com Medicalsys, envia o agendamento agora
+    try {
+      const { data: emp } = await supabaseAdmin
+        .from("empresas")
+        .select("config_campos, config_chaves")
+        .eq("id", admin.empresa_id)
+        .single();
+
+      const enviarMedicalsys = Boolean(
+        emp?.config_campos?.enviar_agendamentos_medicalsys ??
+        emp?.config_campos?.medicalsys_enabled ??
+        emp?.config_chaves?.medicalsys_enabled
+      );
+
+      if (enviarMedicalsys && !ag.medicalsys_id) {
+        const payloadMed = {
+          appointmentId: id,
+          empresaId: admin.empresa_id,
+          nomePaciente: ag.pacientes?.nome_completo || "Paciente",
+          telefoneCelular: ag.pacientes?.telefone_whatsapp || "",
+          data: ag.data_agendamento,
+          horarioInicio: ag.horario_agendamento,
+          medico: ag.medico_profissional,
+          procedimento: ag.subtipo_exame || ag.especialidade,
+          especialidade: ag.especialidade,
+          modalidade: ag.modalidade,
+          meioPagamento: String(ag.modalidade || "").toLowerCase().includes("partic") ? "espe" : "conv"
+        };
+        const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
+        fetch(`${baseUrl}/api/medicalsys/agendar`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payloadMed)
+        }).catch((e) => console.warn("Aviso ao enviar exame aprovado para Medicalsys:", e));
+      }
+    } catch (eMed) {
+      console.warn("Aviso ao tentar sincronizar exame com Medicalsys:", eMed);
+    }
+
+    // Dispara mensagens WhatsApp com gatilho 'exame' e 'imediato'
+    try {
+      const { dispararGatilhoServidor } = await import("@/lib/serverDisparo");
+      await dispararGatilhoServidor({
+        agendamentoId: id,
+        empresaId: admin.empresa_id,
+        gatilho: "exame"
+      });
+      await dispararGatilhoServidor({
+        agendamentoId: id,
+        empresaId: admin.empresa_id,
+        gatilho: "imediato"
+      });
+    } catch (errDisparo) {
+      console.warn("Aviso ao disparar WhatsApp de exame aprovado:", errDisparo);
+    }
+
+    // Registrar auditoria
+    await actionRegistrarAuditoria({
+      modulo: "agenda",
+      acao: "Aprovação de Exame",
+      detalhes: `Exame aprovado manualmente para o agendamento #${id} (${ag.pacientes?.nome_completo || "Paciente"}) por ${admin.usuario}.`,
+      novo: { status_atendimento: "agendado" },
+      alterado_por: admin.usuario
+    });
+
+    return { success: true, data: updated };
+  } catch (err) {
+    console.error("Erro em actionAprovarExameAgendamento:", err);
     return { success: false, error: err.message };
   }
 }

@@ -284,7 +284,8 @@ export default function EmpresaAdmin() {
         subItems: [
           { id: "credenciais", label: "Minhas Credenciais" },
           { id: "usuarios", label: "Usuários & Permissões" },
-          { id: "auditoria", label: "Auditoria do Sistema" }
+          { id: "auditoria", label: "Auditoria do Sistema" },
+          { id: "backup", label: "Backups & Segurança LGPD" }
         ]
       }
     ],
@@ -305,11 +306,13 @@ export default function EmpresaAdmin() {
           const hasCredenciais = true; // Todo usuário autenticado pode alterar a própria senha
           const hasUsuarios = userPerms.includes("usuarios") || userPerms.includes("conta") || userPerms.includes("seguranca");
           const hasAuditoria = userPerms.includes("auditoria") || userPerms.includes("conta");
+          const hasBackup = loggedAdmin.is_owner || userPerms.includes("backup") || userPerms.includes("seguranca") || userPerms.includes("conta");
 
           const filteredSub = (item.subItems || []).filter((sub) => {
             if (sub.id === "credenciais") return hasCredenciais;
             if (sub.id === "usuarios") return hasUsuarios;
             if (sub.id === "auditoria") return hasAuditoria;
+            if (sub.id === "backup") return hasBackup;
             return false;
           });
 

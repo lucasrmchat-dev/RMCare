@@ -21,7 +21,11 @@ const TEMPLATES_PADRAO = {
   pagamento_aprovado:
     "Olá {nome}, seu pagamento para o agendamento de {servico} com {especialista} no dia {data} às {hora}h foi confirmado com sucesso!",
   pagamento_rejeitado:
-    "Olá {nome}, informamos que o pagamento/comprovante referente ao agendamento de {servico} no dia {data} às {hora}h não foi aprovado. Motivo: {motivo}. Por favor, entre em contato conosco para regularizar ou escolher um novo horário."
+    "Olá {nome}, informamos que o pagamento/comprovante referente ao agendamento de {servico} no dia {data} às {hora}h não foi aprovado. Motivo: {motivo}. Por favor, entre em contato conosco para regularizar ou escolher um novo horário.",
+  exame:
+    "Olá {nome}, seu agendamento para o exame de {servico} com {especialista} no dia {data} às {hora}h na {clinica} foi aprovado e confirmado com sucesso! Lembre-se de seguir as orientações de preparo.",
+  exame_pre_reservado:
+    "Olá {nome}, recebemos sua solicitação de agendamento para o exame de {servico} no dia {data} às {hora}h. Sua vaga está pré-reservada e nossa equipe entrará em contato para validação do preparo e confirmação!"
 };
 
 export async function dispararGatilhoServidor({

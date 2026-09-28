@@ -1066,6 +1066,15 @@ function AgendamentoOrquestrador() {
           subtipoExameLimpo = especialidadeClinica;
         }
 
+        const isExame =
+          formData.tipo_servico === "Exame" ||
+          /(colonoscopia|endoscopia|ultrassom|tomografia|ressonancia|raio-x|biopsia|exame)/i.test(
+            `${especialidadeClinica || ""} ${subtipoExameLimpo || ""} ${formData.especialidade || ""} ${formData.subtipo_exame || ""}`
+          );
+
+        const exigirAprovacaoExame = Boolean(confCampos.exigir_aprovacao_exames) && isExame;
+        const statusInicial = exigirAprovacaoExame ? "pendente_aprovacao" : "agendado";
+
         const appointmentPayload = {
           paciente_id: pacienteId,
           empresa_id: empresaDados?.id,
@@ -1077,6 +1086,7 @@ function AgendamentoOrquestrador() {
           data_agendamento: formData.data_agendamento,
           horario_agendamento: formData.horario_agendamento,
           status_pagamento_antecipado: pago,
+          status_atendimento: statusInicial,
           valor_total: valorEntrada * 2,
           categoria_atendimento: formData.tipo_servico === "Retorno" ? "retorno" : "inicial",
           consulta_inicial_id: consultaInicialId
@@ -1100,7 +1110,8 @@ function AgendamentoOrquestrador() {
             modalidade: modalidadeEfetiva,
             data_agendamento: formData.data_agendamento,
             horario_agendamento: formData.horario_agendamento,
-            status_pagamento_antecipado: pago
+            status_pagamento_antecipado: pago,
+            status_atendimento: statusInicial
           };
 
           const retry = await supabase
@@ -1116,14 +1127,23 @@ function AgendamentoOrquestrador() {
           savedAppointment = retry.data;
         }
 
-        const medResult = await enviarParaMedicalsysSeHabilitado(
-          { ...formData, modalidade: modalidadeEfetiva, convenio: formData.convenio, convenio_id: formData.convenio_id },
-          empresaDados,
-          savedAppointment?.id
-        );
+        let medResult = null;
+        if (exigirAprovacaoExame) {
+          medResult = {
+            preReservado: true,
+            success: true,
+            message: "Exame pré-reservado no RM Agenda. Aguardando aprovação da recepção da clínica para inserção no ERP MedicalSYS."
+          };
+        } else {
+          medResult = await enviarParaMedicalsysSeHabilitado(
+            { ...formData, modalidade: modalidadeEfetiva, convenio: formData.convenio, convenio_id: formData.convenio_id },
+            empresaDados,
+            savedAppointment?.id
+          );
+        }
         setMedicalsysResult(medResult);
 
-        return savedAppointment;
+        return { ...savedAppointment, exigirAprovacaoExame };
       } catch (error) {
         console.error("ERRO AO SALVAR NO SUPABASE:", error);
         return false;
@@ -1294,7 +1314,7 @@ function AgendamentoOrquestrador() {
             const saved = await salvarNoBanco(false);
             if (saved) {
               await processarMensagensDinamicas(
-                { ...formData, modalidade: modalidadeEfetiva },
+                { ...formData, modalidade: modalidadeEfetiva, isExamePendenteAprovacao: saved.exigirAprovacaoExame },
                 empresaDados,
                 saved.id
               );
@@ -1364,7 +1384,11 @@ function AgendamentoOrquestrador() {
             }
 
             if (!isPix) {
-              await processarMensagensDinamicas(formData, empresaDados, saved.id);
+              await processarMensagensDinamicas(
+                { ...formData, modalidade: modalidadeEfetiva, isExamePendenteAprovacao: saved.exigirAprovacaoExame },
+                empresaDados,
+                saved.id
+              );
               showIsland("Pagamento Aprovado!", "success");
               playDopamineSound("success");
             } else {
