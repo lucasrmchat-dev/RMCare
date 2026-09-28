@@ -1317,6 +1317,7 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
                   <span>{isSavingUser ? "Salvando..." : editingUser ? "Salvar Alterações" : "Criar Usuário"}</span>
                 </button>
               </div>
+            </motion.div>
           </div>
         )}
 
