@@ -5,7 +5,9 @@ import axios from "axios";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: { persistSession: false }
+});
 
 
 // EXTRAÇÃO ROBUSTA DE PROCEDIMENTO E ESPECIALIDADE DO MEDICALSYS (SWAGGER / MEDICALSYS API)
@@ -685,28 +687,27 @@ export async function POST(request) {
 
     const registrosParaInserir = Array.from(mapaSlotsMedicalsys.values());
 
-    // 5. SOBREPOSIÇÃO MANDATÓRIA:
-    // A sincronização atual substitui rigorosamente os registros do Medicalsys no período consultado.
-    // Assim, se um horário mudou de paciente ou foi cancelado no Medicalsys, o banco é 100% atualizado.
-    const { data: bloqueiosImportadosAntigos, error: errBuscaAntigos } = await supabase
-      .from("bloqueios_horarios")
-      .select("id, status, medicalsys_id, raw_payload_completo")
-      .eq("empresa_id", empresaId)
-      .gte("data", dataInicio)
-      .lte("data", dataFimDeAno);
+    // 5. PURGA E SOBREPOSIÇÃO MANDATÓRIA (ZERO RESÍDUO DE REMARCAÇÃO):
+    // Remove TODOS os registros anteriores importados do Medicalsys desta empresa.
+    // Isso garante que se um paciente foi remarcado para outro dia (ou cancelado),
+    // a data e o horário antigos são sumariamente eliminados do banco.
+    try {
+      const { data: bloqueiosImportadosAntigos, error: errBuscaAntigos } = await supabase
+        .from("bloqueios_horarios")
+        .select("id")
+        .eq("empresa_id", empresaId)
+        .or("status.eq.importado,medicalsys_id.not.is.null");
 
-    if (!errBuscaAntigos && Array.isArray(bloqueiosImportadosAntigos)) {
-      const idsImportadosParaExcluir = bloqueiosImportadosAntigos
-        .filter((b) => b.status === "importado" || b.medicalsys_id || b.raw_payload_completo)
-        .map((b) => b.id);
-
-      if (idsImportadosParaExcluir.length > 0) {
-        for (let i = 0; i < idsImportadosParaExcluir.length; i += 400) {
-          const chunk = idsImportadosParaExcluir.slice(i, i + 400);
+      if (!errBuscaAntigos && Array.isArray(bloqueiosImportadosAntigos) && bloqueiosImportadosAntigos.length > 0) {
+        const idsImportadosParaExcluir = bloqueiosImportadosAntigos.map((b) => b.id);
+        for (let i = 0; i < idsImportadosParaExcluir.length; i += 300) {
+          const chunk = idsImportadosParaExcluir.slice(i, i + 300);
           await supabase.from("bloqueios_horarios").delete().in("id", chunk);
         }
-        console.log(`[Importação Medicalsys] ${idsImportadosParaExcluir.length} registros antigos substituídos pela nova grade do ERP.`);
+        console.log(`[Importação Medicalsys] ${idsImportadosParaExcluir.length} registros legados limpos para inserção da grade atualizada.`);
       }
+    } catch (eLimpa) {
+      console.warn("[Importação Medicalsys] Aviso ao limpar registros antigos:", eLimpa.message);
     }
 
     // 6. INSERIR A GRADE ATUALIZADA DO MEDICALSYS

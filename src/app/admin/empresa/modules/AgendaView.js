@@ -419,10 +419,27 @@ export default function AgendaView({
     playDopamineSound("click");
     triggerHaptic("light");
     try {
+      if (showToast) showToast("Sincronizando com MedicalSYS e atualizando...", "info");
+      // 1. Sincroniza em tempo real com o MedicalSYS para buscar alterações e remarcações
+      try {
+        const resSync = await fetch("/api/importar-agenda", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: "import" })
+        });
+        const dataSync = await resSync.json();
+        if (dataSync?.success) {
+          console.log("[Agenda] Sincronização MedicalSYS concluída:", dataSync.message);
+        }
+      } catch (eSync) {
+        console.warn("[Agenda] Aviso na sincronização com MedicalSYS:", eSync.message);
+      }
+
+      // 2. Recarrega os dados atualizados do banco
       if (fetchAgendamentos) await fetchAgendamentos();
       if (fetchBloqueios) await fetchBloqueios();
       setLastSyncedAt(new Date());
-      if (showToast) showToast("Dados da agenda atualizados do banco com sucesso!");
+      if (showToast) showToast("Agenda sincronizada e atualizada com o MedicalSYS!");
     } catch (err) {
       if (showToast) showToast("Erro ao sincronizar dados com o banco.", "error");
     } finally {
@@ -701,7 +718,7 @@ export default function AgendaView({
       };
     });
 
-    const erp = bloqueios
+    const erpRaw = bloqueios
       .filter((b) => b.status === "importado" || b.medicalsys_id)
       .map((b) => {
         let espOriginal = b.especialidade || "";
@@ -803,6 +820,14 @@ export default function AgendaView({
           rawItem: b
         };
       });
+
+    // Deduplicação estrita de ERP: cada ID do MedicalSYS só pode aparecer UMA ÚNICA VEZ na agenda, na sua data mais recente
+    const erpMap = new Map();
+    erpRaw.forEach((item) => {
+      const chave = item.medicalsysId ? String(item.medicalsysId) : String(item.id);
+      erpMap.set(chave, item);
+    });
+    const erp = Array.from(erpMap.values());
 
     // Vínculo e sobreposição: a sincronização mais recente do ERP MedicalSys tem precedência sobre horários locais
     const erpMedicalsysIds = new Set(erp.map((e) => e.medicalsysId).filter(Boolean));

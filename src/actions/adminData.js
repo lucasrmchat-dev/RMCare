@@ -155,7 +155,13 @@ export async function fetchAdminBloqueios() {
 
   if (error) throw error;
 
-  return (data || []).map((b) => {
+  // Deduplicação estrita por medicalsys_id:
+  // Se o mesmo agendamento do ERP foi gravado em datas diferentes (resquício de remarcação),
+  // mantém estritamente o registro mais recente para evitar duplicação ou exibição na data antiga
+  const mapaMedicalsys = new Map();
+  const listaProcessada = [];
+
+  (data || []).forEach((b) => {
     if (b.status === "importado" || b.medicalsys_id || b.raw_payload_completo) {
       let horarioLimpo = b.horario ? b.horario.substring(0, 5) : "08:00";
       let dataLimpa = b.data ? String(b.data).split("T")[0] : b.data;
@@ -173,6 +179,8 @@ export async function fetchAdminBloqueios() {
           const timePart = rawMomento.split(" ")[1];
           const m = timePart.match(/(\d{1,2})[:hH](\d{2})/);
           if (m) horarioLimpo = `${m[1].padStart(2, "0")}:${m[2].padStart(2, "0")}`;
+        } else if (rawMomento) {
+          dataLimpa = rawMomento.slice(0, 10);
         }
 
         const candHora = rawP.horario_inicio || rawP.hora_inicio || rawP.hora || rawP.horario;
@@ -184,15 +192,32 @@ export async function fetchAdminBloqueios() {
         }
       }
 
-      return {
+      const itemMapeado = {
         ...b,
         data: dataLimpa,
         horario: horarioLimpo,
         horario_original_erp: horarioLimpo
       };
+
+      const mId = b.medicalsys_id ? String(b.medicalsys_id) : null;
+      if (mId) {
+        // Se já existe registro para esse mesmo medicalsys_id, manter apenas o mais recente
+        if (mapaMedicalsys.has(mId)) {
+          const idx = mapaMedicalsys.get(mId);
+          listaProcessada[idx] = itemMapeado;
+        } else {
+          mapaMedicalsys.set(mId, listaProcessada.length);
+          listaProcessada.push(itemMapeado);
+        }
+      } else {
+        listaProcessada.push(itemMapeado);
+      }
+    } else {
+      listaProcessada.push(b);
     }
-    return b;
   });
+
+  return listaProcessada;
 }
 
 export async function fetchAdminAgendamentos() {
