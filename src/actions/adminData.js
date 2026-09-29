@@ -3694,3 +3694,42 @@ export async function actionLimparLogsWebhook() {
 
   return true;
 }
+
+export async function actionLimparTodosAgendamentosEmpresa() {
+  const admin = await getAdminLogado(true);
+  const empresaId = admin.empresa_id;
+
+  // 1. Excluir todos os agendamentos da clínica
+  const { error: errAg } = await supabaseAdmin
+    .from("agendamentos")
+    .delete()
+    .eq("empresa_id", empresaId);
+
+  if (errAg) {
+    console.error("[Limpeza Agendamentos] Erro ao excluir agendamentos:", errAg.message);
+    throw new Error("Erro ao excluir agendamentos da clínica: " + errAg.message);
+  }
+
+  // 2. Excluir todos os bloqueios e horários importados da clínica
+  const { error: errBlk } = await supabaseAdmin
+    .from("bloqueios_horarios")
+    .delete()
+    .eq("empresa_id", empresaId);
+
+  if (errBlk) {
+    console.error("[Limpeza Agendamentos] Erro ao excluir bloqueios_horarios:", errBlk.message);
+    throw new Error("Erro ao excluir bloqueios da clínica: " + errBlk.message);
+  }
+
+  // 3. Registrar auditoria
+  try {
+    await actionRegistrarAuditoria({
+      modulo: "agenda",
+      acao: "Limpeza Total de Agendamentos",
+      detalhes: `Todos os agendamentos e bloqueios da empresa foram excluídos por ${admin.usuario} para nova sincronização do zero.`,
+      alterado_por: admin.usuario
+    });
+  } catch (_) {}
+
+  return { success: true };
+}

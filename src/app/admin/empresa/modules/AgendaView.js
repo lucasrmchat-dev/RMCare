@@ -81,7 +81,8 @@ import {
   actionAtualizarMensagemFila,
   actionCancelarMensagemFila,
   actionCriarMensagemFilaAvulsa,
-  actionDispararMensagemManualAdmin
+  actionDispararMensagemManualAdmin,
+  actionLimparTodosAgendamentosEmpresa
 } from "@/actions/adminData";
 import { playDopamineSound, triggerHaptic } from "@/lib/dopamine";
 import { formatarTelefoneEnvio, formatarTelefoneExibicao } from "@/lib/phoneUtils";
@@ -444,6 +445,31 @@ export default function AgendaView({
       if (showToast) showToast("Erro ao sincronizar dados com o banco.", "error");
     } finally {
       setIsRefreshing(false);
+    }
+  };
+
+  // Estado e ação para Excluir Todos os Agendamentos da Clínica (apenas agendamentos e bloqueios)
+  const [modalConfirmarLimpezaTotal, setModalConfirmarLimpezaTotal] = useState(false);
+  const [isLimpandoAgendamentos, setIsLimpandoAgendamentos] = useState(false);
+
+  const handleLimparTodosAgendamentos = async () => {
+    setIsLimpandoAgendamentos(true);
+    playDopamineSound("click");
+    triggerHaptic("medium");
+    try {
+      await actionLimparTodosAgendamentosEmpresa();
+      if (showToast) {
+        showToast("Todos os agendamentos foram excluídos com sucesso. Agora clique em 'Atualizar' para sincronizar do zero!", "info");
+      }
+      playDopamineSound("success");
+      triggerHaptic("success");
+      setModalConfirmarLimpezaTotal(false);
+      if (fetchAgendamentos) await fetchAgendamentos();
+      if (fetchBloqueios) await fetchBloqueios();
+    } catch (err) {
+      if (showToast) showToast(err.message || "Erro ao excluir agendamentos.", "error");
+    } finally {
+      setIsLimpandoAgendamentos(false);
     }
   };
 
@@ -952,21 +978,10 @@ export default function AgendaView({
           item.subtipoExame
         );
 
-        const [h, m] = (item.horario || "08:00").split(":").map(Number);
-        const startMinOriginal = (isNaN(h) ? 8 : h) * 60 + (isNaN(m) ? 0 : m);
-
-        let startMinEfetivo = startMinOriginal;
-
-        // Se o horário colide com a duração + descanso do paciente anterior
-        if (startMinOriginal < fimOcupadoMin) {
-          // Liberação da grade de 15 em 15 minutos (:00, :15, :30, :45)
-          startMinEfetivo = Math.ceil(fimOcupadoMin / 15) * 15;
-        }
-
-        const fimProcedimentoMin = startMinEfetivo + duracao;
-        const fimTotalMin = startMinEfetivo + tempoTotalOcupado;
-
-        fimOcupadoMin = fimTotalMin;
+        // O horário é mantido estritamente fiel ao agendamento original do ERP MedicalSYS (sem deslocamentos artificiais)
+        const horarioExato = item.horarioOriginal || item.horario;
+        const [h, m] = (horarioExato || "08:00").split(":").map(Number);
+        const startMin = (isNaN(h) ? 8 : h) * 60 + (isNaN(m) ? 0 : m);
 
         const formatMin = (tot) => {
           const hh = String(Math.floor(tot / 60) % 24).padStart(2, "0");
@@ -974,18 +989,15 @@ export default function AgendaView({
           return `${hh}:${mm}`;
         };
 
-        const horarioFormatadoNovo = formatMin(startMinEfetivo);
-        const horarioOriginalLimpo = item.horarioOriginal || item.horario;
-
         resultadoFinalAlinhado.push({
           ...item,
-          horario: horarioFormatadoNovo,
-          horarioOriginal: horarioOriginalLimpo,
-          horarioAjustadoPorGrade: horarioFormatadoNovo !== horarioOriginalLimpo,
+          horario: horarioExato,
+          horarioOriginal: horarioExato,
+          horarioAjustadoPorGrade: false,
           duracaoMinutos: duracao,
           intervaloMinutos: intervalo,
-          horarioFimProcedimento: formatMin(fimProcedimentoMin),
-          horarioLiberacaoGrade: formatMin(fimTotalMin)
+          horarioFimProcedimento: formatMin(startMin + duracao),
+          horarioLiberacaoGrade: formatMin(startMin + tempoTotalOcupado)
         });
       });
     });
@@ -2292,6 +2304,18 @@ export default function AgendaView({
                 <RefreshCw size={13} className={isRefreshing ? "animate-spin text-[#34C759]" : ""} />
                 <span>{isRefreshing ? "Atualizando..." : "Atualizar"}</span>
               </button>
+
+              {ehAdminEmpresa && (
+                <button
+                  type="button"
+                  onClick={() => setModalConfirmarLimpezaTotal(true)}
+                  className="min-h-[36px] px-3.5 py-1.5 bg-red-50 hover:bg-red-100 dark:bg-red-950/30 dark:hover:bg-red-950/50 text-red-600 dark:text-red-400 font-semibold text-xs rounded-2xl flex items-center gap-1.5 transition-all shadow-2xs border border-red-200/80 dark:border-red-900/40 cursor-pointer"
+                  title="Excluir todos os agendamentos da clínica para sincronizar do zero"
+                >
+                  <Trash2 size={13} />
+                  <span className="hidden sm:inline">Excluir Todos os Agendamentos</span>
+                </button>
+              )}
 
               <button
                 type="button"
@@ -5978,6 +6002,80 @@ export default function AgendaView({
               </div>
             </div>
           </motion.div>
+        )}
+
+        {/* MODAL DE CONFIRMAÇÃO PARA EXCLUIR TODOS OS AGENDAMENTOS */}
+        {modalConfirmarLimpezaTotal && (
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-md z-[9999] flex items-center justify-center p-4"
+            onClick={() => !isLimpandoAgendamentos && setModalConfirmarLimpezaTotal(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-[#111116] border border-red-500/30 rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl space-y-5 text-left"
+            >
+              <div className="flex items-center gap-3 border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
+                <div className="w-10 h-10 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0">
+                  <Trash2 size={20} strokeWidth={2.2} />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-zinc-950 dark:text-white">
+                    Excluir Todos os Agendamentos?
+                  </h3>
+                  <span className="text-xs text-zinc-400">
+                    Apenas agendamentos e bloqueios da agenda
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-3 text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
+                <div className="p-3 bg-red-500/10 rounded-xl border border-red-500/20 text-red-900 dark:text-red-200">
+                  <p className="font-bold flex items-center gap-1.5 mb-1">
+                    <AlertCircle size={14} /> Atenção
+                  </p>
+                  <p className="text-[11px]">
+                    Esta ação apagará <strong>todos os agendamentos e bloqueios</strong> da clínica no banco de dados.
+                  </p>
+                </div>
+
+                <div className="p-3 bg-zinc-50 dark:bg-zinc-900/60 rounded-xl border border-zinc-200 dark:border-zinc-800 space-y-1 text-[11px]">
+                  <p className="font-bold text-zinc-900 dark:text-white">O que acontece em seguida:</p>
+                  <ul className="list-disc pl-4 space-y-1 text-zinc-500 dark:text-zinc-400">
+                    <li>A tela da agenda ficará 100% limpa.</li>
+                    <li>Seus pacientes cadastrados, médicos, convênios e configurações continuam salvos.</li>
+                    <li>Você poderá clicar em <strong>"Atualizar"</strong> para sincronizar do zero com o MedicalSYS e repopular a grade fielmente.</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-black/[0.04] dark:border-white/[0.06]">
+                <button
+                  type="button"
+                  disabled={isLimpandoAgendamentos}
+                  onClick={() => setModalConfirmarLimpezaTotal(false)}
+                  className="flex-1 py-3 px-4 rounded-xl border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 font-bold text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={isLimpandoAgendamentos}
+                  onClick={handleLimparTodosAgendamentos}
+                  className="flex-1 py-3 px-4 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-red-600/20 transition-all cursor-pointer"
+                >
+                  {isLimpandoAgendamentos ? (
+                    <Activity size={14} className="animate-spin" />
+                  ) : (
+                    <Trash2 size={14} />
+                  )}
+                  <span>{isLimpandoAgendamentos ? "Excluindo..." : "Excluir Tudo"}</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </motion.div>
