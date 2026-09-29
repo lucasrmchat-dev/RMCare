@@ -457,7 +457,39 @@ export default function AgendaView({
     playDopamineSound("click");
     triggerHaptic("medium");
     try {
-      await actionLimparTodosAgendamentosEmpresa();
+      // 1. Tenta via rota de API dedicada (imune a mascaramento de erros de Server Actions)
+      let sucesso = false;
+      let erroMsg = null;
+
+      try {
+        const resp = await fetch("/api/agenda/limpar-todos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" }
+        });
+        const dataJson = await resp.json();
+        if (dataJson?.success) {
+          sucesso = true;
+        } else {
+          erroMsg = dataJson?.error;
+        }
+      } catch (eFetch) {
+        console.warn("[Limpar Agenda] Fallback para Server Action:", eFetch.message);
+      }
+
+      // 2. Fallback resiliente via Server Action se a API falhar
+      if (!sucesso) {
+        const resAction = await actionLimparTodosAgendamentosEmpresa();
+        if (resAction?.success) {
+          sucesso = true;
+        } else {
+          erroMsg = resAction?.error || erroMsg || "Falha ao processar a exclusão.";
+        }
+      }
+
+      if (!sucesso) {
+        throw new Error(erroMsg || "Não foi possível excluir os agendamentos.");
+      }
+
       if (showToast) {
         showToast("Todos os agendamentos foram excluídos com sucesso. Agora clique em 'Atualizar' para sincronizar do zero!", "info");
       }

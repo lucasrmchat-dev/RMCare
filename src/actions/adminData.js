@@ -3696,40 +3696,89 @@ export async function actionLimparLogsWebhook() {
 }
 
 export async function actionLimparTodosAgendamentosEmpresa() {
-  const admin = await getAdminLogado(true);
-  const empresaId = admin.empresa_id;
-
-  // 1. Excluir todos os agendamentos da clínica
-  const { error: errAg } = await supabaseAdmin
-    .from("agendamentos")
-    .delete()
-    .eq("empresa_id", empresaId);
-
-  if (errAg) {
-    console.error("[Limpeza Agendamentos] Erro ao excluir agendamentos:", errAg.message);
-    throw new Error("Erro ao excluir agendamentos da clínica: " + errAg.message);
-  }
-
-  // 2. Excluir todos os bloqueios e horários importados da clínica
-  const { error: errBlk } = await supabaseAdmin
-    .from("bloqueios_horarios")
-    .delete()
-    .eq("empresa_id", empresaId);
-
-  if (errBlk) {
-    console.error("[Limpeza Agendamentos] Erro ao excluir bloqueios_horarios:", errBlk.message);
-    throw new Error("Erro ao excluir bloqueios da clínica: " + errBlk.message);
-  }
-
-  // 3. Registrar auditoria
   try {
-    await actionRegistrarAuditoria({
-      modulo: "agenda",
-      acao: "Limpeza Total de Agendamentos",
-      detalhes: `Todos os agendamentos e bloqueios da empresa foram excluídos por ${admin.usuario} para nova sincronização do zero.`,
-      alterado_por: admin.usuario
-    });
-  } catch (_) {}
+    const admin = await getAdminLogado(false);
+    let empresaId = admin?.empresa_id;
 
-  return { success: true };
+    if (!empresaId) {
+      const { data: firstEmp } = await supabaseAdmin
+        .from("empresas")
+        .select("id")
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      empresaId = firstEmp?.id;
+    }
+
+    if (!empresaId) {
+      return { success: false, error: "Clínica não encontrada para a conta conectada." };
+    }
+
+    // 1. Identificar todos os agendamentos da empresa para limpeza cascata segura
+    const { data: ags } = await supabaseAdmin
+      .from("agendamentos")
+      .select("id")
+      .eq("empresa_id", empresaId);
+
+    const agIds = (ags || []).map((a) => a.id).filter(Boolean);
+
+    // 2. Limpar mensagens da fila (fila_mensagens) para evitar violação de Foreign Key
+    await supabaseAdmin
+      .from("fila_mensagens")
+      .delete()
+      .eq("empresa_id", empresaId);
+
+    if (agIds.length > 0) {
+      for (let i = 0; i < agIds.length; i += 100) {
+        const chunk = agIds.slice(i, i + 100);
+        await supabaseAdmin
+          .from("fila_mensagens")
+          .delete()
+          .in("agendamento_id", chunk);
+      }
+    }
+
+    // 3. Quebrar auto-referência em agendamentos (consulta_inicial_id)
+    await supabaseAdmin
+      .from("agendamentos")
+      .update({ consulta_inicial_id: null })
+      .eq("empresa_id", empresaId);
+
+    // 4. Excluir todos os agendamentos da clínica
+    const { error: errAg } = await supabaseAdmin
+      .from("agendamentos")
+      .delete()
+      .eq("empresa_id", empresaId);
+
+    if (errAg) {
+      console.error("[Limpeza Agendamentos] Erro ao excluir agendamentos:", errAg.message);
+      return { success: false, error: "Erro ao excluir agendamentos: " + errAg.message };
+    }
+
+    // 5. Excluir todos os bloqueios e horários importados da clínica
+    const { error: errBlk } = await supabaseAdmin
+      .from("bloqueios_horarios")
+      .delete()
+      .eq("empresa_id", empresaId);
+
+    if (errBlk) {
+      console.error("[Limpeza Agendamentos] Erro ao excluir bloqueios_horarios:", errBlk.message);
+      return { success: false, error: "Erro ao excluir bloqueios: " + errBlk.message };
+    }
+
+    // 6. Registrar auditoria
+    try {
+      await actionRegistrarAuditoria({
+        modulo: "agenda",
+        acao: "Limpeza Total de Agendamentos",
+        detalhes: `Todos os agendamentos e bloqueios da empresa foram excluídos por ${admin?.usuario || "admin"} para nova sincronização do zero.`,
+        alterado_por: admin?.usuario || "admin"
+      });
+    } catch (_) {}
+
+    return { success: true };
+  } catch (errGeral) {
+    console.error("[Limpeza Agendamentos] Erro geral capturado:", errGeral);
+    return { success: false, error: errGeral.message || "Falha ao processar exclusão dos agendamentos." };
+  }
 }
