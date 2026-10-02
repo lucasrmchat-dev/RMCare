@@ -2890,10 +2890,23 @@ export async function actionRegistrarAuditoria({ modulo, acao, detalhes, anterio
       created_at: new Date().toISOString()
     };
 
-    // Tenta salvar na tabela logs_auditoria se existir
+    // Tenta salvar na tabela auditoria_sistema (schema oficial) ou logs_auditoria
     try {
       if (empresaId) {
         const { error: insertErr } = await supabaseAdmin
+          .from("auditoria_sistema")
+          .insert({
+            empresa_id: empresaId,
+            usuario: usuarioResponsavel,
+            modulo: modulo || "geral",
+            acao: acao || "Alteração",
+            detalhes: detalhes || "",
+            dados_anteriores: anterior || null,
+            dados_novos: novo || null
+          });
+        if (!insertErr) return { success: true, data: logEntry };
+
+        const { error: fallbackErr } = await supabaseAdmin
           .from("logs_auditoria")
           .insert({
             empresa_id: empresaId,
@@ -2904,7 +2917,7 @@ export async function actionRegistrarAuditoria({ modulo, acao, detalhes, anterio
             dados_anteriores: anterior || null,
             dados_novos: novo || null
           });
-        if (!insertErr) return { success: true, data: logEntry };
+        if (!fallbackErr) return { success: true, data: logEntry };
       }
     } catch (dbErr) {
       // Ignora erro de tabela não existente e faz fallback na empresa
@@ -2950,18 +2963,29 @@ export async function fetchAdminAuditoriaLogs(filtros = {}) {
     const admin = await getAdminLogado(true);
     let logs = [];
 
-    // Tenta buscar da tabela logs_auditoria
+    // Tenta buscar da tabela auditoria_sistema (schema oficial)
     try {
-      const query = supabaseAdmin
-        .from("logs_auditoria")
+      const { data: dataSis, error: errSis } = await supabaseAdmin
+        .from("auditoria_sistema")
         .select("*")
         .eq("empresa_id", admin.empresa_id)
         .order("created_at", { ascending: false })
         .limit(200);
 
-      const { data, error } = await query;
-      if (!error && Array.isArray(data) && data.length > 0) {
-        logs = data;
+      if (!errSis && Array.isArray(dataSis) && dataSis.length > 0) {
+        logs = dataSis.map((l) => ({ ...l, responsavel: l.usuario || l.responsavel }));
+      } else {
+        const query = supabaseAdmin
+          .from("logs_auditoria")
+          .select("*")
+          .eq("empresa_id", admin.empresa_id)
+          .order("created_at", { ascending: false })
+          .limit(200);
+
+        const { data, error } = await query;
+        if (!error && Array.isArray(data) && data.length > 0) {
+          logs = data;
+        }
       }
     } catch (e) {}
 

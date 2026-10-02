@@ -110,12 +110,12 @@ export async function POST(request) {
 
     // 6. Registrar auditoria se existir a tabela
     try {
-      await supabaseAdmin.from("auditoria").insert({
+      await supabaseAdmin.from("auditoria_sistema").insert({
         empresa_id: empresaId,
+        usuario: usuarioNome,
         modulo: "agenda",
         acao: "Limpeza Total de Agendamentos",
-        detalhes: `Todos os agendamentos e bloqueios foram excluídos por ${usuarioNome} para nova sincronização do zero.`,
-        alterado_por: usuarioNome
+        detalhes: `Todos os agendamentos e bloqueios foram excluídos por ${usuarioNome} para nova sincronização do zero.`
       });
     } catch (_) {}
 
