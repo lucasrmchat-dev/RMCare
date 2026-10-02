@@ -38,10 +38,12 @@ export async function POST(request) {
 
     // Se a URL direta não veio ou para obter dados da empresa
     if (!targetUrl || !targetUrl.startsWith('http') || empresaId || slug) {
+      if (!empresaId && !slug) {
+        return NextResponse.json({ success: false, error: 'Identificador da clínica (empresaId ou slug) não informado.' }, { status: 400 });
+      }
       let query = supabaseAdmin.from('empresas').select('*');
       if (empresaId) query = query.eq('id', empresaId);
       else if (slug) query = query.eq('slug', slug);
-      else query = query.limit(1);
 
       const { data: empData, error: empErr } = await query.maybeSingle();
       if (!empErr && empData) {

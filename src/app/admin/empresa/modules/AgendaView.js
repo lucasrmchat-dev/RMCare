@@ -396,7 +396,11 @@ export default function AgendaView({
     triggerHaptic("medium");
     try {
       if (showToast) showToast("Buscando e alinhando horários com o Medicalsys...", "info");
-      const res = await fetch("/api/importar-agenda", { method: "POST" });
+      const res = await fetch("/api/importar-agenda", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "import", empresa_id: loggedAdmin?.empresa_id })
+      });
       const data = await res.json();
       if (data?.success) {
         if (showToast) showToast(data.message || "Agenda sincronizada e alinhada com o Medicalsys!");
@@ -426,7 +430,7 @@ export default function AgendaView({
         const resSync = await fetch("/api/importar-agenda", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mode: "import" })
+          body: JSON.stringify({ mode: "import", empresa_id: loggedAdmin?.empresa_id })
         });
         const dataSync = await resSync.json();
         if (dataSync?.success) {

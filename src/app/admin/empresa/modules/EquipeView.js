@@ -639,19 +639,8 @@ export default function EquipeView({
             });
           }
 
-          if (mapCategorias.size === 0) {
-            ["Nutricionista", "Gastroenterologista", "Colonoscopia", "Endoscopia", "Psicologia", "Cirurgia Geral"].forEach(
-              (baseName) => {
-                const isExame = /(colonoscopia|endoscopia|ultrassom|exame)/i.test(baseName);
-                mapCategorias.set(baseName.toLowerCase(), {
-                  nome: baseName,
-                  categoria: isExame ? "Exames" : "Consultas",
-                  codigo_uri: null,
-                  duracao_minutos: 30
-                });
-              }
-            );
-          }
+          // Se a clínica ainda não cadastrou especialidades, mantém vazio (isolamento estrito)
+          // Sem injeção de dados falsos ou de outras clínicas
 
           const listaFinal = Array.from(mapCategorias.values()).sort((a, b) =>
             a.nome.localeCompare(b.nome)

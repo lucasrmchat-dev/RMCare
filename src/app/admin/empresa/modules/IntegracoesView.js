@@ -642,10 +642,10 @@ export default function IntegracoesView({ bloqueios = [], servicos = [], fetchBl
     mp_public_key: "",
     mp_access_token: "",
     medicalsys_enabled: false,
-    medicalsys_id_clinica: "9",
-    medicalsys_id_medico: "1",
-    medicalsys_apikey: "8FxD2eUsODMO8IZWMHZaNpt78av9Vy6k",
-    medicalsys_customer_apikey: "SqdACjyxnXuYqL8ilnwTvXHroEOvFHFR",
+    medicalsys_id_clinica: "",
+    medicalsys_id_medico: "",
+    medicalsys_apikey: "",
+    medicalsys_customer_apikey: "",
     auto_sync_cadence: "manual"
   });
 
@@ -694,7 +694,7 @@ export default function IntegracoesView({ bloqueios = [], servicos = [], fetchBl
     }
 
     const fetchDados = async () => {
-      const { data } = await supabase.from("empresas").select("id, config_chaves, config_campos, rmchat_webhook_url").limit(1).single();
+      const data = await fetchAdminCustomization();
       if (data) {
         setEmpresaId(data.id);
         if (data.config_chaves) setChaves((prev) => ({ ...prev, ...data.config_chaves }));

@@ -28,8 +28,7 @@ import {
   ToggleSwitch,
   spring
 } from "../components/SharedUI";
-import { supabase } from "@/lib/supabase";
-import { actionAtualizarServico, actionCriarServico } from "@/actions/adminData";
+import { actionAtualizarServico, actionCriarServico, fetchAdminCustomization, actionSalvarEspecialidadesEmpresa } from "@/actions/adminData";
 
 // ==========================================
 // COMPONENTE: CARD DO SERVIÇO / PROFISSIONAL
@@ -352,10 +351,14 @@ export default function FinanceiroView({ subTab = "corpo", setSubTab, servicos =
 
   useEffect(() => {
     const fetchEspecialidades = async () => {
-      const { data } = await supabase.from("empresas").select("id, especialidades").limit(1).single();
-      if (data) {
-        setEmpresaId(data.id);
-        if (data.especialidades) setEspecialidadesList(data.especialidades);
+      try {
+        const emp = await fetchAdminCustomization();
+        if (emp) {
+          setEmpresaId(emp.id);
+          if (Array.isArray(emp.especialidades)) setEspecialidadesList(emp.especialidades);
+        }
+      } catch (e) {
+        console.warn("Aviso ao carregar especialidades:", e);
       }
     };
     fetchEspecialidades();
@@ -416,7 +419,7 @@ export default function FinanceiroView({ subTab = "corpo", setSubTab, servicos =
     setIsProcessing(true);
     try {
       const newList = [...especialidadesList, novaEspecialidade.trim()];
-      await supabase.from("empresas").update({ especialidades: newList }).eq("id", empresaId);
+      await actionSalvarEspecialidadesEmpresa(newList);
       setEspecialidadesList(newList);
       setNovaEspecialidade("");
       showToast("Especialidade registrada com sucesso!");
@@ -432,7 +435,7 @@ export default function FinanceiroView({ subTab = "corpo", setSubTab, servicos =
     setIsProcessing(true);
     try {
       const newList = especialidadesList.filter((e) => e !== esp);
-      await supabase.from("empresas").update({ especialidades: newList }).eq("id", empresaId);
+      await actionSalvarEspecialidadesEmpresa(newList);
       setEspecialidadesList(newList);
       showToast("Especialidade removida!");
     } catch (e) {

@@ -48,18 +48,10 @@ export async function getAdminLogado(exigeEmpresa = false) {
     throw new Error(`O usuário logado '${usuarioLogado}' não existe mais no banco de dados.`);
   }
 
-  // Se o admin for do tipo 'empresa' mas por algum motivo empresa_id estiver nulo, busca a primeira empresa
+  // ISOLAMENTO MULTI-TENANT ESTRITO (LGPD / RLS):
+  // Admins do tipo empresa DEVEM obrigatoriamente possuir uma empresa vinculada (zero fallback cross-tenant)
   if (admin.role !== "sistema" && !admin.empresa_id) {
-    const { data: firstEmp } = await supabaseAdmin
-      .from("empresas")
-      .select("id")
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    if (firstEmp) {
-      admin.empresa_id = firstEmp.id;
-      await supabaseAdmin.from("administradores").update({ empresa_id: firstEmp.id }).eq("id", admin.id);
-    }
+    throw new Error("Acesso restrito: sua conta de usuário não possui uma clínica vinculada.");
   }
 
   // Trava de segurança multi-tenant: impede que o Master Admin visualize dados de clientes em /admin/empresa
@@ -1826,14 +1818,8 @@ export async function actionBuscarConvenios(empresaIdParam = null) {
       return lista;
     }
 
-    // 3. Fallback inicial com convênios clássicos
-    return [
-      { id: "1", nome: "Unimed", codigo_medicalsys: "10", ativo: true },
-      { id: "2", nome: "GEAP", codigo_medicalsys: "12", ativo: true },
-      { id: "3", nome: "Bradesco Saúde", codigo_medicalsys: "14", ativo: true },
-      { id: "4", nome: "CASSI", codigo_medicalsys: "31", ativo: true },
-      { id: "5", nome: "SulAmérica", codigo_medicalsys: "15", ativo: true }
-    ];
+    // 3. Se a clínica não cadastrou convênios, retorna vazio (isolamento estrito LGPD)
+    return [];
   } catch (err) {
     console.warn("Aviso ao buscar convênios:", err);
     return [];
@@ -1934,8 +1920,12 @@ export async function actionSincronizarConveniosMedicalsys() {
     .single();
 
   const configChaves = emp?.config_chaves || {};
-  const apiKey = configChaves.medicalsys_apikey || "8FxD2eUsODMO8IZWMHZaNpt78av9Vy6k";
-  const customerApiKey = configChaves.medicalsys_customer_apikey || configChaves.medicalsys_costumer_apikey || "SqdACjyxnXuYqL8ilnwTvXHroEOvFHFR";
+  const apiKey = configChaves.medicalsys_apikey;
+  const customerApiKey = configChaves.medicalsys_customer_apikey || configChaves.medicalsys_costumer_apikey;
+
+  if (!apiKey || !customerApiKey) {
+    throw new Error("Integração MedicalSYS não configurada para esta clínica. Acesse 'Integrações ERP' para inserir as credenciais exclusivas da sua clínica.");
+  }
 
   const { HttpsProxyAgent } = await import("https-proxy-agent");
   const axios = (await import("axios")).default;
@@ -3697,21 +3687,11 @@ export async function actionLimparLogsWebhook() {
 
 export async function actionLimparTodosAgendamentosEmpresa() {
   try {
-    const admin = await getAdminLogado(false);
-    let empresaId = admin?.empresa_id;
+    const admin = await getAdminLogado(true);
+    const empresaId = admin?.empresa_id;
 
     if (!empresaId) {
-      const { data: firstEmp } = await supabaseAdmin
-        .from("empresas")
-        .select("id")
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      empresaId = firstEmp?.id;
-    }
-
-    if (!empresaId) {
-      return { success: false, error: "Clínica não encontrada para a conta conectada." };
+      return { success: false, error: "Acesso restrito: nenhuma clínica vinculada a este login administrativo." };
     }
 
     // 1. Identificar todos os agendamentos da empresa para limpeza cascata segura
@@ -3781,4 +3761,16 @@ export async function actionLimparTodosAgendamentosEmpresa() {
     console.error("[Limpeza Agendamentos] Erro geral capturado:", errGeral);
     return { success: false, error: errGeral.message || "Falha ao processar exclusão dos agendamentos." };
   }
+}
+
+
+export async function actionSalvarEspecialidadesEmpresa(especialidadesList) {
+  const admin = await getAdminLogado(true);
+  const { error } = await supabaseAdmin
+    .from("empresas")
+    .update({ especialidades: especialidadesList })
+    .eq("id", admin.empresa_id);
+
+  if (error) throw new Error(error.message);
+  return { success: true };
 }

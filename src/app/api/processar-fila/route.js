@@ -69,10 +69,8 @@ export async function GET(request) {
     }
 
     const mapaEmpresas = new Map();
-    let empresaFallbackId = null;
 
-    (todasEmpresas || []).forEach((emp, index) => {
-      if (index === 0) empresaFallbackId = emp.id;
+    (todasEmpresas || []).forEach((emp) => {
       const configChaves = emp.config_chaves || {};
       const configCampos = emp.config_campos || {};
       const configWebhooks = configCampos.config_webhooks || configChaves.config_webhooks || {};
@@ -112,17 +110,13 @@ export async function GET(request) {
         }
 
         try {
-          const targetEmpresaId = msg.empresa_id || empresaFallbackId;
-          const dadosEmpresa = targetEmpresaId ? mapaEmpresas.get(targetEmpresaId) : null;
-
-          // Se a mensagem não possui empresa_id no banco, associa retroativamente
-          if (!msg.empresa_id && targetEmpresaId) {
-            try {
-              await supabaseAdmin.from('fila_mensagens').update({ empresa_id: targetEmpresaId }).eq('id', msg.id);
-            } catch (eUpEmp) {
-              console.warn(`[Processar Fila] Aviso ao vincular empresa_id na mensagem ${msg.id}:`, eUpEmp?.message);
-            }
+          const targetEmpresaId = msg.empresa_id;
+          if (!targetEmpresaId) {
+            console.warn(`[Processar Fila] Mensagem ${msg.id} sem empresa_id definida. Ignorando para evitar vazamento cross-tenant.`);
+            await supabaseAdmin.from('fila_mensagens').update({ status: 'falha' }).eq('id', msg.id);
+            continue;
           }
+          const dadosEmpresa = mapaEmpresas.get(targetEmpresaId);
 
           const isWebhook = msg.tipo_envio === 'webhook';
           const rawDestino = msg.url_webhook_customizada || (isWebhook ? dadosEmpresa?.urlWebhookFluxo : dadosEmpresa?.urlWhatsApp);

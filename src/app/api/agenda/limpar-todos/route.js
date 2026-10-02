@@ -44,19 +44,9 @@ export async function POST(request) {
     }
 
     if (!empresaId) {
-      const { data: firstEmp } = await supabaseAdmin
-        .from("empresas")
-        .select("id")
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      empresaId = firstEmp?.id;
-    }
-
-    if (!empresaId) {
       return NextResponse.json(
-        { success: false, error: "Nenhuma clínica localizada para resetar a agenda." },
-        { status: 400 }
+        { success: false, error: "Acesso não autorizado: nenhuma clínica vinculada a esta conta." },
+        { status: 403 }
       );
     }
 

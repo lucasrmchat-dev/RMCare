@@ -104,9 +104,17 @@ export async function POST(request) {
       cleanPagamento = "espe";
     }
 
-    const clinicaIdConfig = configChaves.medicalsys_id_clinica || "9";
-    const apiKey = configChaves.medicalsys_apikey || "8FxD2eUsODMO8IZWMHZaNpt78av9Vy6k";
-    const customerApiKey = configChaves.medicalsys_customer_apikey || configChaves.medicalsys_costumer_apikey || "SqdACjyxnXuYqL8ilnwTvXHroEOvFHFR";
+    const clinicaIdConfig = configChaves.medicalsys_id_clinica;
+    const apiKey = configChaves.medicalsys_apikey;
+    const customerApiKey = configChaves.medicalsys_customer_apikey || configChaves.medicalsys_costumer_apikey;
+
+    if (!clinicaIdConfig || !apiKey || !customerApiKey) {
+      return NextResponse.json({
+        success: false,
+        error: "Credenciais do MedicalSYS não configuradas para esta clínica. Agendamento não pôde ser enviado ao ERP.",
+        code: "MEDICALSYS_CREDENTIALS_MISSING"
+      }, { status: 400 });
+    }
 
     // 3. Proxy Fixie para IP estático homologado
     const proxyUrl = process.env.FIXIE_URL || "http://fixie:1c54Fc5I1jgmHG2@criterium.usefixie.com:80";

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import axios from "axios";
+import { cookies } from "next/headers";
+import { verifyAdminSession } from "@/lib/auth";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -239,35 +241,98 @@ export async function POST(request) {
       requestBody = {};
     }
 
-    const { mode = "import", reprocessar_existentes = false } = requestBody;
+    const { mode = "import", reprocessar_existentes = false, empresa_id: requestedEmpresaId } = requestBody;
 
-    // 1. BUSCAR EMPRESA E CONFIGURAÇÕES DE MAPEAMENTO DE COLUNAS
+    // 1. AUTENTICAÇÃO E RESOLUÇÃO RIGOROSA DO TENANT (ANTI-CROSS-LEAK)
+    const cookieStore = await cookies();
+    const authCookie =
+      cookieStore.get("rmagenda_auth") ||
+      cookieStore.get("rmcare_auth") ||
+      cookieStore.get("admin_session") ||
+      cookieStore.get("auth_token");
+
+    let usuarioLogado = null;
+    if (authCookie?.value) {
+      try {
+        const session = await verifyAdminSession(authCookie.value);
+        usuarioLogado = session?.sub || authCookie.value;
+      } catch (_) {
+        usuarioLogado = authCookie.value;
+      }
+    }
+
+    let admin = null;
+    if (usuarioLogado) {
+      const { data: admData } = await supabase
+        .from("administradores")
+        .select("id, role, empresa_id, usuario")
+        .eq("usuario", usuarioLogado)
+        .maybeSingle();
+      admin = admData;
+    }
+
+    let targetEmpresaId = null;
+
+    if (admin) {
+      if (admin.role === "sistema") {
+        targetEmpresaId = requestedEmpresaId || admin.empresa_id;
+      } else {
+        // Se for admin de clínica, SEMPRE força a clínica vinculada ao seu login (blindagem multi-tenant)
+        targetEmpresaId = admin.empresa_id;
+      }
+    } else if (requestedEmpresaId) {
+      targetEmpresaId = requestedEmpresaId;
+    }
+
+    if (!targetEmpresaId) {
+      return NextResponse.json(
+        { success: false, error: "Acesso não autorizado ou clínica não informada para sincronização." },
+        { status: 401 }
+      );
+    }
+
+    // 2. BUSCAR CONFIGURAÇÕES EXCLUSIVAS DA CLÍNICA IDENTIFICADA
     const { data: empresa, error: erroEmpresa } = await supabase
       .from("empresas")
-      .select("id, config_campos, config_mensagens, config_chaves")
-      .limit(1)
-      .single();
+      .select("id, nome, config_campos, config_mensagens, config_chaves")
+      .eq("id", targetEmpresaId)
+      .maybeSingle();
 
     if (erroEmpresa || !empresa) {
-      throw new Error("Nenhuma empresa cadastrada no banco para vincular os agendamentos.");
+      return NextResponse.json(
+        { success: false, error: "Clínica não encontrada no banco de dados." },
+        { status: 404 }
+      );
     }
+
     const empresaId = empresa.id;
     const configCampos = empresa.config_campos || {};
     const configChaves = empresa.config_chaves || {};
+
+    const medicalsysEnabled = Boolean(configChaves.medicalsys_enabled);
+    const clinicaId = configChaves.medicalsys_id_clinica;
+    const apiKey = configChaves.medicalsys_apikey;
+    const customerApiKey = configChaves.medicalsys_customer_apikey || configChaves.medicalsys_costumer_apikey;
+
+    // VALIDAÇÃO ESTRITA: ZERO CREDENCIAIS HARDCODED OU FALLBACK PARA OUTRA CLÍNICA
+    if (!medicalsysEnabled || !clinicaId || !apiKey || !customerApiKey) {
+      return NextResponse.json({
+        success: false,
+        error: `A integração com o MedicalSYS não está ativada ou configurada para a clínica "${empresa.nome || empresaId}". Acesse 'Integrações ERP' para inserir as credenciais exclusivas da sua clínica.`,
+        code: "MEDICALSYS_NOT_CONFIGURED"
+      }, { status: 400 });
+    }
+
     const offsetHoras = configChaves.medicalsys_offset_horas !== undefined
       ? Number(configChaves.medicalsys_offset_horas)
-      : (configCampos.medicalsys_offset_horas !== undefined ? Number(configCampos.medicalsys_offset_horas) : 1);
+      : (configCampos.medicalsys_offset_horas !== undefined ? Number(configCampos.medicalsys_offset_horas) : 0);
     const enviarMensagensErp = Boolean(configCampos.enviar_mensagens_importados_erp);
     const mapCols = configCampos.medicalsys_column_mapping || {
       convenio: "coluna_convenio",
       especialidade: "especialidade"
     };
 
-    // 2. CREDENCIAIS E PROXY FIXIE MEDICALSYS
-    const clinicaId = configChaves.medicalsys_id_clinica || "9";
-    const apiKey = configChaves.medicalsys_apikey || "8FxD2eUsODMO8IZWMHZaNpt78av9Vy6k";
-    const customerApiKey = configChaves.medicalsys_customer_apikey || configChaves.medicalsys_costumer_apikey || "SqdACjyxnXuYqL8ilnwTvXHroEOvFHFR";
-
+    // 3. PROXY FIXIE MEDICALSYS
     const proxyUrl = process.env.FIXIE_URL || "http://fixie:1c54Fc5I1jgmHG2@criterium.usefixie.com:80";
     const proxyAgent = new HttpsProxyAgent(proxyUrl);
 
@@ -648,7 +713,7 @@ export async function POST(request) {
         const idsImportadosParaExcluir = bloqueiosImportadosAntigos.map((b) => b.id);
         for (let i = 0; i < idsImportadosParaExcluir.length; i += 300) {
           const chunk = idsImportadosParaExcluir.slice(i, i + 300);
-          await supabase.from("bloqueios_horarios").delete().in("id", chunk);
+          await supabase.from("bloqueios_horarios").delete().in("id", chunk).eq("empresa_id", empresaId);
         }
         console.log(`[Importação Medicalsys] ${idsImportadosParaExcluir.length} registros legados limpos para inserção da grade atualizada.`);
       }
@@ -698,7 +763,8 @@ export async function POST(request) {
                   horario_agendamento: medHora || ag.horario_agendamento,
                   status_atendimento: newStatus
                 })
-                .eq("id", ag.id);
+                .eq("id", ag.id)
+                .eq("empresa_id", empresaId);
             }
           }
         }
