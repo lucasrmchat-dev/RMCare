@@ -49,7 +49,7 @@ END $$;
 
 -- ==============================================================================
 -- 3. POLÍTICAS DE RLS PARA ACESSO PÚBLICO (ANON)
--- No PostgreSQL/Supabase, quando o RLS está ativo em uma tabela e NÃO existe política
+-- No Supabase, quando o RLS está ativo em uma tabela e NÃO existe política
 -- concedendo permissão ao papel 'anon', o acesso é sumariamente BLOQUEADO (DENY ALL).
 -- ==============================================================================
 
@@ -112,16 +112,17 @@ END $$;
 
 -- ==============================================================================
 -- 5. FUNÇÕES CRIPTOGRÁFICAS AUXILIARES (PGCRYPTO)
+-- Utiliza encode/decode nativos do PostgreSQL (pg_catalog)
 -- ==============================================================================
 
 CREATE OR REPLACE FUNCTION public.criptografar_dado_sensivel(p_texto text, p_chave text)
-RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = public, extensions AS $$
-  SELECT extensions.encode(extensions.pgp_sym_encrypt(p_texto, p_chave), 'base64');
+RETURNS text LANGUAGE sql SECURITY DEFINER AS $$
+  SELECT encode(extensions.pgp_sym_encrypt(p_texto, p_chave), 'base64');
 $$;
 
 CREATE OR REPLACE FUNCTION public.descriptografar_dado_sensivel(p_criptografado text, p_chave text)
-RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = public, extensions AS $$
-  SELECT extensions.pgp_sym_decrypt(extensions.decode(p_criptografado, 'base64'), p_chave);
+RETURNS text LANGUAGE sql SECURITY DEFINER AS $$
+  SELECT extensions.pgp_sym_decrypt(decode(p_criptografado, 'base64'), p_chave);
 $$;
 
 REVOKE ALL ON FUNCTION public.criptografar_dado_sensivel(text, text) FROM public, anon;
