@@ -724,7 +724,6 @@ export default function LoginUnificado() {
                 <AntiBotVerification
                   onVerified={() => setHumanVerified(true)}
                   verified={humanVerified}
-                  disabled={loading || !identificador.trim() || !humanVerified}
                 />
 
                 <button
