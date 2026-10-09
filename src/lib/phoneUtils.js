@@ -19,6 +19,16 @@
  * Exemplo: 8494229126 -> 558494229126
  * Exemplo: 558494229126 -> 558494229126
  */
+export function formatarNumeroWhatsApp(telefone) {
+  if (!telefone) return "";
+  let digits = String(telefone).replace(/\D/g, "");
+  if (!digits) return "";
+  if (!digits.startsWith("55")) {
+    digits = `55${digits}`;
+  }
+  return digits;
+}
+
 export function formatarTelefoneEnvio(telefone) {
   if (!telefone) return "";
   let digits = String(telefone).replace(/\D/g, "");

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { formatarTelefoneEnvio } from '@/lib/phoneUtils';
+import { formatarTelefoneEnvio, formatarNumeroWhatsApp } from '@/lib/phoneUtils';
+import { DEFAULT_RMCHAT_WEBHOOK_URL, DEFAULT_RMCHAT_TOKEN } from '@/lib/constants';
 
 // Força a Vercel a não fazer cache desta rota (Obrigatório para Cron Jobs no App Router)
 export const dynamic = 'force-dynamic';
@@ -75,12 +76,21 @@ export async function GET(request) {
       const configCampos = emp.config_campos || {};
       const configWebhooks = configCampos.config_webhooks || configChaves.config_webhooks || {};
 
+      const webhookToken =
+        configWebhooks.webhook_token ||
+        configChaves.rmchat_token ||
+        configChaves.webhook_token ||
+        process.env.RMCHAT_API_TOKEN ||
+        DEFAULT_RMCHAT_TOKEN;
+
       const urlWhatsApp =
+        configWebhooks.webhook_outbound_url ||
         emp.rmchat_webhook_url ||
         configChaves.rmchat_webhook_url ||
         configChaves.url_rmchat ||
         configCampos.rmchat_webhook_url ||
-        null;
+        process.env.RMCHAT_WEBHOOK_URL ||
+        DEFAULT_RMCHAT_WEBHOOK_URL;
 
       const urlWebhookFluxo =
         configWebhooks.webhook_url ||
@@ -94,6 +104,7 @@ export async function GET(request) {
         urlWhatsApp: typeof urlWhatsApp === 'string' ? urlWhatsApp.trim() : null,
         urlWebhookFluxo: typeof urlWebhookFluxo === 'string' ? urlWebhookFluxo.trim() : null,
         webhookSecret: configWebhooks.webhook_secret || null,
+        webhookToken: typeof webhookToken === 'string' ? webhookToken.trim() : null,
         respostasMapping: configWebhooks.respostas_mapping || null,
         automacaoPresenca: configCampos.automacoes_presenca || configChaves.automacoes_presenca || null
       });
@@ -215,18 +226,19 @@ export async function GET(request) {
             };
           } else {
             headers['x-rmcare-event'] = 'whatsapp_msg';
-            let textoEnvio = msg.mensagem || '';
-            if (msg.anexo_url && !textoEnvio.includes(msg.anexo_url)) {
-              textoEnvio += `\n\n📎 Documento/Anexo: ${msg.anexo_url}`;
+            if (dadosEmpresa?.webhookToken) {
+              headers['Authorization'] = `Bearer ${dadosEmpresa.webhookToken}`;
             }
 
+            const mediaUrlFinal = msg.anexo_url || null;
+            const numeroFormatado = formatarNumeroWhatsApp(numeroLimpo || msg.telefone_whatsapp);
+
             payload = {
-              name: msg.nome_paciente || 'Paciente',
-              number: numeroLimpo,
-              phone: numeroLimpo,
-              texto: textoEnvio,
-              mensagem: textoEnvio,
-              media_url: msg.anexo_url || null
+              body: msg.mensagem || '',
+              nome: msg.nome_paciente || 'Paciente',
+              number: numeroFormatado,
+              mediaUrl: mediaUrlFinal,
+              externalKey: String(msg.id || msg.agendamento_id || Date.now())
             };
           }
 

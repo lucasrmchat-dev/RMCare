@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
-import { formatarTelefoneEnvio } from "@/lib/phoneUtils";
+import { formatarTelefoneEnvio, formatarNumeroWhatsApp } from "@/lib/phoneUtils";
+import { DEFAULT_RMCHAT_WEBHOOK_URL, DEFAULT_RMCHAT_TOKEN } from "@/lib/constants";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -129,17 +130,27 @@ export async function dispararGatilhoServidor({
       valor: ag.valor_total ? `R$ ${Number(ag.valor_total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : ""
     };
 
-    // Resolução de URL de Webhook / WhatsApp
+    // Resolução de URL de Webhook / WhatsApp e Token Bearer
     const configWebhooks = emp.config_campos?.config_webhooks || emp.config_chaves?.config_webhooks || {};
 
+    const tokenEnvio =
+      configWebhooks.webhook_token ||
+      emp.config_chaves?.rmchat_token ||
+      emp.config_chaves?.webhook_token ||
+      process.env.RMCHAT_API_TOKEN ||
+      DEFAULT_RMCHAT_TOKEN;
+
     const urlWebhookPadrao =
+      configWebhooks.webhook_outbound_url ||
       emp.rmchat_webhook_url ||
       emp.config_chaves?.rmchat_webhook_url ||
       emp.config_chaves?.url_rmchat ||
       emp.config_chaves?.webhook_url ||
       emp.config_campos?.rmchat_webhook_url ||
       emp.config_campos?.url_rmchat ||
-      emp.config_campos?.whatsapp_webhook_url;
+      emp.config_campos?.whatsapp_webhook_url ||
+      process.env.RMCHAT_WEBHOOK_URL ||
+      DEFAULT_RMCHAT_WEBHOOK_URL;
 
     const urlWebhookFluxoInteligente =
       configWebhooks.webhook_url ||
@@ -243,14 +254,14 @@ export async function dispararGatilhoServidor({
               webhook_retorno_url: `${process.env.NEXT_PUBLIC_APP_URL || "https://rmagenda.com.br"}/api/webhook-resposta`
             };
           } else {
+            const mediaUrlFinal = regra.anexo_url || regra.mediaUrl || null;
+            const numeroFormatado = formatarNumeroWhatsApp(telFormatadoEnvio || tel);
             payload = {
-              name: nomeCompleto,
-              number: telFormatadoEnvio,
-              phone: telFormatadoEnvio,
-              texto: msgFormatada,
-              mensagem: msgFormatada,
-              text: msgFormatada,
-              media_url: regra.anexo_url || null
+              body: msgFormatada,
+              nome: nomeCompleto,
+              number: numeroFormatado,
+              mediaUrl: mediaUrlFinal,
+              externalKey: String(agendamentoId || Date.now())
             };
           }
 
@@ -258,6 +269,10 @@ export async function dispararGatilhoServidor({
             "Content-Type": "application/json",
             "x-rmcare-event": isWebhookTipo ? "fluxo_inteligente" : "whatsapp_msg"
           };
+
+          if (tokenEnvio && String(tokenEnvio).trim()) {
+            headers["Authorization"] = `Bearer ${String(tokenEnvio).trim()}`;
+          }
 
           if (configWebhooks.webhook_secret) {
             headers["x-webhook-secret"] = configWebhooks.webhook_secret;

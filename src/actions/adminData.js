@@ -3,7 +3,8 @@
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { verifyAdminSession } from "@/lib/session";
-import { formatarTelefoneEnvio } from "@/lib/phoneUtils";
+import { formatarTelefoneEnvio, formatarNumeroWhatsApp } from "@/lib/phoneUtils";
+import { DEFAULT_RMCHAT_WEBHOOK_URL, DEFAULT_RMCHAT_TOKEN } from "@/lib/constants";
 
 // Trava de segurança: avisa imediatamente se as variáveis estiverem faltando
 if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -2137,11 +2138,21 @@ export async function actionDispararMensagemManualAdmin(id) {
   const configWebhooks = emp?.config_campos?.config_webhooks || emp?.config_chaves?.config_webhooks || {};
   const isWebhook = msg.tipo_envio === "webhook";
 
+  const tokenEnvio =
+    configWebhooks.webhook_token ||
+    emp?.config_chaves?.rmchat_token ||
+    emp?.config_chaves?.webhook_token ||
+    process.env.RMCHAT_API_TOKEN ||
+    DEFAULT_RMCHAT_TOKEN;
+
   const urlWebhookPadrao =
+    configWebhooks.webhook_outbound_url ||
     emp?.rmchat_webhook_url ||
     emp?.config_chaves?.rmchat_webhook_url ||
     emp?.config_chaves?.url_rmchat ||
-    emp?.config_campos?.rmchat_webhook_url;
+    emp?.config_campos?.rmchat_webhook_url ||
+    process.env.RMCHAT_WEBHOOK_URL ||
+    DEFAULT_RMCHAT_WEBHOOK_URL;
 
   const urlDestino = (msg.url_webhook_customizada || (isWebhook ? configWebhooks.webhook_url : urlWebhookPadrao) || urlWebhookPadrao)?.trim();
 

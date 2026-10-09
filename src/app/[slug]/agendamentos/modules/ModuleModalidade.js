@@ -23,9 +23,7 @@ export default function ModuleModalidade() {
     : [
         { id: "1", nome: "Unimed", codigo_medicalsys: "10" },
         { id: "2", nome: "GEAP", codigo_medicalsys: "12" },
-        { id: "3", nome: "Bradesco Saúde", codigo_medicalsys: "14" },
-        { id: "4", nome: "CASSI", codigo_medicalsys: "31" },
-        { id: "5", nome: "SulAmérica", codigo_medicalsys: "15" }
+        { id: "3", nome: "FUNASA", codigo_medicalsys: "14" },
       ];
 
   const handleSelect = (mod) => {
