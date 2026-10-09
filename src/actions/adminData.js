@@ -143,7 +143,9 @@ export async function fetchAdminBloqueios() {
     .from("bloqueios_horarios")
     .select("*")
     .eq("empresa_id", admin.empresa_id)
-    .order("horario", { ascending: true });
+    .order("data", { ascending: true })
+    .order("horario", { ascending: true })
+    .range(0, 9999);
 
   if (error) throw error;
 
@@ -155,26 +157,13 @@ export async function fetchAdminBloqueios() {
 
   (data || []).forEach((b) => {
     if (b.status === "importado" || b.medicalsys_id || b.raw_payload_completo) {
+      // Mantém estritamente o horário e a data normalizados e gravados na coluna oficial
       let horarioLimpo = b.horario ? b.horario.substring(0, 5) : "08:00";
       let dataLimpa = b.data ? String(b.data).split("T")[0] : b.data;
 
       const rawP = b.raw_payload_completo;
-      if (rawP && typeof rawP === "object") {
-        const rawMomento = String(rawP.momento || rawP.data || "").trim();
-        if (rawMomento.includes("T")) {
-          dataLimpa = rawMomento.split("T")[0];
-          const timePart = rawMomento.split("T")[1];
-          const m = timePart.match(/(\d{1,2})[:hH](\d{2})/);
-          if (m) horarioLimpo = `${m[1].padStart(2, "0")}:${m[2].padStart(2, "0")}`;
-        } else if (rawMomento.includes(" ")) {
-          dataLimpa = rawMomento.split(" ")[0];
-          const timePart = rawMomento.split(" ")[1];
-          const m = timePart.match(/(\d{1,2})[:hH](\d{2})/);
-          if (m) horarioLimpo = `${m[1].padStart(2, "0")}:${m[2].padStart(2, "0")}`;
-        } else if (rawMomento) {
-          dataLimpa = rawMomento.slice(0, 10);
-        }
-
+      // Fallback seguro APENAS se b.horario estiver ausente no banco
+      if (!b.horario && rawP && typeof rawP === "object") {
         const candHora = rawP.horario_inicio || rawP.hora_inicio || rawP.hora || rawP.horario;
         if (candHora) {
           const m = String(candHora).match(/(\d{1,2})[:hH](\d{2})/);
@@ -219,7 +208,9 @@ export async function fetchAdminAgendamentos() {
     .from("agendamentos")
     .select(`*, pacientes (*)`)
     .eq("empresa_id", admin.empresa_id)
-    .order("horario_agendamento", { ascending: true });
+    .order("data_agendamento", { ascending: true })
+    .order("horario_agendamento", { ascending: true })
+    .range(0, 9999);
 
   if (error) throw error;
   return data || [];

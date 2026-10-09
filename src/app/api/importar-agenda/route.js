@@ -499,11 +499,15 @@ export async function POST(request) {
       const clinList = resClin.data?.results || resClin.data || [];
       if (Array.isArray(clinList) && clinList.length > 0) {
         console.log(`[Importação Medicalsys] Clínicas autorizadas encontradas:`, clinList.map((c) => ({ id: c.id, nome: c.nome_clinica })));
-        if (configChaves.medicalsys_id_clinica && configChaves.medicalsys_id_clinica !== "9") {
+        if (configChaves.medicalsys_id_clinica) {
           const matchConf = clinList.find((c) => String(c.id) === String(configChaves.medicalsys_id_clinica));
-          if (matchConf) clinicaRealId = matchConf.id;
+          if (matchConf) {
+            clinicaRealId = matchConf.id;
+          } else {
+            clinicaRealId = configChaves.medicalsys_id_clinica;
+          }
         }
-        if (!clinicaRealId) {
+        if (!clinicaRealId && clinList.length > 0) {
           clinicaRealId = clinList[0].id;
         }
       }
@@ -521,12 +525,12 @@ export async function POST(request) {
 
     const tentarBuscaAgenda = async (comClinicaId = null) => {
       const paramClin = comClinicaId ? `&clinica=${comClinicaId}` : "";
-      let urlAtual = `https://gateway.medicalsys.com.br:9000/integracoes/agenda/?momento_inicio=${dataInicio}&momento_final=${dataFimDeAno}${paramClin}`;
+      let urlAtual = `https://gateway.medicalsys.com.br:9000/integracoes/agenda/?momento_inicio=${dataInicio}&momento_final=${dataFimDeAno}${paramClin}&page_size=100`;
       let ags = [];
       let limiteDePaginas = 0;
 
       console.log(`[Importação Medicalsys] Tentando URL: ${urlAtual}...`);
-      while (urlAtual && limiteDePaginas < 50) {
+      while (urlAtual && limiteDePaginas < 150) {
         limiteDePaginas++;
         const response = await axios.get(urlAtual, {
           httpsAgent: proxyAgent,
@@ -553,20 +557,23 @@ export async function POST(request) {
       return ags;
     };
 
-    // Busca ampla: primeiro busca geral da clínica e depois busca global sem filtro de clínica
-    let agsGlobais = [];
-    try {
-      agsGlobais = await tentarBuscaAgenda(null);
-    } catch (eGlob) {
-      console.warn("[Importação Medicalsys] Busca global falhou:", eGlob.message);
-    }
-
+    // Prioriza busca direta da clínica configurada para evitar estouro de paginação
     let agsClinica = [];
     if (clinicaRealId && String(clinicaRealId) !== "null") {
       try {
         agsClinica = await tentarBuscaAgenda(clinicaRealId);
+        console.log(`[Importação Medicalsys] ${agsClinica.length} agendamentos retornados para clinica ${clinicaRealId}.`);
       } catch (eClinId) {
         console.warn("[Importação Medicalsys] Busca por clinicaId falhou:", eClinId.message);
+      }
+    }
+
+    let agsGlobais = [];
+    if (agsClinica.length === 0) {
+      try {
+        agsGlobais = await tentarBuscaAgenda(null);
+      } catch (eGlob) {
+        console.warn("[Importação Medicalsys] Busca global falhou:", eGlob.message);
       }
     }
 
