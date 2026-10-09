@@ -551,20 +551,28 @@ function AgendamentoOrquestrador() {
       if (!draftKey || loadingConfig || !empresaDados || context.isSmartLink) return;
       const step = modulosAtivos[currentStepIndex];
       if (step === "concluido") {
-        localStorage.removeItem(draftKey);
+        if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(draftKey);
+        if (typeof localStorage !== "undefined") localStorage.removeItem(draftKey);
         return;
       }
       const timeout = setTimeout(() => {
-        localStorage.setItem(
-          draftKey,
-          JSON.stringify({
-            version: 1,
-            savedAt: Date.now(),
-            step,
-            formData,
-            respostasTriagem
-          })
-        );
+        // LGPD: Armazenamento exclusivo em sessionStorage efêmero para proteger dados do paciente
+        if (typeof sessionStorage !== "undefined") {
+          sessionStorage.setItem(
+            draftKey,
+            JSON.stringify({
+              version: 1,
+              savedAt: Date.now(),
+              step,
+              formData,
+              respostasTriagem
+            })
+          );
+        }
+        // Purga chave antiga de localStorage se existir
+        if (typeof localStorage !== "undefined") {
+          localStorage.removeItem(draftKey);
+        }
       }, 250);
       return () => clearTimeout(timeout);
     }, [draftKey, loadingConfig, empresaDados, currentStepIndex, modulosAtivos, formData, respostasTriagem, context.isSmartLink]);
@@ -1529,6 +1537,10 @@ function AgendamentoOrquestrador() {
 
       if (typeof window !== "undefined") {
         if (slug) {
+          if (typeof sessionStorage !== "undefined") {
+            sessionStorage.removeItem(`rmagenda_jornada:${slug}`);
+            sessionStorage.removeItem(`rmcare_jornada:${slug}`);
+          }
           localStorage.removeItem(`rmagenda_jornada:${slug}`);
           localStorage.removeItem(`rmcare_jornada:${slug}`);
         }

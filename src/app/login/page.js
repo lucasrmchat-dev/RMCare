@@ -32,6 +32,7 @@ import {
   getSessionAdminInfo
 } from "@/actions/auth";
 import { playDopamineSound, triggerConfetti, triggerHaptic } from "@/lib/dopamine";
+import AntiBotVerification from "@/components/ui/AntiBotVerification";
 
 const CAROUSEL_INTERVAL_MS = 3000;
 
@@ -141,6 +142,7 @@ export default function LoginUnificado() {
   const [isDefiningPassword, setIsDefiningPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState({ type: "", text: "" });
+  const [humanVerified, setHumanVerified] = useState(false);
 
   // Estados para Redefinição no Primeiro Acesso
   const [resetUser, setResetUser] = useState("");
@@ -249,6 +251,10 @@ export default function LoginUnificado() {
 
   const handleIdentify = async (e) => {
     e.preventDefault();
+    if (!humanVerified) {
+      showMsg("error", "Por favor, complete a confirmação de segurança antes de continuar.");
+      return;
+    }
     setLoading(true);
     playDopamineSound("click");
     triggerHaptic("light");
@@ -715,8 +721,14 @@ export default function LoginUnificado() {
                   />
                 </div>
 
+                <AntiBotVerification
+                  onVerified={() => setHumanVerified(true)}
+                  verified={humanVerified}
+                  disabled={loading || !identificador.trim() || !humanVerified}
+                />
+
                 <button
-                  disabled={loading || !identificador.trim()}
+                  disabled={loading || !identificador.trim() || !humanVerified}
                   type="submit"
                   className="w-full h-10 bg-zinc-900 hover:bg-black text-white text-xs font-medium rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.99]"
                 >

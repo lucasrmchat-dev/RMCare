@@ -1,0 +1,30 @@
+# Checklist de Refatoração, Segurança e UI/UX - RMCare
+
+- [ ] Fase 1: Auditoria e Descoberta de Vulnerabilidades
+  - [ ] Mapear todas as 16 tabelas e políticas de RLS / Storage
+  - [ ] Verificar histórico Git em busca de segredos vazados
+  - [ ] Auditar senhas, criptografia e dados sensíveis (LGPD)
+  - [ ] Auditar middleware, rotas administrativas e API endpoints
+- [ ] Fase 2: Infraestrutura, Segurança e Banco de Dados (Supabase & Backend)
+  - [ ] Criar migração SQL definitiva com RLS estrito nas 16 tabelas + Storage + pgcrypto
+  - [ ] Implementar hashing seguro de senhas (bcrypt / WebCrypto PBKDF2) nas Server Actions
+  - [ ] Implementar middleware oficial (`src/middleware.js`) com proteção de rotas privadas e rate limiting
+  - [ ] Configurar Security Headers (CSP, HSTS, X-Frame-Options, CORS) no `next.config.mjs` e middleware
+  - [ ] Atualizar `.gitignore` e blindar variáveis de ambiente contra vazamento
+- [ ] Fase 3: Segurança de Sessão e Higienização de Storage no Frontend
+  - [ ] Migrar dados sensíveis e autenticação para cookies HTTP-only
+  - [ ] Remover CPFs e e-mails de `localStorage` nos rascunhos de agendamento
+  - [ ] Implementar script de limpeza automática de `sessionStorage` ao fechar a aba
+- [ ] Fase 4: UI/UX e Componentes Visuais (Padrão Apple & Vercel)
+  - [ ] Refinar paletas e remover gradientes agressivos / elementos amadores
+  - [ ] Adicionar Skeleton Loaders progressivos nas telas de carregamento
+  - [ ] Ajustar transições do Framer Motion com curvas físicas (spring) e suporte a reduced-motion
+- [ ] Fase 5: Qualidade de Código, CI/CD e Git
+  - [ ] Criar templates de GitHub Issues e Pull Request
+  - [ ] Configurar pipeline de CI no GitHub Actions (`.github/workflows/ci.yml`)
+  - [ ] Configurar Biome / pre-commit scripts para validação estática
+- [ ] Fase 6: Validação Prática, Rotina de Testes e Entrega
+  - [ ] Criar e executar rotina de teste simulando acesso em aba anônima (bloqueio 401/307)
+  - [ ] Validar cabeçalhos de segurança e CORS
+  - [ ] Gerar script SQL final pronto para o Supabase (zero data loss)
+  - [ ] Documentar conformidade LGPD e garantia de integridade da lógica de negócios

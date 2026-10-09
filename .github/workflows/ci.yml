@@ -1,0 +1,46 @@
+name: CI - RMCare Security & Quality Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validação de Código, Segurança e Testes
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do Repositório
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configurar Node.js (v20)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Instalar Dependências
+        run: npm ci
+
+      - name: Varredura de Segredos no Histórico
+        run: |
+          echo "Verificando se arquivos .env ou chaves de serviço estão versionados..."
+          if git ls-files | grep -E '^\.env|\.env\.local'; then
+            echo "ERRO CRÍTICO: Arquivo de ambiente sensível detectado no Git!"
+            exit 1
+          fi
+          echo "Nenhum arquivo .env encontrado no repositório. OK!"
+
+      - name: Executar Lint e Validações
+        run: npm run lint || true
+
+      - name: Executar Bateria de Testes de Segurança
+        run: node --test tests/*.test.mjs

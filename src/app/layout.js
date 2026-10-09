@@ -59,6 +59,30 @@ export default function RootLayout({ children }) {
                   document.documentElement.style.setProperty('--brand-secondary', brandSec);
                 }
               } catch (e) {}
+
+              // LGPD: Limpeza automática de SessionStorage e rascunhos voláteis ao fechar a aba
+              if (typeof window !== "undefined") {
+                window.addEventListener("beforeunload", function() {
+                  try {
+                    if (typeof sessionStorage !== "undefined") sessionStorage.clear();
+                    if (typeof localStorage !== "undefined") {
+                      var keysToRemove = [];
+                      for (var i = 0; i < localStorage.length; i++) {
+                        var k = localStorage.key(i);
+                        if (k && (k.indexOf("rmagenda_jornada") === 0 || k.indexOf("rmcare_jornada") === 0)) {
+                          keysToRemove.push(k);
+                        }
+                      }
+                      keysToRemove.forEach(function(k) { localStorage.removeItem(k); });
+                    }
+                  } catch (err) {}
+                });
+                window.addEventListener("pagehide", function() {
+                  try {
+                    if (typeof sessionStorage !== "undefined") sessionStorage.clear();
+                  } catch (err) {}
+                });
+              }
             `
           }}
         />
