@@ -1,5 +1,5 @@
 -- ==============================================================================
--- BLINDAGEM DEFINITIVA DE SEGURANÇA, ISOLAMENTO MULTI-TENANT, RLS E STORAGE (LGPD)
+-- BLINDAGEM DEFINITIVA DE SEGURANÇA, ISOLAMENTO MULTI-TENANT E RLS (LGPD)
 -- Sistema DRM Care / RMAgenda - Clinical OS v3.1.0
 --
 -- Conformidade:
@@ -13,98 +13,43 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 
 -- ==============================================================================
--- 2. ATIVAÇÃO DE ROW LEVEL SECURITY (RLS) EM 100% DAS 16 TABELAS DO ECOSSISTEMA
+-- 2. ATIVAÇÃO DE ROW LEVEL SECURITY (RLS) E ACESSO TOTAL AO BACKEND (SERVICE_ROLE)
+-- As Server Actions utilizam a service_role_key, garantindo zero perda de dados.
 -- ==============================================================================
 
-ALTER TABLE IF EXISTS public.empresas ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.administradores ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.pacientes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.pacientes_credenciais ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.agendamentos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.bloqueios_horarios ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.servicos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.regras_agenda ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.convenios ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.modalidades_atendimento ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.categorias_atendimento ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.perguntas_triagem ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.opcoes_triagem ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.regras_mensagens ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.fila_mensagens ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.auditoria_sistema ENABLE ROW LEVEL SECURITY;
+DO $$
+DECLARE
+  tab text;
+  tabelas text[] := ARRAY[
+    'empresas', 'administradores', 'pacientes', 'pacientes_credenciais',
+    'agendamentos', 'bloqueios_horarios', 'servicos', 'regras_agenda',
+    'convenios', 'modalidades_atendimento', 'categorias_atendimento',
+    'perguntas_triagem', 'opcoes_triagem', 'regras_mensagens',
+    'fila_mensagens', 'auditoria_sistema'
+  ];
+BEGIN
+  FOREACH tab IN ARRAY tabelas LOOP
+    -- Ativa RLS na tabela
+    EXECUTE format('ALTER TABLE IF EXISTS public.%I ENABLE ROW LEVEL SECURITY;', tab);
+    -- Cria/substitui política irrestrita para o backend
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I;', 'service_role_all_' || tab, tab);
+    EXECUTE format('CREATE POLICY %I ON public.%I FOR ALL TO service_role USING (true) WITH CHECK (true);', 'service_role_all_' || tab, tab);
+  END LOOP;
+END $$;
 
 -- Compatibilidade com tabela legada de logs caso ainda exista no schema
 DO $$
 BEGIN
   IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'logs_auditoria') THEN
     ALTER TABLE public.logs_auditoria ENABLE ROW LEVEL SECURITY;
+    DROP POLICY IF EXISTS "service_role_all_logs" ON public.logs_auditoria;
+    CREATE POLICY "service_role_all_logs" ON public.logs_auditoria FOR ALL TO service_role USING (true) WITH CHECK (true);
+    REVOKE ALL ON TABLE public.logs_auditoria FROM anon, authenticated;
   END IF;
 END $$;
 
 -- ==============================================================================
--- 3. GARANTIA DE OPERAÇÃO TOTAL DO BACKEND (SERVICE_ROLE) - ZERO DATA LOSS
--- As Server Actions do Next.js utilizam a service_role_key, garantindo que
--- nenhum dado deixe de ser acessado pelas rotas legítimas do sistema.
--- ==============================================================================
-
-DROP POLICY IF EXISTS "service_role_all_empresas" ON public.empresas;
-CREATE POLICY "service_role_all_empresas" ON public.empresas FOR ALL TO service_role USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "service_role_all_administradores" ON public.administradores;
-CREATE POLICY "service_role_all_administradores" ON public.administradores FOR ALL TO service_role USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "service_role_all_pacientes" ON public.pacientes;
-CREATE POLICY "service_role_all_pacientes" ON public.pacientes FOR ALL TO service_role USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "service_role_all_credenciais" ON public.pacientes_credenciais;
-CREATE POLICY "service_role_all_credenciais" ON public.pacientes_credenciais FOR ALL TO service_role USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "service_role_all_agendamentos" ON public.agendamentos;
-CREATE POLICY "service_role_all_agendamentos" ON public.agendamentos FOR ALL TO service_role USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "service_role_all_bloqueios" ON public.bloqueios_horarios;
-CREATE POLICY "service_role_all_bloqueios" ON public.bloqueios_horarios FOR ALL TO service_role USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "service_role_all_servicos" ON public.servicos;
-CREATE POLICY "service_role_all_servicos" ON public.servicos FOR ALL TO service_role USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "service_role_all_regras_agenda" ON public.regras_agenda;
-CREATE POLICY "service_role_all_regras_agenda" ON public.regras_agenda FOR ALL TO service_role USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "service_role_all_convenios" ON public.convenios;
-CREATE POLICY "service_role_all_convenios" ON public.convenios FOR ALL TO service_role USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "service_role_all_modalidades" ON public.modalidades_atendimento;
-CREATE POLICY "service_role_all_modalidades" ON public.modalidades_atendimento FOR ALL TO service_role USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "service_role_all_categorias" ON public.categorias_atendimento;
-CREATE POLICY "service_role_all_categorias" ON public.categorias_atendimento FOR ALL TO service_role USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "service_role_all_perguntas" ON public.perguntas_triagem;
-CREATE POLICY "service_role_all_perguntas" ON public.perguntas_triagem FOR ALL TO service_role USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "service_role_all_opcoes" ON public.opcoes_triagem;
-CREATE POLICY "service_role_all_opcoes" ON public.opcoes_triagem FOR ALL TO service_role USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "service_role_all_regras_mensagens" ON public.regras_mensagens;
-CREATE POLICY "service_role_all_regras_mensagens" ON public.regras_mensagens FOR ALL TO service_role USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "service_role_all_fila_mensagens" ON public.fila_mensagens;
-CREATE POLICY "service_role_all_fila_mensagens" ON public.fila_mensagens FOR ALL TO service_role USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "service_role_all_auditoria" ON public.auditoria_sistema;
-CREATE POLICY "service_role_all_auditoria" ON public.auditoria_sistema FOR ALL TO service_role USING (true) WITH CHECK (true);
-
-DO $$
-BEGIN
-  IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'logs_auditoria') THEN
-    EXECUTE 'DROP POLICY IF EXISTS "service_role_all_logs" ON public.logs_auditoria;';
-    EXECUTE 'CREATE POLICY "service_role_all_logs" ON public.logs_auditoria FOR ALL TO service_role USING (true) WITH CHECK (true);';
-  END IF;
-END $$;
-
--- ==============================================================================
--- 4. BLINDAGEM DA CHAVE PÚBLICA (ANON): PREVENÇÃO DE VAZAMENTO DE DADOS (LGPD)
+-- 3. BLINDAGEM DA CHAVE PÚBLICA (ANON): PREVENÇÃO DE VAZAMENTO DE DADOS (LGPD)
 -- ==============================================================================
 
 -- A. Empresas: Bloqueia leitura da coluna sensível config_chaves (chaves ERP, apikeys e segredos)
@@ -122,7 +67,7 @@ CREATE POLICY "public_insert_pacientes" ON public.pacientes FOR INSERT TO anon W
 REVOKE SELECT ON TABLE public.pacientes FROM anon;
 GRANT INSERT ON public.pacientes TO anon;
 
--- C. Agendamentos: Anon só pode consultar slots para verificar ocupação (sem CPF, dados clínicos ou pessoais)
+-- C. Agendamentos: Anon só consulta horários para verificar ocupação (sem CPF, dados clínicos ou pessoais)
 DROP POLICY IF EXISTS "public_insert_agendamentos" ON public.agendamentos;
 CREATE POLICY "public_insert_agendamentos" ON public.agendamentos FOR INSERT TO anon WITH CHECK (true);
 
@@ -148,14 +93,7 @@ REVOKE ALL ON TABLE public.administradores FROM anon, authenticated;
 REVOKE ALL ON TABLE public.pacientes_credenciais FROM anon, authenticated;
 REVOKE ALL ON TABLE public.auditoria_sistema FROM anon, authenticated;
 
-DO $$
-BEGIN
-  IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'logs_auditoria') THEN
-    EXECUTE 'REVOKE ALL ON TABLE public.logs_auditoria FROM anon, authenticated;';
-  END IF;
-END $$;
-
--- F. Serviços, Convênios, Modalidades e Triagem: Leitura pública para agendamento online
+-- F. Serviços, Convênios, Modalidades, Regras e Triagem: Leitura pública para agendamento online
 DROP POLICY IF EXISTS "public_read_servicos" ON public.servicos;
 CREATE POLICY "public_read_servicos" ON public.servicos FOR SELECT TO anon USING (ativo = true);
 
@@ -178,28 +116,7 @@ DROP POLICY IF EXISTS "public_read_opcoes_triagem" ON public.opcoes_triagem;
 CREATE POLICY "public_read_opcoes_triagem" ON public.opcoes_triagem FOR SELECT TO anon USING (true);
 
 -- ==============================================================================
--- 5. BLINDAGEM DO STORAGE (ARMAZENAMENTO DE ARQUIVOS E ANEXOS)
--- ==============================================================================
-
--- Habilita RLS nos objetos e buckets de armazenamento
-ALTER TABLE IF EXISTS storage.objects ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS storage.buckets ENABLE ROW LEVEL SECURITY;
-
--- Service Role tem acesso total a todos os buckets e arquivos
-DROP POLICY IF EXISTS "service_role_storage_objects_all" ON storage.objects;
-CREATE POLICY "service_role_storage_objects_all" ON storage.objects FOR ALL TO service_role USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "service_role_storage_buckets_all" ON storage.buckets;
-CREATE POLICY "service_role_storage_buckets_all" ON storage.buckets FOR ALL TO service_role USING (true) WITH CHECK (true);
-
--- Leitura pública autorizada APENAS para buckets marcados como públicos (logos, avatares)
-DROP POLICY IF EXISTS "public_read_public_storage_objects" ON storage.objects;
-CREATE POLICY "public_read_public_storage_objects" ON storage.objects FOR SELECT TO anon USING (
-  bucket_id IN ('logos', 'publicos', 'avatares', 'documentos-publicos')
-);
-
--- ==============================================================================
--- 6. FUNÇÕES CRIPTOGRÁFICAS SEGURAS DE BANCO DE DADOS (PGCRYPTO)
+-- 4. FUNÇÕES CRIPTOGRÁFICAS SEGURAS DE BANCO DE DADOS (PGCRYPTO)
 -- ==============================================================================
 
 CREATE OR REPLACE FUNCTION public.criptografar_dado_sensivel(p_texto text, p_chave text)
@@ -217,5 +134,5 @@ REVOKE ALL ON FUNCTION public.descriptografar_dado_sensivel(text, text) FROM pub
 GRANT EXECUTE ON FUNCTION public.criptografar_dado_sensivel(text, text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.descriptografar_dado_sensivel(text, text) TO service_role;
 
--- Confirmação final de sucesso
-SELECT 'Blindagem RLS, Criptografia, Storage e Isolamento Multi-tenant aplicados com sucesso! Zero perda de dados.' AS status;
+-- Confirmação de execução bem-sucedida
+SELECT 'Blindagem RLS, Criptografia e Isolamento Multi-tenant aplicados com sucesso! Zero perda de dados.' AS status;
