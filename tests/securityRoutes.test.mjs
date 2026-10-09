@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 process.env.ADMIN_SESSION_SECRET = "super-secret-key-with-high-entropy-rmcare-32-chars-long";
 
-const { middleware } = await import("../src/middleware.js");
+const { proxy } = await import("../src/proxy.js");
 const { createAdminSession } = await import("../src/lib/session.js");
 const { hashPassword, verifyPassword, encryptSensitiveData, decryptSensitiveData } = await import("../src/lib/security.js");
 
@@ -34,7 +34,7 @@ function createMockRequest(urlPath, options = {}) {
 test("1. BLOQUEIO DE USUÁRIO ANÔNIMO EM ROTA PRIVADA (/admin)", async () => {
   // Simula acesso direto de usuário sem sessão (aba anônima) à rota administrativa
   const reqAnon = createMockRequest("/admin/empresa");
-  const resAnon = await middleware(reqAnon);
+  const resAnon = await proxy(reqAnon);
 
   // Deve redirecionar para /login com status 307
   assert.equal(resAnon.status, 307, "Acesso anônimo deve receber redirecionamento 307");
@@ -45,7 +45,7 @@ test("1. BLOQUEIO DE USUÁRIO ANÔNIMO EM ROTA PRIVADA (/admin)", async () => {
 
 test("2. BLOQUEIO DE USUÁRIO ANÔNIMO EM ENDPOINT PRIVADO (/api/admin)", async () => {
   const reqApi = createMockRequest("/api/admin/metricas");
-  const resApi = await middleware(reqApi);
+  const resApi = await proxy(reqApi);
 
   assert.equal(resApi.status, 401, "Acesso anônimo em API privada deve receber 401 Unauthorized");
   const body = await resApi.json();
@@ -56,7 +56,7 @@ test("3. REJEIÇÃO DE TOKEN ADULTERADO OU INVÁLIDO", async () => {
   const reqTampered = createMockRequest("/admin/empresa", {
     cookies: { rmagenda_auth: "token_forjado_sem_assinatura_valida" },
   });
-  const resTampered = await middleware(reqTampered);
+  const resTampered = await proxy(reqTampered);
 
   assert.equal(resTampered.status, 307, "Token inválido deve ser bloqueado");
   assert.ok(resTampered.headers.get("location").includes("/login"));
@@ -67,7 +67,7 @@ test("4. AUTORIZAÇÃO DE SESSÃO ADMINISTRATIVA AUTÊNTICA E VÁLIDA", async ()
   const reqAuth = createMockRequest("/admin/empresa", {
     cookies: { rmagenda_auth: validToken },
   });
-  const resAuth = await middleware(reqAuth);
+  const resAuth = await proxy(reqAuth);
 
   // Deve permitir o acesso com status 200 (NextResponse.next)
   assert.equal(resAuth.status, 200, "Usuário autenticado deve ter passagem autorizada");
@@ -75,7 +75,7 @@ test("4. AUTORIZAÇÃO DE SESSÃO ADMINISTRATIVA AUTÊNTICA E VÁLIDA", async ()
 
 test("5. CONFERÊNCIA RIGOROSA DE CABEÇALHOS DE SEGURANÇA (SECURITY HEADERS)", async () => {
   const req = createMockRequest("/");
-  const res = await middleware(req);
+  const res = await proxy(req);
 
   assert.equal(res.headers.get("X-Frame-Options"), "SAMEORIGIN", "Deve conter X-Frame-Options SAMEORIGIN");
   assert.equal(res.headers.get("X-Content-Type-Options"), "nosniff", "Deve conter nosniff");
