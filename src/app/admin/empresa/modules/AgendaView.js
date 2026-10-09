@@ -2329,17 +2329,6 @@ export default function AgendaView({
                 <span>{isRefreshing ? "Atualizando..." : "Atualizar"}</span>
               </button>
 
-              {ehAdminEmpresa && (
-                <button
-                  type="button"
-                  onClick={() => setModalConfirmarLimpezaTotal(true)}
-                  className="min-h-[36px] px-3.5 py-1.5 bg-red-50 hover:bg-red-100 dark:bg-red-950/30 dark:hover:bg-red-950/50 text-red-600 dark:text-red-400 font-semibold text-xs rounded-2xl flex items-center gap-1.5 transition-all shadow-2xs border border-red-200/80 dark:border-red-900/40 cursor-pointer"
-                  title="Excluir todos os agendamentos da clínica para sincronizar do zero"
-                >
-                  <Trash2 size={13} />
-                  <span className="hidden sm:inline">Excluir Todos os Agendamentos</span>
-                </button>
-              )}
 
               <button
                 type="button"
