@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import axios from "axios";
 import { cookies } from "next/headers";
-import { verifyAdminSession } from "@/lib/auth";
+import { verifyAdminSession } from "@/lib/session";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -138,8 +138,8 @@ function extrairProcedimentoEEspecialidade(item, mapaProcedimentosPorId = new Ma
 }
 
 // EXTRAÇÃO RIGOROSA E EXATA DE DATA E HORA DO MEDICALSYS (SWAGGER SPEC / GATEWAY)
-// Preserva 100% de fidelidade: o que vier em momento e horario_inicio é mantido sem nenhum deslocamento
-function extrairDataEHoraMedicalsys(item) {
+// Preserva 100% de fidelidade: converte fusos UTC para horário local de Brasília e aplica offsets da clínica
+function extrairDataEHoraMedicalsys(item, offsetHoras = 0) {
   // 1. Prioridade absoluta para campos explícitos de hora (ex: horario_inicio: "08:00:00")
   const candidatosHora = [
     item?.horario_inicio,
@@ -181,36 +181,75 @@ function extrairDataEHoraMedicalsys(item) {
     }
   }
 
-  // 2. Extração de Data (Swagger: momento = "YYYY-MM-DD")
+  // 2. Extração de Data e Hora de momento / data / data_agendamento
   const rawMomento = String(item?.momento || item?.data || item?.data_agendamento || "").trim();
   let dataFormatada = null;
 
   if (rawMomento) {
-    if (rawMomento.includes("/")) {
-      const [dia, mes, ano] = rawMomento.split(" ")[0].split("/");
-      if (ano && mes && dia) {
-        dataFormatada = `${ano}-${mes.padStart(2, "0")}-${dia.padStart(2, "0")}`;
-      }
-    } else if (rawMomento.includes("T")) {
-      dataFormatada = rawMomento.split("T")[0];
-      if (!horaEncontrada) {
-        const possivelHora = rawMomento.split("T")[1];
-        const m = possivelHora.match(/(\d{1,2})[:hH](\d{2})/);
-        if (m) horaEncontrada = `${m[1].padStart(2, "0")}:${m[2].padStart(2, "0")}`;
-      }
-    } else if (rawMomento.includes(" ")) {
-      dataFormatada = rawMomento.split(" ")[0];
-      if (!horaEncontrada) {
-        const possivelHora = rawMomento.split(" ")[1];
-        const m = possivelHora.match(/(\d{1,2})[:hH](\d{2})/);
-        if (m) horaEncontrada = `${m[1].padStart(2, "0")}:${m[2].padStart(2, "0")}`;
+    const temIndicadorFuso = /[zZ]|([+-]\d{2}:?\d{2})$/.test(rawMomento);
+
+    // Se o momento contiver indicador de fuso UTC (ex: "2026-10-09T11:00:00Z"),
+    // converte respeitando o fuso horário brasileiro oficial (America/Sao_Paulo)
+    if (temIndicadorFuso && !isNaN(Date.parse(rawMomento))) {
+      const d = new Date(rawMomento);
+      try {
+        const parts = new Intl.DateTimeFormat("en-US", {
+          timeZone: "America/Sao_Paulo",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false
+        }).formatToParts(d);
+
+        const mapParts = {};
+        parts.forEach((p) => { mapParts[p.type] = p.value; });
+        dataFormatada = `${mapParts.year}-${mapParts.month}-${mapParts.day}`;
+
+        if (!horaEncontrada && mapParts.hour && mapParts.minute) {
+          const hh = mapParts.hour === "24" ? "00" : mapParts.hour.padStart(2, "0");
+          horaEncontrada = `${hh}:${mapParts.minute.padStart(2, "0")}`;
+        }
+      } catch (_) {
+        dataFormatada = rawMomento.split("T")[0];
       }
     } else {
-      dataFormatada = rawMomento.slice(0, 10);
+      if (rawMomento.includes("/")) {
+        const [dia, mes, ano] = rawMomento.split(" ")[0].split("/");
+        if (ano && mes && dia) {
+          dataFormatada = `${ano}-${mes.padStart(2, "0")}-${dia.padStart(2, "0")}`;
+        }
+      } else if (rawMomento.includes("T")) {
+        dataFormatada = rawMomento.split("T")[0];
+        if (!horaEncontrada) {
+          const possivelHora = rawMomento.split("T")[1];
+          const m = possivelHora.match(/(\d{1,2})[:hH](\d{2})/);
+          if (m) horaEncontrada = `${m[1].padStart(2, "0")}:${m[2].padStart(2, "0")}`;
+        }
+      } else if (rawMomento.includes(" ")) {
+        dataFormatada = rawMomento.split(" ")[0];
+        if (!horaEncontrada) {
+          const possivelHora = rawMomento.split(" ")[1];
+          const m = possivelHora.match(/(\d{1,2})[:hH](\d{2})/);
+          if (m) horaEncontrada = `${m[1].padStart(2, "0")}:${m[2].padStart(2, "0")}`;
+        }
+      } else {
+        dataFormatada = rawMomento.slice(0, 10);
+      }
     }
   }
 
-  // 3. Horário Fim (Swagger: horario_fim = "HH:MM:SS")
+  // 3. Aplica deslocamento manual se a clínica tiver offsetHoras configurado
+  if (horaEncontrada && offsetHoras !== 0) {
+    const [h, m] = horaEncontrada.split(":").map(Number);
+    const totalMin = (h * 60 + m + offsetHoras * 60 + 1440) % 1440;
+    const finalH = Math.floor(totalMin / 60);
+    const finalM = totalMin % 60;
+    horaEncontrada = `${String(finalH).padStart(2, "0")}:${String(finalM).padStart(2, "0")}`;
+  }
+
+  // 4. Horário Fim (Swagger: horario_fim = "HH:MM:SS")
   let horaFimFormatada = null;
   const candidatosFim = [item?.horario_fim, item?.hora_fim, item?.fim, item?.agenda?.horario_fim];
   for (const cand of candidatosFim) {
@@ -220,7 +259,14 @@ function extrairDataEHoraMedicalsys(item) {
     if (m) {
       const h = parseInt(m[1], 10);
       const min = String(m[2]).padStart(2, "0");
-      horaFimFormatada = `${String(h).padStart(2, "0")}:${min}`;
+      if (offsetHoras !== 0) {
+        const totalMin = (h * 60 + parseInt(min, 10) + offsetHoras * 60 + 1440) % 1440;
+        const finalH = Math.floor(totalMin / 60);
+        const finalM = totalMin % 60;
+        horaFimFormatada = `${String(finalH).padStart(2, "0")}:${String(finalM).padStart(2, "0")}`;
+      } else {
+        horaFimFormatada = `${String(h).padStart(2, "0")}:${min}`;
+      }
       break;
     }
   }
@@ -547,7 +593,7 @@ export async function POST(request) {
     const rascunhosMensagensFila = [];
 
     for (const item of todosAgendamentos) {
-      const { data: dataLimpa, horarioInicio: horaInicioFormatada, horarioFim: horaFimFormatada } = extrairDataEHoraMedicalsys(item);
+      const { data: dataLimpa, horarioInicio: horaInicioFormatada, horarioFim: horaFimFormatada } = extrairDataEHoraMedicalsys(item, offsetHoras);
       if (!dataLimpa) continue;
 
       // Nome do Paciente - Extração profunda e prioritária do cadastro real
@@ -751,7 +797,7 @@ export async function POST(request) {
         for (const ag of agsLocais) {
           const medItem = mapaPorMedicalsysId.get(String(ag.medicalsys_id));
           if (medItem) {
-            const { data: medData, horarioInicio: medHora } = extrairDataEHoraMedicalsys(medItem);
+            const { data: medData, horarioInicio: medHora } = extrairDataEHoraMedicalsys(medItem, offsetHoras);
             const isCanc = medItem.situacao === "canc" || medItem.cancelado === true;
             const newStatus = isCanc ? "cancelado" : ag.status_atendimento;
 

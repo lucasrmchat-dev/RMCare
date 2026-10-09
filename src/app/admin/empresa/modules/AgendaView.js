@@ -829,24 +829,12 @@ export default function AgendaView({
 
         const procEspFinal = subExame || espExibicao || "Consulta";
 
-        // Data e Horário originais extraídos do ERP Medicalsys
+        // Data e Horário oficiais do registro no banco de dados (fidelidade com fuso horário)
         let horarioFormatado = b.horario ? b.horario.substring(0, 5) : "08:00";
         let dataFormatada = b.data ? String(b.data).split("T")[0] : b.data;
 
-        if (rawP && typeof rawP === "object") {
-          const rawMomento = String(rawP.momento || rawP.data || "").trim();
-          if (rawMomento.includes("T")) {
-            dataFormatada = rawMomento.split("T")[0];
-            const tp = rawMomento.split("T")[1];
-            const m = tp.match(/(\d{1,2})[:hH](\d{2})/);
-            if (m) horarioFormatado = `${m[1].padStart(2, "0")}:${m[2].padStart(2, "0")}`;
-          } else if (rawMomento.includes(" ")) {
-            dataFormatada = rawMomento.split(" ")[0];
-            const tp = rawMomento.split(" ")[1];
-            const m = tp.match(/(\d{1,2})[:hH](\d{2})/);
-            if (m) horarioFormatado = `${m[1].padStart(2, "0")}:${m[2].padStart(2, "0")}`;
-          }
-
+        // Fallback apenas se b.horario estiver ausente no banco
+        if (!b.horario && rawP && typeof rawP === "object") {
           const candHora = rawP.horario_inicio || rawP.hora_inicio || rawP.hora || rawP.horario;
           if (candHora) {
             const m = String(candHora).match(/(\d{1,2})[:hH](\d{2})/);
