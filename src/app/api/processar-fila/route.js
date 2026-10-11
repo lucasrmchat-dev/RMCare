@@ -231,7 +231,7 @@ export async function GET(request) {
             }
 
             const mediaUrlFinal = msg.anexo_url || null;
-            const numeroFormatado = formatarNumeroWhatsApp(numeroLimpo || msg.telefone_whatsapp);
+            const numeroFormatado = formatarNumeroWhatsApp(msg.telefone_whatsapp || numeroLimpo);
 
             payload = {
               body: msg.mensagem || '',

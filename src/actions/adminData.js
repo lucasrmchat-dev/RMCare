@@ -2214,6 +2214,9 @@ export async function actionDispararMensagemManualAdmin(id) {
     };
   } else {
     headers["x-rmcare-event"] = "whatsapp_msg_manual";
+    if (tokenEnvio && String(tokenEnvio).trim()) {
+      headers["Authorization"] = `Bearer ${String(tokenEnvio).trim()}`;
+    }
     let textoFinal = msg.mensagem || "";
     if (msg.anexo_url && !textoFinal.includes(msg.anexo_url)) {
       textoFinal += `
@@ -2221,13 +2224,13 @@ export async function actionDispararMensagemManualAdmin(id) {
 📎 Documento/Anexo: ${msg.anexo_url}`;
     }
 
+    const numeroFormatado = formatarNumeroWhatsApp(msg.telefone_whatsapp || pac?.telefone_whatsapp);
     payload = {
-      name: nomeCompleto,
-      number: numLimpo,
-      phone: numLimpo,
-      texto: textoFinal,
-      mensagem: textoFinal,
-      media_url: msg.anexo_url || null
+      body: msg.mensagem || "",
+      nome: nomeCompleto,
+      number: numeroFormatado,
+      mediaUrl: msg.anexo_url || "",
+      externalKey: String(msg.id || Date.now())
     };
   }
 
