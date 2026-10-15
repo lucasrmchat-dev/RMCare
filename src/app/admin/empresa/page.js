@@ -144,6 +144,22 @@ export default function EmpresaAdmin() {
     }
   };
 
+  // Atualização silenciosa: confirmações feitas pelo paciente (link/WhatsApp) aparecem sem recarregar a página
+  useEffect(() => {
+    const atualizarSilencioso = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        setAgendamentos(await fetchAdminAgendamentos());
+      } catch {}
+    };
+    const intervalo = setInterval(atualizarSilencioso, 90000);
+    document.addEventListener("visibilitychange", atualizarSilencioso);
+    return () => {
+      clearInterval(intervalo);
+      document.removeEventListener("visibilitychange", atualizarSilencioso);
+    };
+  }, []);
+
   const fetchServicos = async () => {
     try {
       const data = await fetchAdminServicos();

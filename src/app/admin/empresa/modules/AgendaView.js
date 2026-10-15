@@ -54,7 +54,9 @@ import {
   ArrowRight,
   ArrowLeft,
   Copy,
-  XCircle
+  XCircle,
+  Link2,
+  CircleDashed
 } from "lucide-react";
 import {
   getHojeLocal,
@@ -66,6 +68,7 @@ import {
 } from "../components/SharedUI";
 import {
   actionCancelarAgendamentoAdmin,
+  actionGerarLinkConfirmacao,
   actionExcluirAgendamentoAdmin,
   actionRemarcarAgendamentoAdmin,
   actionAprovarPagamentoAgendamento,
@@ -165,6 +168,17 @@ const renderStatusAtendimentoBadge = (item) => {
       </span>
     );
   }
+  if (item.statusAtendimento === "confirmado") {
+    return (
+      <span
+        className="text-[10.5px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500 text-white inline-flex items-center gap-1 shadow-[0_4px_12px_-4px_rgba(16,185,129,0.6)]"
+        title={item.confirmadoEm ? `Confirmado pelo paciente em ${formatarDataHoraAmigavel(item.confirmadoEm)}` : "Presença confirmada"}
+      >
+        <Check size={11} strokeWidth={3} />
+        {item.remarcado ? "Remarcado e confirmado" : "Confirmado"}
+      </span>
+    );
+  }
   if (item.remarcado) {
     return (
       <span className="text-[10.5px] font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 inline-flex items-center gap-1">
@@ -174,9 +188,46 @@ const renderStatusAtendimentoBadge = (item) => {
     );
   }
   return (
-    <span className="text-[10.5px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 inline-flex items-center gap-1">
-      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-      Confirmado
+    <span
+      className="text-[10.5px] font-semibold px-2.5 py-0.5 rounded-full bg-zinc-500/10 text-zinc-600 dark:text-zinc-300 border border-zinc-500/20 inline-flex items-center gap-1"
+      title={item.linkAbertoEm ? `Paciente abriu o link em ${formatarDataHoraAmigavel(item.linkAbertoEm)}` : "Paciente ainda não confirmou a presença"}
+    >
+      <CircleDashed size={11} strokeWidth={2.5} />
+      {item.linkAbertoEm ? "Link visto · aguardando" : "Aguardando confirmação"}
+    </span>
+  );
+};
+
+// Cartão do atendimento: verde quando o paciente confirmou a presença
+const classeCartaoAtendimento = (item) => {
+  if (item.statusAtendimento === "cancelado") {
+    return "bg-black/[0.02] dark:bg-white/[0.02] border-black/[0.04] dark:border-white/[0.06] opacity-60";
+  }
+  if (item.statusAtendimento === "confirmado") {
+    return "bg-emerald-50/80 dark:bg-emerald-950/25 border-emerald-500/35 shadow-[inset_4px_0_0_0_rgb(16,185,129),0_2px_12px_rgba(16,185,129,0.08)] hover:shadow-[inset_4px_0_0_0_rgb(16,185,129),0_8px_24px_rgba(16,185,129,0.14)]";
+  }
+  return "bg-white dark:bg-[#161618] border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.02)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)]";
+};
+
+const classeHorarioAtendimento = (item) =>
+  item.statusAtendimento === "confirmado"
+    ? "bg-emerald-500 text-white border border-emerald-500 px-3 py-2 rounded-2xl text-center min-w-[68px] shadow-[0_6px_16px_-6px_rgba(16,185,129,0.7)] shrink-0 [&_span]:!text-white"
+    : "bg-[#F8F8FA] dark:bg-[#222225] border border-black/[0.06] dark:border-white/[0.08] px-3 py-2 rounded-2xl text-center min-w-[68px] shadow-2xs shrink-0";
+
+const renderStatusTabela = (item) => {
+  const mapa = {
+    cancelado: "bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300",
+    confirmado: "bg-emerald-500 text-white"
+  };
+  const rotulo = { confirmado: "confirmado", agendado: "aguardando" }[item.statusAtendimento] || item.statusAtendimento;
+  return (
+    <span
+      className={`px-2.5 py-0.5 rounded text-[10px] font-extrabold uppercase inline-flex items-center gap-1 ${
+        mapa[item.statusAtendimento] || "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"
+      }`}
+    >
+      {item.statusAtendimento === "confirmado" && <Check size={10} strokeWidth={3} />}
+      {rotulo}
     </span>
   );
 };
@@ -775,6 +826,8 @@ export default function AgendaView({
         statusAtendimento: a.status_atendimento || "agendado",
         pago: Boolean(a.status_pagamento_antecipado),
         remarcado: !!a.remarcado_em,
+        confirmadoEm: a.confirmado_em || null,
+        linkAbertoEm: a.confirmacao_aberta_em || null,
         motivoCancelamento: a.motivo_cancelamento,
         rawItem: a
       };
@@ -1749,6 +1802,39 @@ export default function AgendaView({
     }
   };
 
+  // LINK DE CONFIRMAÇÃO DO PACIENTE (CONFIRMAR / REMARCAR / CANCELAR)
+  const [gerandoLinkId, setGerandoLinkId] = useState(null);
+  const handleLinkConfirmacao = async (item, destino = "copiar") => {
+    playDopamineSound("click");
+    // Abre a aba antes do await para não ser bloqueada como pop-up
+    const janela = destino === "whatsapp" ? window.open("", "_blank") : null;
+    setGerandoLinkId(item.id);
+    try {
+      const { link } = await actionGerarLinkConfirmacao(item.id);
+      if (destino === "whatsapp") {
+        const primeiroNome = (item.nomePaciente || "").split(" ")[0];
+        const dataFmt = new Date(`${item.data}T12:00:00`).toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
+        const mensagem = `Olá${primeiroNome ? `, ${primeiroNome}` : ""}! Por favor, confirme sua presença no atendimento de ${dataFmt} às ${item.horario}h. Se precisar, você também pode remarcar ou cancelar por aqui: ${link}`;
+        const url = `https://wa.me/${formatarTelefoneEnvio(item.telefonePaciente)}?text=${encodeURIComponent(mensagem)}`;
+        if (janela) janela.location.href = url;
+        else window.open(url, "_blank");
+      } else {
+        try {
+          await navigator.clipboard.writeText(link);
+          if (showToast) showToast("Link de confirmação copiado! Agora é só enviar ao paciente.");
+        } catch {
+          window.prompt("Copie o link de confirmação:", link);
+        }
+      }
+      triggerHaptic("success");
+    } catch (err) {
+      janela?.close();
+      if (showToast) showToast(err?.message || "Não foi possível gerar o link de confirmação.", "error");
+    } finally {
+      setGerandoLinkId(null);
+    }
+  };
+
   // REMARCAÇÃO INTELIGENTE (CALENDÁRIO & HORÁRIOS INTERATIVOS)
   const handleAbrirRemarcacao = (item) => {
     playDopamineSound("click");
@@ -2556,9 +2642,25 @@ export default function AgendaView({
                       </p>
                     </div>
 
-                    <span className="text-xs font-bold px-3.5 py-1 bg-zinc-100 dark:bg-zinc-800 rounded-full text-zinc-700 dark:text-zinc-300 border border-zinc-200/50 dark:border-zinc-700/50">
-                      {eventosAgendaMistaDiaria.length} paciente(s)
-                    </span>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      {(() => {
+                        const ativosDoDia = eventosAgendaMistaDiaria.filter((e) => e.tipo === "rmclick" && e.statusAtendimento !== "cancelado");
+                        if (ativosDoDia.length === 0) return null;
+                        const confirmados = ativosDoDia.filter((e) => e.statusAtendimento === "confirmado").length;
+                        return (
+                          <span
+                            className="text-xs font-bold px-3 py-1 rounded-full inline-flex items-center gap-1.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20"
+                            title="Pacientes que confirmaram a presença pelo link ou WhatsApp"
+                          >
+                            <CheckCircle2 size={13} />
+                            {confirmados}/{ativosDoDia.length} confirmados
+                          </span>
+                        );
+                      })()}
+                      <span className="text-xs font-bold px-3.5 py-1 bg-zinc-100 dark:bg-zinc-800 rounded-full text-zinc-700 dark:text-zinc-300 border border-zinc-200/50 dark:border-zinc-700/50">
+                        {eventosAgendaMistaDiaria.length} paciente(s)
+                      </span>
+                    </div>
                   </div>
 
                   {/* BARRA DE ORDENAÇÃO RÁPIDA (EXIBIDA APENAS NA VISUALIZAÇÃO EM CARDS) */}
@@ -2669,14 +2771,10 @@ export default function AgendaView({
                             whileHover={{ scale: 1.008, y: -1 }}
                             whileTap={{ scale: 0.99 }}
                             transition={{ type: "spring", stiffness: 450, damping: 32 }}
-                            className={`p-4 sm:p-5 rounded-3xl border ${
-                              isCanceled
-                                ? "bg-black/[0.02] dark:bg-white/[0.02] border-black/[0.04] dark:border-white/[0.06] opacity-60"
-                                : "bg-white dark:bg-[#161618] border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.02)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)]"
-                            } transition-all flex flex-col md:flex-row md:items-center justify-between gap-4`}
+                            className={`p-4 sm:p-5 rounded-3xl border ${classeCartaoAtendimento(item)} transition-all flex flex-col md:flex-row md:items-center justify-between gap-4`}
                           >
                             <div className="flex items-start md:items-center gap-3.5 min-w-0">
-                              <div className="bg-[#F8F8FA] dark:bg-[#222225] border border-black/[0.06] dark:border-white/[0.08] px-3 py-2 rounded-2xl text-center min-w-[68px] shadow-2xs shrink-0">
+                              <div className={classeHorarioAtendimento(item)}>
                                 <span className="text-sm sm:text-base font-bold text-zinc-950 dark:text-white tracking-tight">
                                   {item.horario || "--:--"}
                                 </span>
@@ -2792,6 +2890,28 @@ export default function AgendaView({
                                 </span>
                               )}
 
+                              {!isCanceled && item.tipo === "rmclick" && (
+                                <button
+                                  onClick={() => handleLinkConfirmacao(item)}
+                                  disabled={gerandoLinkId === item.id}
+                                  title="Copiar link de confirmação (confirmar, remarcar ou cancelar) para enviar ao paciente"
+                                  className="min-h-[38px] px-3.5 py-1.5 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer disabled:opacity-50"
+                                >
+                                  {gerandoLinkId === item.id ? <RefreshCw size={13} className="animate-spin" /> : <Link2 size={13} />}
+                                  <span>Link</span>
+                                </button>
+                              )}
+                              {!isCanceled && item.tipo === "rmclick" && item.telefonePaciente && (
+                                <button
+                                  onClick={() => handleLinkConfirmacao(item, "whatsapp")}
+                                  disabled={gerandoLinkId === item.id}
+                                  title="Enviar link de confirmação pelo WhatsApp"
+                                  aria-label="Enviar link de confirmação pelo WhatsApp"
+                                  className="min-h-[38px] px-2.5 py-1.5 rounded-2xl bg-black/[0.04] hover:bg-black/[0.08] dark:bg-white/[0.06] dark:hover:bg-white/[0.1] text-emerald-600 dark:text-emerald-400 border border-black/[0.04] dark:border-white/[0.06] flex items-center text-xs transition-all shadow-2xs cursor-pointer disabled:opacity-50"
+                                >
+                                  <Send size={13} />
+                                </button>
+                              )}
                               {!isCanceled && (
                                 <>
                                   <button
@@ -2940,15 +3060,7 @@ export default function AgendaView({
                                 </div>
                               </td>
                               <td className="p-4">
-                                <span
-                                  className={`px-2.5 py-0.5 rounded text-[10px] font-extrabold uppercase ${
-                                    item.statusAtendimento === "cancelado"
-                                      ? "bg-red-100 text-red-700"
-                                      : "bg-emerald-100 text-emerald-800"
-                                  }`}
-                                >
-                                  {item.statusAtendimento}
-                                </span>
+                                {renderStatusTabela(item)}
                               </td>
                               <td className="p-4">
                                 {isItemParticular(item) ? (
@@ -3011,6 +3123,28 @@ export default function AgendaView({
                                       <ShieldCheck size={13} className="text-blue-500" />
                                       <span>Ficha</span>
                                     </button>
+                                  )}
+
+                                  {item.statusAtendimento !== "cancelado" && item.tipo === "rmclick" && (
+
+                                    <button
+
+                                      onClick={() => handleLinkConfirmacao(item)}
+
+                                      disabled={gerandoLinkId === item.id}
+
+                                      title="Copiar link de confirmação para enviar ao paciente"
+
+                                      className="min-h-[34px] px-2.5 py-1.5 border border-emerald-500/25 text-emerald-700 dark:text-emerald-400 bg-emerald-500/5 rounded-xl hover:bg-emerald-500/10 text-[11px] font-bold inline-flex items-center gap-1 transition-colors shadow-sm cursor-pointer disabled:opacity-50"
+
+                                    >
+
+                                      {gerandoLinkId === item.id ? <RefreshCw size={12} className="animate-spin" /> : <Link2 size={12} />}
+
+                                      <span>Link</span>
+
+                                    </button>
+
                                   )}
 
                                   {item.statusAtendimento !== "cancelado" && (
@@ -3196,14 +3330,10 @@ export default function AgendaView({
                             whileHover={{ scale: 1.008, y: -1 }}
                             whileTap={{ scale: 0.99 }}
                             transition={{ type: "spring", stiffness: 450, damping: 32 }}
-                            className={`p-4 sm:p-5 rounded-3xl border ${
-                              isCanceled
-                                ? "bg-black/[0.02] dark:bg-white/[0.02] border-black/[0.04] dark:border-white/[0.06] opacity-60"
-                                : "bg-white dark:bg-[#161618] border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.02)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)]"
-                            } transition-all flex flex-col md:flex-row md:items-center justify-between gap-4`}
+                            className={`p-4 sm:p-5 rounded-3xl border ${classeCartaoAtendimento(item)} transition-all flex flex-col md:flex-row md:items-center justify-between gap-4`}
                           >
                             <div className="flex items-start md:items-center gap-3.5 min-w-0">
-                              <div className="bg-[#F8F8FA] dark:bg-[#222225] border border-black/[0.06] dark:border-white/[0.08] px-3 py-2 rounded-2xl text-center min-w-[68px] shadow-2xs shrink-0">
+                              <div className={classeHorarioAtendimento(item)}>
                                 <span className="text-sm sm:text-base font-bold text-zinc-950 dark:text-white tracking-tight">
                                   {item.horario || "--:--"}
                                 </span>
@@ -3314,6 +3444,28 @@ export default function AgendaView({
                                 </span>
                               )}
 
+                              {!isCanceled && item.tipo === "rmclick" && (
+                                <button
+                                  onClick={() => handleLinkConfirmacao(item)}
+                                  disabled={gerandoLinkId === item.id}
+                                  title="Copiar link de confirmação (confirmar, remarcar ou cancelar) para enviar ao paciente"
+                                  className="min-h-[38px] px-3.5 py-1.5 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer disabled:opacity-50"
+                                >
+                                  {gerandoLinkId === item.id ? <RefreshCw size={13} className="animate-spin" /> : <Link2 size={13} />}
+                                  <span>Link</span>
+                                </button>
+                              )}
+                              {!isCanceled && item.tipo === "rmclick" && item.telefonePaciente && (
+                                <button
+                                  onClick={() => handleLinkConfirmacao(item, "whatsapp")}
+                                  disabled={gerandoLinkId === item.id}
+                                  title="Enviar link de confirmação pelo WhatsApp"
+                                  aria-label="Enviar link de confirmação pelo WhatsApp"
+                                  className="min-h-[38px] px-2.5 py-1.5 rounded-2xl bg-black/[0.04] hover:bg-black/[0.08] dark:bg-white/[0.06] dark:hover:bg-white/[0.1] text-emerald-600 dark:text-emerald-400 border border-black/[0.04] dark:border-white/[0.06] flex items-center text-xs transition-all shadow-2xs cursor-pointer disabled:opacity-50"
+                                >
+                                  <Send size={13} />
+                                </button>
+                              )}
                               {!isCanceled && (
                                 <>
                                   <button
@@ -3458,15 +3610,7 @@ export default function AgendaView({
                               </div>
                             </td>
                             <td className="p-4">
-                              <span
-                                className={`px-2.5 py-0.5 rounded text-[10px] font-extrabold uppercase ${
-                                  item.statusAtendimento === "cancelado"
-                                    ? "bg-red-100 text-red-700"
-                                    : "bg-emerald-100 text-emerald-800"
-                                }`}
-                              >
-                                {item.statusAtendimento}
-                              </span>
+                              {renderStatusTabela(item)}
                             </td>
                             <td className="p-4">
                               {isItemParticular(item) ? (
@@ -3529,6 +3673,28 @@ export default function AgendaView({
                                     <ShieldCheck size={13} className="text-blue-500" />
                                     <span>Ficha</span>
                                   </button>
+                                )}
+
+                                {item.statusAtendimento !== "cancelado" && item.tipo === "rmclick" && (
+
+                                  <button
+
+                                    onClick={() => handleLinkConfirmacao(item)}
+
+                                    disabled={gerandoLinkId === item.id}
+
+                                    title="Copiar link de confirmação para enviar ao paciente"
+
+                                    className="min-h-[34px] px-2.5 py-1.5 border border-emerald-500/25 text-emerald-700 dark:text-emerald-400 bg-emerald-500/5 rounded-xl hover:bg-emerald-500/10 text-[11px] font-bold inline-flex items-center gap-1 transition-colors shadow-sm cursor-pointer disabled:opacity-50"
+
+                                  >
+
+                                    {gerandoLinkId === item.id ? <RefreshCw size={12} className="animate-spin" /> : <Link2 size={12} />}
+
+                                    <span>Link</span>
+
+                                  </button>
+
                                 )}
 
                                 {item.statusAtendimento !== "cancelado" && (

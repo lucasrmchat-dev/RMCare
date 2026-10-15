@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { formatarTelefoneEnvio } from '@/lib/phoneUtils';
+import { injetarLinkConfirmacaoSeguro } from '@/lib/confirmationLink';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,6 +80,15 @@ export async function POST(request) {
       }, { status: 400 });
     }
 
+    // {link_confirmacao}: só é preenchido se o destino for o telefone do próprio paciente do agendamento
+    const mensagemFinal = await injetarLinkConfirmacaoSeguro(mensagem, {
+      db: supabaseAdmin,
+      agendamentoId: agendamento?.id,
+      empresaId: emp?.id,
+      slug: emp?.slug,
+      telefone: telefone || paciente.telefone
+    });
+
     let payload;
     const headers = { 'Content-Type': 'application/json' };
 
@@ -106,7 +116,7 @@ export async function POST(request) {
           telefone: numeroLimpo,
           ...paciente
         },
-        mensagem_formatada: mensagem,
+        mensagem_formatada: mensagemFinal,
         opcoes_resposta: configWebhooks.respostas_mapping || {
           confirmar: ['1', 'sim', 'confirmo'],
           cancelar: ['2', 'nao', 'cancelar'],
@@ -120,9 +130,9 @@ export async function POST(request) {
         name: nomeFinal,
         number: numeroLimpo,
         phone: numeroLimpo,
-        texto: mensagem,
-        mensagem: mensagem,
-        text: mensagem
+        texto: mensagemFinal,
+        mensagem: mensagemFinal,
+        text: mensagemFinal
       };
     }
 

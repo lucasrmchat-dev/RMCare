@@ -743,6 +743,17 @@ export const processarMensagensDinamicas = async (formData, empresaDados, agenda
 
   // 9. INSERÇÃO NA FILA DE MENSAGENS PROGRAMADAS COM DEDUPLICAÇÃO
   if (mensagensParaFila.length > 0) {
+    // Mensagens com {link_confirmacao} são enfileiradas no servidor já com o link pessoal resolvido
+    try {
+      const { enfileirarMensagensComLink } = await import("@/actions/mensagensFila");
+      const { pendentes } = await enfileirarMensagensComLink(mensagensParaFila);
+      mensagensParaFila = pendentes;
+    } catch (eLink) {
+      console.warn("Aviso ao resolver link de confirmação na fila:", eLink);
+    }
+  }
+
+  if (mensagensParaFila.length > 0) {
     try {
       let { error } = await supabase.from("fila_mensagens").insert(mensagensParaFila);
       if (error && (error.code === "42703" || error.message?.includes("tipo_envio"))) {

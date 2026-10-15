@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { formatarTelefoneEnvio, formatarNumeroWhatsApp } from '@/lib/phoneUtils';
 import { DEFAULT_RMCHAT_WEBHOOK_URL, DEFAULT_RMCHAT_TOKEN } from '@/lib/constants';
+import { injetarLinkConfirmacaoSeguro } from '@/lib/confirmationLink';
 
 // Força a Vercel a não fazer cache desta rota (Obrigatório para Cron Jobs no App Router)
 export const dynamic = 'force-dynamic';
@@ -151,6 +152,15 @@ export async function GET(request) {
             continue;
           }
 
+          // {link_confirmacao}: link assinado gerado no disparo (somente para o telefone do próprio paciente)
+          const mensagemFinal = await injetarLinkConfirmacaoSeguro(msg.mensagem, {
+            db: supabaseAdmin,
+            agendamentoId: msg.agendamento_id,
+            empresaId: targetEmpresaId,
+            slug: dadosEmpresa?.slug,
+            telefone: msg.telefone_whatsapp
+          });
+
           const headers = { 'Content-Type': 'application/json' };
           let payload;
 
@@ -215,7 +225,7 @@ export async function GET(request) {
                 cpf: agInfo?.pacientes?.cpf || null,
                 enfermidades: agInfo?.pacientes?.enfermidades || []
               },
-              mensagem: msg.mensagem,
+              mensagem: mensagemFinal,
               anexo_url: msg.anexo_url || null,
               opcoes_resposta: dadosEmpresa?.respostasMapping || {
                 confirmar: ['1', 'sim', 'confirmo'],
@@ -234,7 +244,7 @@ export async function GET(request) {
             const numeroFormatado = formatarNumeroWhatsApp(msg.telefone_whatsapp || numeroLimpo);
 
             payload = {
-              body: msg.mensagem || '',
+              body: mensagemFinal || '',
               nome: msg.nome_paciente || 'Paciente',
               number: numeroFormatado,
               mediaUrl: mediaUrlFinal,

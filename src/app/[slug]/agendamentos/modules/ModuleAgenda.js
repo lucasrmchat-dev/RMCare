@@ -18,7 +18,7 @@ import { helpers, calcularDataLimite } from "../utils";
 import { playDopamineSound, triggerHaptic } from "@/lib/dopamine";
 import { SkeletonSlots } from "@/components/SkeletonLoaders";
 
-export default function ModuleAgenda() {
+export default function ModuleAgenda({ titulo, subtitulo, selo } = {}) {
   const {
     formData,
     setValue,
@@ -565,13 +565,13 @@ export default function ModuleAgenda() {
         className="mb-6 md:mb-8"
       >
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 text-[11px] font-bold uppercase tracking-wider mb-2.5 shadow-sm">
-          <CalendarIcon size={13} strokeWidth={2} /> Agenda em Tempo Real
+          <CalendarIcon size={13} strokeWidth={2} /> {selo || "Agenda em Tempo Real"}
         </div>
         <h2 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-zinc-950 dark:text-white leading-tight">
-          Qual o melhor dia e horário para você?
+          {titulo || "Qual o melhor dia e horário para você?"}
         </h2>
         <p className="text-zinc-500 dark:text-zinc-400 text-xs sm:text-sm mt-1.5 leading-relaxed">
-          Selecione a data no calendário para carregar os horários disponíveis e confirmar sua vaga.
+          {subtitulo || "Selecione a data no calendário para carregar os horários disponíveis e confirmar sua vaga."}
         </p>
         {selectedSrv?.agendamento_bloqueado_ate && (
           <p className="mt-3 text-xs font-bold text-amber-800 dark:text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-2xl px-4 py-3">

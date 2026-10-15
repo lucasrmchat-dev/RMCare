@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { formatarTelefoneEnvio, formatarNumeroWhatsApp } from "@/lib/phoneUtils";
 import { DEFAULT_RMCHAT_WEBHOOK_URL, DEFAULT_RMCHAT_TOKEN } from "@/lib/constants";
+import { montarLinkConfirmacao } from "@/lib/confirmationLink";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -96,8 +97,16 @@ export async function dispararGatilhoServidor({
       ag.tipo_servico === "Exame" ||
       /(colonoscopia|endoscopia|ultrassom|exame)/i.test(`${nomeEspecialidade} ${nomeProfissional}`);
 
+    let linkConfirmacao = "";
+    try {
+      linkConfirmacao = await montarLinkConfirmacao({ slug: emp.slug, agendamentoId });
+    } catch (errLink) {
+      console.warn("Aviso ao gerar link de confirmação:", errLink?.message);
+    }
+
     // Variáveis universais para substituição nos templates
     const vars = {
+      link_confirmacao: linkConfirmacao,
       nome: nomeCompleto,
       nome_completo: nomeCompleto,
       primeiro_nome: primeiroNome,

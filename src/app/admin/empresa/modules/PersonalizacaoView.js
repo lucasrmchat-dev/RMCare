@@ -184,7 +184,7 @@ export const DEFAULT_REGRAS_MENSAGENS = [
     filtro_modalidade: "todas",
     filtrar_enfermidade: false,
     enfermidade_alvo: "",
-    mensagem: "Olá {nome}, passando para lembrar da sua consulta de *{servico}* amanhã, dia *{data}*, às *{hora}h* com *{especialista}* na {clinica}. Por favor, responda *SIM* para confirmar sua presença."
+    mensagem: "Olá {nome}, passando para lembrar da sua consulta de *{servico}* amanhã, dia *{data}*, às *{hora}h* com *{especialista}* na {clinica}. Responda *SIM* para confirmar ou, se preferir, confirme, remarque ou cancele por aqui: {link_confirmacao}"
   },
   {
     id: "padrao_lembrete_2h",
@@ -998,7 +998,8 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
     { tag: "{motivo}", desc: "Motivo informado pela clínica" },
     { tag: "{valor}", desc: "Valor a pagar" },
     { tag: "{chave_pix}", desc: "Chave Pix copia e cola" },
-    { tag: "{link_pagamento}", desc: "Link direto do checkout" }
+    { tag: "{link_pagamento}", desc: "Link direto do checkout" },
+    { tag: "{link_confirmacao}", desc: "Link único para o paciente confirmar, remarcar ou cancelar" }
   ];
 
   const handleSortMensagens = (key) => {

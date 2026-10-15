@@ -2,6 +2,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+import { montarLinkConfirmacao, injetarLinkConfirmacaoSeguro, resolverBaseUrl, resolverLinkConfirmacaoSeguro } from "@/lib/confirmationLink";
 import { verifyAdminSession } from "@/lib/session";
 import { formatarTelefoneEnvio, formatarNumeroWhatsApp } from "@/lib/phoneUtils";
 import { DEFAULT_RMCHAT_WEBHOOK_URL, DEFAULT_RMCHAT_TOKEN } from "@/lib/constants";
@@ -266,6 +267,25 @@ export async function actionCancelarAgendamentoAdmin(id, motivo = null, mensagem
   } catch (eAud) {}
 
   return data;
+}
+
+/** Gera o link público e único de confirmação (confirmar / remarcar / cancelar) de um agendamento da clínica logada. */
+export async function actionGerarLinkConfirmacao(agendamentoId) {
+  const admin = await getAdminLogado(true);
+  const { data: ag } = await supabaseAdmin
+    .from("agendamentos")
+    .select("id, empresa_id")
+    .eq("id", agendamentoId)
+    .eq("empresa_id", admin.empresa_id)
+    .maybeSingle();
+  if (!ag) throw new Error("Agendamento não encontrado.");
+
+  const { data: emp } = await supabaseAdmin.from("empresas").select("slug").eq("id", admin.empresa_id).maybeSingle();
+  if (!emp?.slug) throw new Error("A clínica não possui um endereço público (slug) configurado.");
+
+  const link = await montarLinkConfirmacao({ slug: emp.slug, agendamentoId: ag.id });
+  if (!link) throw new Error("Configure NEXT_PUBLIC_APP_URL com o domínio público do sistema para gerar o link.");
+  return { link };
 }
 
 export async function actionAprovarPagamentoAgendamento(id) {
@@ -2165,6 +2185,15 @@ export async function actionDispararMensagemManualAdmin(id) {
   const nomeCompleto = (pac?.nome_completo || msg.nome_paciente || "Paciente").trim();
   const numLimpo = formatarTelefoneEnvio(msg.telefone_whatsapp || pac?.telefone_whatsapp);
 
+  // {link_confirmacao}: link pessoal gerado no momento do disparo
+  const mensagemFinal = await injetarLinkConfirmacaoSeguro(msg.mensagem, {
+    db: supabaseAdmin,
+    agendamentoId: msg.agendamento_id,
+    empresaId: admin.empresa_id,
+    slug: emp?.slug,
+    telefone: msg.telefone_whatsapp || pac?.telefone_whatsapp
+  });
+
   let payload;
   const headers = { "Content-Type": "application/json" };
 
@@ -2203,7 +2232,7 @@ export async function actionDispararMensagemManualAdmin(id) {
         cpf: pac?.cpf || null,
         enfermidades: pac?.enfermidades || []
       },
-      mensagem: msg.mensagem,
+      mensagem: mensagemFinal,
       anexo_url: msg.anexo_url || null,
       opcoes_resposta: configWebhooks.respostas_mapping || {
         confirmar: ["1", "sim", "confirmo"],
@@ -2217,7 +2246,7 @@ export async function actionDispararMensagemManualAdmin(id) {
     if (tokenEnvio && String(tokenEnvio).trim()) {
       headers["Authorization"] = `Bearer ${String(tokenEnvio).trim()}`;
     }
-    let textoFinal = msg.mensagem || "";
+    let textoFinal = mensagemFinal || "";
     if (msg.anexo_url && !textoFinal.includes(msg.anexo_url)) {
       textoFinal += `
 
@@ -2226,7 +2255,7 @@ export async function actionDispararMensagemManualAdmin(id) {
 
     const numeroFormatado = formatarNumeroWhatsApp(msg.telefone_whatsapp || pac?.telefone_whatsapp);
     payload = {
-      body: msg.mensagem || "",
+      body: mensagemFinal || "",
       nome: nomeCompleto,
       number: numeroFormatado,
       mediaUrl: msg.anexo_url || "",
@@ -2394,7 +2423,22 @@ export async function actionBuscarMensagensDoAgendamento({ agendamentoId, telefo
       return [];
     }
 
-    return data || [];
+    // Mensagens antigas ainda com {link_confirmacao}: resolve e grava o link pessoal (somente para o telefone do paciente)
+    const mensagens = data || [];
+    for (const m of mensagens) {
+      if (!String(m.mensagem || "").includes("{link_confirmacao}") || !m.agendamento_id) continue;
+      const link = await resolverLinkConfirmacaoSeguro({
+        db: supabaseAdmin,
+        agendamentoId: m.agendamento_id,
+        empresaId: admin.empresa_id,
+        telefone: m.telefone_whatsapp
+      });
+      if (!link) continue;
+      m.mensagem = m.mensagem.replaceAll("{link_confirmacao}", link);
+      await supabaseAdmin.from("fila_mensagens").update({ mensagem: m.mensagem }).eq("id", m.id).eq("empresa_id", admin.empresa_id);
+    }
+
+    return mensagens;
   } catch (err) {
     console.warn("Erro ao buscar mensagens do agendamento:", err);
     return [];
@@ -3417,7 +3461,8 @@ export async function actionTestarMensagemWhatsAppTemplate({
     nome_clinica: emp.nome || "Clínica",
     valor: "R$ 150,00",
     chave_pix: "clinica@pix.com.br",
-    link_pagamento: "https://rmagenda.com.br/pagamento/exemplo"
+    link_pagamento: "https://rmagenda.com.br/pagamento/exemplo",
+    link_confirmacao: `${await resolverBaseUrl()}/${emp.slug || "clinica"}/confirmar/exemplo`
   };
 
   const parseTpl = (tpl, data) => {
