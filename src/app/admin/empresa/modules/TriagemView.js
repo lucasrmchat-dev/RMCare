@@ -207,14 +207,14 @@ export default function TriagemView({
       {/* CABEÇALHO UNIFICADO */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-black/[0.06] dark:border-white/[0.08] pb-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-sm">
+          <div className="hidden sm:flex w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 items-center justify-center shadow-sm">
             <ClipboardCheck size={20} strokeWidth={1.5} />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-zinc-950 dark:text-white tracking-tight">
+            <h2 className="text-lg sm:text-xl font-bold text-zinc-950 dark:text-white tracking-tight">
               Protocolos Clínicos & Enfermidades
             </h2>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">
+            <p className="hidden sm:block text-xs text-zinc-500 dark:text-zinc-400 font-medium">
               Configure perguntas pré-atendimento por especialidade e gerencie o catálogo de enfermidades da clínica.
             </p>
           </div>

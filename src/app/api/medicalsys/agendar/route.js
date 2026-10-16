@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import axios from "axios";
+import { MEDICALSYS_PROXY_URL } from "@/lib/medicalsysProxy";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -64,7 +65,10 @@ export async function POST(request) {
     }
 
     // B. Horário de início e fim considerando duração real (Endoscopia: 20m, Colonoscopia: 30m, Consulta: 15m)
-    const cleanHorarioInicio = String(horarioInicio || "08:00").trim().slice(0, 5);
+    const cleanHorarioInicio = String(horarioInicio || "").trim().slice(0, 5);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(momento) || !/^\d{2}:\d{2}$/.test(cleanHorarioInicio)) {
+      return NextResponse.json({ success: false, error: "Data ou horário inválido para enviar ao MedicalSYS.", code: "DADOS_INVALIDOS" }, { status: 400 });
+    }
     
     let duracaoProcedimento = 15;
     const procText = `${body.procedimento || ""} ${medico || ""}`.toLowerCase();
@@ -89,7 +93,9 @@ export async function POST(request) {
     if (cleanFone.startsWith("55") && (cleanFone.length === 12 || cleanFone.length === 13)) {
       cleanFone = cleanFone.slice(2);
     }
-    if (!cleanFone) cleanFone = "83999999999";
+    if (cleanFone.length < 10) {
+      return NextResponse.json({ success: false, error: "Telefone do paciente é obrigatório no MedicalSYS (tel_celular).", code: "TELEFONE_OBRIGATORIO" }, { status: 400 });
+    }
 
     // D. Meio de pagamento: 'espe', 'conv', 'cart', 'debi'
     let cleanPagamento = "espe";
@@ -117,7 +123,7 @@ export async function POST(request) {
     }
 
     // 3. Proxy Fixie para IP estático homologado
-    const proxyUrl = process.env.FIXIE_URL || "http://fixie:1c54Fc5I1jgmHG2@criterium.usefixie.com:80";
+    const proxyUrl = MEDICALSYS_PROXY_URL;
     const proxyAgent = new HttpsProxyAgent(proxyUrl);
 
     // E. Carregar histórico de bloqueios/agendamentos importados da clínica
@@ -128,47 +134,25 @@ export async function POST(request) {
       .not("raw_payload_completo", "is", null)
       .limit(100);
 
-    // 1. Resolução dinâmica de clinica_id na MedicalSys
-    let clinicaRealId = null;
+    // 1. Clínica: sempre a configurada na integração (nunca a primeira da lista ou um ID de exemplo)
+    const clinicaRealId = Number(clinicaIdConfig);
     try {
       const resClin = await axios.get("https://gateway.medicalsys.com.br:9000/integracoes/clinica/", {
         httpsAgent: proxyAgent,
         proxy: false,
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": apiKey,
-          "msys-costumer-apikey": customerApiKey
-        },
+        headers: { "Content-Type": "application/json", apikey: apiKey, "msys-costumer-apikey": customerApiKey },
         timeout: 7000
       });
       const clinList = resClin.data?.results || resClin.data || [];
-      if (Array.isArray(clinList) && clinList.length > 0) {
-        console.log(`[Medicalsys] Clínicas autorizadas encontradas:`, clinList.map((c) => ({ id: c.id, nome: c.nome_clinica })));
-        if (configChaves.medicalsys_id_clinica) {
-          const matchConf = clinList.find((c) => String(c.id) === String(configChaves.medicalsys_id_clinica));
-          if (matchConf) clinicaRealId = Number(matchConf.id);
-        }
-        if (!clinicaRealId) {
-          clinicaRealId = Number(clinList[0].id);
-        }
+      if (Array.isArray(clinList) && clinList.length > 0 && !clinList.some((c) => String(c.id) === String(clinicaIdConfig))) {
+        return NextResponse.json({
+          success: false,
+          error: `A clínica ${clinicaIdConfig} configurada não está liberada para esta chave do MedicalSYS. Revise o ID da clínica em Integrações ERP.`,
+          code: "CLINICA_NAO_AUTORIZADA"
+        }, { status: 400 });
       }
     } catch (eClin) {
-      console.warn("[Medicalsys] Consulta de clínicas online falhou:", eClin.message);
-    }
-
-    if (!clinicaRealId) {
-      for (const b of (bloqueiosMed || [])) {
-        const raw = b.raw_payload_completo;
-        const cId = raw?.clinica?.id || raw?.id_clinica || raw?.clinica_id;
-        if (cId && String(cId) !== "9") {
-          clinicaRealId = Number(cId);
-          break;
-        }
-      }
-    }
-
-    if (!clinicaRealId) {
-      clinicaRealId = Number(clinicaIdConfig) || 9;
+      console.warn("[Medicalsys] Consulta de clínicas online falhou (seguindo com a clínica configurada):", eClin.message);
     }
 
     // 2. Resolução robusta de Médicos reais da clínica
@@ -185,7 +169,7 @@ export async function POST(request) {
     }
 
     try {
-      const resMed = await axios.get("https://gateway.medicalsys.com.br:9000/integracoes/medico/", {
+      const resMed = await axios.get(`https://gateway.medicalsys.com.br:9000/integracoes/medico/?clinica=${clinicaRealId}`, {
         httpsAgent: proxyAgent,
         proxy: false,
         headers: {
@@ -215,31 +199,29 @@ export async function POST(request) {
       resolvedMedicoId = Number(medico);
     }
 
+    const normalizarNomeMedico = (t) =>
+      String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/dra?\./g, "").replace(/\s+/g, " ").trim();
     if (!resolvedMedicoId && medico) {
-      const cleanMedicoNome = String(medico).trim().toLowerCase().replace(/dra?\./g, "").trim();
-      if (medicosMap.has(cleanMedicoNome)) {
-        resolvedMedicoId = medicosMap.get(cleanMedicoNome);
-      } else {
-        for (const [key, val] of medicosMap.entries()) {
-          if (isNaN(Number(key)) && (key.includes(cleanMedicoNome) || cleanMedicoNome.includes(key))) {
-            resolvedMedicoId = val;
-            break;
-          }
-        }
-      }
+      const alvo = normalizarNomeMedico(medico);
+      const nomes = [...medicosMap.entries()].filter(([k]) => isNaN(Number(k)));
+      const exato = nomes.find(([k]) => normalizarNomeMedico(k) === alvo);
+      const parciais = nomes.filter(([k]) => normalizarNomeMedico(k).includes(alvo) || alvo.includes(normalizarNomeMedico(k)));
+      const idsParciais = [...new Set(parciais.map(([, v]) => v))];
+      if (exato) resolvedMedicoId = exato[1];
+      else if (idsParciais.length === 1) resolvedMedicoId = idsParciais[0];
     }
 
-    if (!resolvedMedicoId && medicosMap.size > 0) {
-      for (const val of medicosMap.values()) {
-        if (typeof val === "number" && val > 0) {
-          resolvedMedicoId = val;
-          break;
-        }
-      }
+    // Padrão explícito configurado pela clínica (opcional) — nunca um ID inventado
+    if (!resolvedMedicoId && configChaves.medicalsys_id_medico) {
+      resolvedMedicoId = Number(configChaves.medicalsys_id_medico);
     }
 
     if (!resolvedMedicoId) {
-      resolvedMedicoId = Number(configChaves.medicalsys_id_medico) || 650;
+      return NextResponse.json({
+        success: false,
+        error: `Profissional "${medico || "não informado"}" não encontrado no MedicalSYS. O agendamento ficou salvo no RMCare, mas não foi enviado ao ERP para não cair na agenda de outro médico.`,
+        code: "MEDICO_NAO_ENCONTRADO"
+      }, { status: 200 });
     }
 
     // 3. Resolução robusta de Procedimento (procedimentos_ids)
@@ -308,22 +290,10 @@ export async function POST(request) {
     }
 
     if (!resolvedProcedimentoId) {
-      for (const b of (bloqueiosMed || [])) {
-        const rawP = b.raw_payload_completo?.procedimento;
-        const pObj = Array.isArray(rawP) ? rawP[0] : rawP;
-        if (pObj?.id && Number(pObj.id) > 0) {
-          resolvedProcedimentoId = Number(pObj.id);
-          break;
-        }
-      }
+      // (removido) usar o procedimento de outro paciente importado gerava procedimento errado no ERP
     }
 
-    if (!resolvedProcedimentoId && listaProc.length > 0) {
-      resolvedProcedimentoId = Number(listaProc[0].id);
-    }
-    if (!resolvedProcedimentoId) {
-      resolvedProcedimentoId = 5660;
-    }
+    // Sem correspondência, o procedimento não é enviado (campo opcional no POST /agenda/)
 
     // 4. Resolução de Convênio (convenio_id) obrigatório quando meio_de_pagamento = "conv"
     let resolvedConvenioId = null;
@@ -362,9 +332,7 @@ export async function POST(request) {
               const matchOnline = convList.find((c) => c.nome && (c.nome.toLowerCase().includes(targetConvNome) || targetConvNome.includes(c.nome.toLowerCase())));
               if (matchOnline?.id) resolvedConvenioId = Number(matchOnline.id);
             }
-            if (!resolvedConvenioId) {
-              resolvedConvenioId = Number(convList[0].id);
-            }
+
           }
         } catch (eConv) {
           console.warn("[Medicalsys] Consulta online de convênios falhou:", eConv.message);
@@ -372,18 +340,7 @@ export async function POST(request) {
       }
 
       if (!resolvedConvenioId) {
-        for (const b of (bloqueiosMed || [])) {
-          const rawC = b.raw_payload_completo?.convenio;
-          const cObj = Array.isArray(rawC) ? rawC[0] : rawC;
-          if (cObj?.id && Number(cObj.id) > 0) {
-            resolvedConvenioId = Number(cObj.id);
-            break;
-          }
-        }
-      }
-
-      if (!resolvedConvenioId) {
-        resolvedConvenioId = 10;
+        console.warn(`[Medicalsys] Convênio "${body.convenio || body.modalidade || ""}" sem código no MedicalSYS; enviando sem convênio.`);
       }
     }
 
@@ -398,8 +355,7 @@ export async function POST(request) {
       id_clinica: String(clinicaNum),
       medico_id: medicoNum,
       medico: String(medicoNum),
-      procedimentos_ids: [procIdNum],
-      procedimento_id: procIdNum,
+      ...(procIdNum ? { procedimentos_ids: [procIdNum], procedimento_id: procIdNum } : {}),
       paciente_provisorio: (nomePaciente || "Paciente Online").trim(),
       momento: momento,
       horario_inicio: cleanHorarioInicio,
@@ -443,7 +399,7 @@ export async function POST(request) {
       fd.append("id_clinica", String(clinicaNum));
       fd.append("medico_id", String(medicoNum));
       fd.append("medico", String(medicoNum));
-      fd.append("procedimentos_ids", String(procIdNum));
+      if (procIdNum) fd.append("procedimentos_ids", String(procIdNum));
       if (isConv && resolvedConvenioId) {
         fd.append("convenio_id", String(resolvedConvenioId));
         fd.append("convenio", String(resolvedConvenioId));

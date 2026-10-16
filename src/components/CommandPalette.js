@@ -20,6 +20,7 @@ import {
   VolumeX
 } from "lucide-react";
 import { playDopamineSound, triggerConfetti, triggerHaptic } from "@/lib/dopamine";
+import { filtrarPorBusca } from "@/lib/buscaTolerante";
 
 const appleSpring = { type: "spring", stiffness: 450, damping: 32 };
 
@@ -167,14 +168,8 @@ export default function CommandPalette() {
   }, [lastSlug, isDark, isMuted, router]);
 
   const filteredActions = useMemo(() => {
-    if (!query.trim()) return actions;
-    const q = query.toLowerCase().trim();
-    return actions.filter(
-      (a) =>
-        a.title.toLowerCase().includes(q) ||
-        a.desc.toLowerCase().includes(q) ||
-        a.category.toLowerCase().includes(q)
-    );
+    // Tolera acentos e erros de digitação ("agnda", "metricas")
+    return filtrarPorBusca(actions, query, ["title", "desc", "category"]);
   }, [actions, query]);
 
   const handleSelectAction = (action) => {
@@ -218,7 +213,7 @@ export default function CommandPalette() {
               animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.96, y: -12, opacity: 0 }}
               transition={appleSpring}
-              className="w-full max-w-xl bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-3xl saturate-150 border border-black/[0.08] dark:border-white/[0.1] rounded-3xl shadow-[0_30px_90px_rgba(0,0,0,0.2)] dark:shadow-[0_30px_90px_rgba(0,0,0,0.7)] overflow-hidden flex flex-col max-h-[75vh]"
+              className="w-full max-w-xl bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-3xl saturate-150 border border-black/[0.08] dark:border-white/[0.1] rounded-3xl shadow-[0_30px_90px_rgba(0,0,0,0.08)] dark:shadow-[0_30px_90px_rgba(0,0,0,0.7)] overflow-hidden flex flex-col max-h-[75vh]"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center px-5 py-4 border-b border-black/[0.06] dark:border-white/[0.08] gap-3">

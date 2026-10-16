@@ -1,3 +1,4 @@
+import { cancelarNoMedicalsys, remarcarNoMedicalsys } from '@/lib/medicalsysSync';
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
@@ -225,6 +226,8 @@ export async function POST(request) {
           .eq('id', targetAgendamento.id);
       }
 
+      await cancelarNoMedicalsys({ agendamentoId: targetAgendamento.id });
+
     } else if (acaoIdentificada === 'remarcar') {
       if (novaData && novoHorario) {
         novoStatus = 'remarcado';
@@ -248,6 +251,7 @@ export async function POST(request) {
             })
             .eq('id', targetAgendamento.id);
         }
+        await remarcarNoMedicalsys({ agendamentoId: targetAgendamento.id, data: novaData, horario: novoHorario });
       } else {
         novoStatus = 'solicitou_remarcacao';
         detalhesAcao = 'Paciente solicitou remarcação. Notificação gerada para a recepção.';

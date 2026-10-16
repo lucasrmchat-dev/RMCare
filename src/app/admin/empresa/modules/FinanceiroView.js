@@ -465,8 +465,8 @@ export default function FinanceiroView({ subTab = "corpo", setSubTab, servicos =
       {/* PADRÃO UNIFICADO DE CABEÇALHO */}
       <div className="mb-8 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
         <div>
-          <h2 className="text-3xl font-black text-zinc-900 dark:text-white tracking-tight">Serviços e Profissionais</h2>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1 font-medium">
+          <h2 className="text-xl sm:text-3xl font-black text-zinc-900 dark:text-white tracking-tight">Serviços e Profissionais</h2>
+          <p className="hidden sm:block text-sm text-zinc-500 dark:text-zinc-400 mt-1 font-medium">
             Gerencie especialidades, corpo clínico e pausamento temporário de horários.
           </p>
         </div>

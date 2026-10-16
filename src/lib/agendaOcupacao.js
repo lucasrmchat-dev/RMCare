@@ -1,3 +1,5 @@
+import { bloqueioOcupaHorario } from "./medicalsysSituacao.js";
+
 /**
  * Cálculo puro de ocupação da agenda de um dia (agenda compartilhada, durações e intervalos).
  * Reutilizado pelo fluxo de agendamento público e pela tela de confirmação/remarcação.
@@ -159,7 +161,7 @@ export function calcularOcupacaoAgenda({ ag, bl, formData, regrasGlobais, select
     }
   });
 
-  (bl || []).forEach((b) => {
+  (bl || []).filter(bloqueioOcupaHorario).forEach((b) => {
     const bProf = normalizeText(b.medico_profissional);
     const bEsp = normalizeText(b.especialidade);
 

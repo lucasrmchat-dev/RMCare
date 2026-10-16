@@ -237,17 +237,17 @@ export default function AdminSessionBar() {
   const nomeClinica = isMasterSystem ? 'Sistema Master Root' : (empresaInfo?.nome || 'Clínica');
 
   return (
-    <div className="w-full px-3 sm:px-5 pt-3 sm:pt-4 pb-0 z-[9999] relative shrink-0">
+    <div className="w-full px-0 md:px-5 pt-0 md:pt-4 pb-0 z-[9999] relative shrink-0">
       <motion.header
         initial={{ y: -16, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-        className="w-full max-w-[1760px] mx-auto h-14 px-3.5 sm:px-5 flex items-center justify-between rounded-2xl bg-white/85 dark:bg-[#161618]/85 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-[0_8px_30px_rgba(0,0,0,0.04)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.65)] text-zinc-900 dark:text-white transition-all select-none"
+        className="w-full max-w-[1760px] mx-auto h-14 px-3 sm:px-5 pt-[env(safe-area-inset-top)] box-content md:box-border md:pt-0 flex items-center justify-between rounded-none md:rounded-2xl border-x-0 border-t-0 md:border-x md:border-t bg-white/85 dark:bg-[#161618]/85 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-[0_8px_30px_rgba(0,0,0,0.04)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.65)] text-zinc-900 dark:text-white transition-all select-none"
       >
         {/* LADO ESQUERDO: LOGO DA PLATAFORMA + CLÍNICA COM EFEITO APPLE */}
         <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
           {/* LOGO RM CARE */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="hidden sm:flex items-center gap-2 shrink-0">
             <div className="w-8 h-8 rounded-xl bg-zinc-950 text-white dark:bg-white dark:text-black flex items-center justify-center font-black text-xs shadow-xs border border-black/[0.08] dark:border-white/[0.1]">
               <span className="text-[#34C759] dark:text-[#30D158] font-black tracking-tighter">RM</span>
             </div>
@@ -256,7 +256,7 @@ export default function AdminSessionBar() {
                 RMAgenda
               </span>
               <span className="text-[9px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-widest leading-none">
-                Clinical OS
+                Gestão da clínica
               </span>
             </div>
           </div>
@@ -297,7 +297,7 @@ export default function AdminSessionBar() {
         {/* CENTRO: CÁPSULA FLUTUANTE DINÂMICA DE SESSÃO (DYNAMIC ISLAND STYLE) */}
         <div className="flex items-center">
           <div
-            className={`flex items-center gap-2 px-3 py-1 rounded-full border transition-all duration-200 shadow-2xs ${
+            className={`flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1 rounded-full border transition-all duration-200 shadow-2xs ${
               isCritical
                 ? 'bg-rose-500/15 border-rose-500/30 text-rose-700 dark:text-rose-300 animate-pulse'
                 : isExpiringSoon
@@ -315,7 +315,7 @@ export default function AdminSessionBar() {
                   : 'bg-[#34C759]'
               }`}
             />
-            <Clock size={12} className={isExpiringSoon ? 'animate-pulse' : 'text-zinc-400'} />
+            <Clock size={12} className={`hidden sm:block ${isExpiringSoon ? 'animate-pulse' : 'text-zinc-400'}`} />
             <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 hidden md:inline">
               Sessão:
             </span>
@@ -332,7 +332,7 @@ export default function AdminSessionBar() {
             type="button"
             onClick={toggleTheme}
             title={isDark ? 'Mudar para Modo Claro' : 'Mudar para Modo Escuro'}
-            className="w-8 h-8 rounded-xl bg-black/[0.03] dark:bg-white/[0.06] hover:bg-black/[0.06] dark:hover:bg-white/[0.1] border border-black/[0.04] dark:border-white/[0.06] flex items-center justify-center text-zinc-600 dark:text-zinc-300 transition-colors cursor-pointer shadow-2xs"
+            className="w-9 h-9 sm:w-8 sm:h-8 rounded-xl bg-black/[0.03] dark:bg-white/[0.06] hover:bg-black/[0.06] dark:hover:bg-white/[0.1] border border-black/[0.04] dark:border-white/[0.06] flex items-center justify-center text-zinc-600 dark:text-zinc-300 transition-colors cursor-pointer shadow-2xs"
           >
             {isDark ? <Sun size={15} className="text-amber-400" /> : <Moon size={15} className="text-zinc-600" />}
           </button>
@@ -342,7 +342,7 @@ export default function AdminSessionBar() {
             type="button"
             onClick={toggleSound}
             title={isSoundMuted ? 'Ativar Efeitos Sonoros' : 'Silenciar Efeitos Sonoros'}
-            className="w-8 h-8 rounded-xl bg-black/[0.03] dark:bg-white/[0.06] hover:bg-black/[0.06] dark:hover:bg-white/[0.1] border border-black/[0.04] dark:border-white/[0.06] flex items-center justify-center text-zinc-600 dark:text-zinc-300 transition-colors cursor-pointer shadow-2xs"
+            className="hidden sm:flex w-8 h-8 rounded-xl bg-black/[0.03] dark:bg-white/[0.06] hover:bg-black/[0.06] dark:hover:bg-white/[0.1] border border-black/[0.04] dark:border-white/[0.06] items-center justify-center text-zinc-600 dark:text-zinc-300 transition-colors cursor-pointer shadow-2xs"
           >
             {isSoundMuted ? <VolumeX size={15} className="text-zinc-400" /> : <Volume2 size={15} className="text-[#34C759] dark:text-[#30D158]" />}
           </button>
@@ -384,7 +384,7 @@ export default function AdminSessionBar() {
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 8, scale: 0.96 }}
                   transition={appleSpring}
-                  className="absolute right-0 mt-2.5 w-72 bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-2xl border border-black/[0.08] dark:border-white/[0.1] rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.65)] p-3 z-[10001] space-y-2.5"
+                  className="absolute right-0 mt-2.5 w-72 max-w-[calc(100vw-24px)] bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-2xl border border-black/[0.08] dark:border-white/[0.1] rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.08)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.65)] p-3 z-[10001] space-y-2.5"
                 >
                   {/* CABEÇALHO DO PERFIL */}
                   <div className="flex items-center gap-3 p-2.5 bg-[#F8F8FA] dark:bg-[#252528] rounded-2xl border border-black/[0.04] dark:border-white/[0.06]">

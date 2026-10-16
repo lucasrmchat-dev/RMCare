@@ -2,6 +2,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import CommandPalette from "@/components/CommandPalette";
+import MotionProvider from "@/components/MotionProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,7 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata = {
   title: { default: "RMAgenda", template: "%s · RMAgenda" },
-  description: "Agendamento clínico simples, seguro e rápido.",
+  description: "Marque, confirme ou remarque consultas e exames da sua clínica pelo celular, sem ligar e sem fila.",
   applicationName: "RMAgenda",
   appleWebApp: { capable: true, statusBarStyle: "default", title: "RMAgenda" },
   formatDetection: { telephone: false },
@@ -24,9 +25,11 @@ export const metadata = {
 export const viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
   viewportFit: "cover",
-  themeColor: "#fafafa"
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#F5F4F0" },
+    { media: "(prefers-color-scheme: dark)", color: "#121214" }
+  ]
 };
 
 export default function RootLayout({ children }) {
@@ -88,8 +91,13 @@ export default function RootLayout({ children }) {
         />
       </head>
       <body className="min-h-full flex flex-col font-sans">
-        {children}
-        <CommandPalette />
+        <a href="#conteudo" className="skip-link">
+          Pular para o conteúdo
+        </a>
+        <MotionProvider>
+          {children}
+          <CommandPalette />
+        </MotionProvider>
       </body>
     </html>
   );

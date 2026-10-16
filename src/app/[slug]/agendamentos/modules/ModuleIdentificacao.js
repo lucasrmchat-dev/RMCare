@@ -32,9 +32,9 @@ export default function ModuleIdentificacao() {
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 text-[11px] font-bold uppercase tracking-wider mb-2.5 shadow-sm">
           <UserRound size={13} strokeWidth={2} /> Identificação do Paciente
         </div>
-        <h2 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-zinc-950 dark:text-white leading-tight">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-zinc-950 dark:text-white leading-tight">
           Como podemos chamar você?
-        </h2>
+        </h1>
         <p className="text-zinc-500 dark:text-zinc-400 text-xs sm:text-sm mt-1.5 leading-relaxed">
           Preencha seus dados para localizarmos seu histórico e enviarmos o comprovante oficial com lembretes de atendimento.
         </p>

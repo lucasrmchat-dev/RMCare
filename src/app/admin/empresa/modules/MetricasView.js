@@ -80,6 +80,7 @@ export default function MetricasView({
   const [filtroModalidade, setFiltroModalidade] = useState("Todas");
   const [filtroStatus, setFiltroStatus] = useState("Todos");
   const [buscaPaciente, setBuscaPaciente] = useState("");
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
 
   // Sub-aba ativa interna se não fornecida externamente
   const [activeTab, setActiveTab] = useState(subTab || "visao_geral");
@@ -563,24 +564,24 @@ export default function MetricasView({
       className="flex-1 flex flex-col h-full overflow-hidden w-full p-4 sm:p-5 lg:p-6 min-h-0"
     >
       {/* CABEÇALHO EXECUTIVO E BARRA DE FILTROS RÁPIDOS */}
-      <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-black/[0.06] dark:border-white/[0.08] pb-4">
+      <div className="mb-3 sm:mb-6 flex flex-col md:flex-row md:items-center justify-between gap-2.5 sm:gap-4 border-b border-black/[0.06] dark:border-white/[0.08] pb-3 sm:pb-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-zinc-950 dark:bg-white text-white dark:text-black flex items-center justify-center shrink-0 shadow-sm">
+          <div className="hidden sm:flex w-10 h-10 rounded-xl bg-zinc-950 dark:bg-white text-white dark:text-black flex items-center justify-center shrink-0 shadow-sm">
             <BarChart3 size={20} strokeWidth={2} />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-zinc-950 dark:text-white tracking-tight">
-              Business Intelligence & Métricas Clínicas
+            <h2 className="text-lg sm:text-xl font-bold text-zinc-950 dark:text-white tracking-tight">
+              Métricas da clínica
             </h2>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">
-              Painel analítico consolidado de faturamento, demanda de especialistas, demografia e performance.
+            <p className="hidden sm:block text-xs text-zinc-500 dark:text-zinc-400 font-medium">
+              Faturamento, procura por especialidade, perfil dos pacientes e faltas no período escolhido.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5 flex-wrap self-start md:self-auto">
-          {/* SELETOR DE PRESETS DE PERÍODO */}
-          <div className="flex items-center bg-white/80 dark:bg-zinc-900/80 border border-zinc-200/80 dark:border-zinc-800 rounded-xl p-1 shadow-sm">
+        <div className="flex items-center gap-2 sm:gap-2.5 w-full md:w-auto">
+          {/* SELETOR DE PRESETS DE PERÍODO (rola na horizontal no celular, sem quebrar linha) */}
+          <div className="flex-1 md:flex-none min-w-0 flex items-center overflow-x-auto [scrollbar-width:none] bg-white/80 dark:bg-zinc-900/80 border border-zinc-200/80 dark:border-zinc-800 rounded-xl p-1 shadow-sm">
             {[
               { id: "7dias", label: "7D" },
               { id: "30dias", label: "30D" },
@@ -597,7 +598,7 @@ export default function MetricasView({
                   playDopamineSound("click");
                   setPeriodoPreset(p.id);
                 }}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                className={`shrink-0 whitespace-nowrap min-h-[36px] md:min-h-0 px-3 py-1 rounded-lg text-xs font-bold transition-all ${
                   periodoPreset === p.id
                     ? "bg-zinc-950 text-white dark:bg-white dark:text-black shadow-sm"
                     : "text-zinc-500 hover:text-zinc-950 dark:hover:text-white"
@@ -611,18 +612,19 @@ export default function MetricasView({
           <button
             type="button"
             onClick={handleExportCSV}
-            className="flex items-center gap-1.5 px-4 py-2 bg-zinc-950 hover:bg-black dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black text-xs font-bold rounded-xl transition-all shadow-sm min-h-[36px] cursor-pointer"
+            className="shrink-0 flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 bg-zinc-950 hover:bg-black dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black text-xs font-bold rounded-xl transition-all shadow-sm min-h-[44px] md:min-h-[36px] cursor-pointer"
             title="Exportar dados filtrados para planilha CSV"
+            aria-label="Exportar CSV"
           >
-            <Download size={14} strokeWidth={2} /> Exportar CSV
+            <Download size={14} strokeWidth={2} /> <span className="hidden sm:inline">Exportar CSV</span>
           </button>
         </div>
       </div>
 
       {/* BARRA DE FILTROS & PESQUISA RÁPIDA */}
-      <div className="mb-5 bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] p-4 rounded-2xl shadow-sm space-y-3">
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
+      <div className="mb-3 sm:mb-5 bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] p-3 sm:p-4 rounded-2xl shadow-sm space-y-3">
+        <div className="flex flex-row items-center justify-between gap-2 sm:gap-3">
+          <div className="hidden sm:flex items-center gap-2">
             <span className="text-xs font-black text-zinc-900 dark:text-white uppercase tracking-wider">
               Filtros de Segmentação
             </span>
@@ -631,20 +633,28 @@ export default function MetricasView({
             </span>
           </div>
 
-          <div className="relative w-full sm:w-72">
+          <div className="relative flex-1 sm:flex-none w-full sm:w-72">
             <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
             <input
               type="text"
               value={buscaPaciente}
               onChange={(e) => setBuscaPaciente(e.target.value)}
-              placeholder="Buscar por paciente ou CPF..."
-              className="w-full pl-9 pr-3 py-2 bg-[#F8F8FA] dark:bg-[#222225] border border-black/[0.08] dark:border-white/[0.1] rounded-2xl text-xs outline-none focus:border-black/30 dark:focus:border-white/30 focus:ring-4 focus:ring-black/5 dark:focus:ring-white/10"
+              placeholder="Buscar paciente ou CPF..."
+              className="w-full h-10 sm:h-auto pl-9 pr-3 py-2 bg-[#F8F8FA] dark:bg-[#222225] border border-black/[0.08] dark:border-white/[0.1] rounded-2xl text-xs outline-none focus:border-black/30 dark:focus:border-white/30 focus:ring-4 focus:ring-black/5 dark:focus:ring-white/10"
             />
           </div>
+          <button
+            type="button"
+            onClick={() => setFiltrosAbertos((v) => !v)}
+            aria-expanded={filtrosAbertos}
+            className="sm:hidden shrink-0 h-10 px-3 rounded-xl border border-black/[0.08] dark:border-white/[0.1] text-xs font-semibold text-zinc-800 dark:text-zinc-200 inline-flex items-center gap-1.5 cursor-pointer"
+          >
+            <Filter size={14} /> Filtros
+          </button>
         </div>
 
-        {/* LINHA DE FILTROS SECUNDÁRIOS */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2 border-t border-black/[0.04] dark:border-white/[0.06]">
+        {/* LINHA DE FILTROS SECUNDÁRIOS (recolhida no celular) */}
+        <div className={`${filtrosAbertos ? "grid" : "hidden"} sm:grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2 border-t border-black/[0.04] dark:border-white/[0.06]`}>
           <select
             value={filtroEspecialidade}
             onChange={(e) => setFiltroEspecialidade(e.target.value)}
@@ -760,7 +770,7 @@ export default function MetricasView({
                     <DollarSign size={16} strokeWidth={2} />
                   </div>
                 </div>
-                <div className="text-2xl sm:text-3xl font-black text-[#86a621] dark:text-[#9FC131] tabular-nums tracking-tight">
+                <div className="text-2xl sm:text-3xl font-black text-brand-ink tabular-nums tracking-tight">
                   {formatarMoeda(metricasCalculadas.faturamentoTotal)}
                 </div>
                 <div className="text-[11px] text-zinc-500">
@@ -889,7 +899,7 @@ export default function MetricasView({
                 <span className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-400">
                   Faturamento Total (Bruto)
                 </span>
-                <div className="text-3xl font-black text-[#86a621] dark:text-[#9FC131] tracking-tight">
+                <div className="text-3xl font-black text-brand-ink tracking-tight">
                   {formatarMoeda(metricasCalculadas.faturamentoTotal)}
                 </div>
                 <p className="text-xs text-zinc-500">Volume total gerado no período selecionado.</p>

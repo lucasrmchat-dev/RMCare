@@ -395,14 +395,14 @@ export default function RestricoesView({
       {/* CABEÇALHO */}
       <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-black/[0.06] dark:border-white/[0.08] pb-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 flex items-center justify-center flex-shrink-0 shadow-sm">
+          <div className="hidden sm:flex w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 items-center justify-center flex-shrink-0 shadow-sm">
             <Clock3 size={20} strokeWidth={1.5} />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-zinc-950 dark:text-white tracking-tight">
+            <h2 className="text-lg sm:text-xl font-bold text-zinc-950 dark:text-white tracking-tight">
               Disponibilidade & Agendas Compartilhadas
             </h2>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">
+            <p className="hidden sm:block text-xs text-zinc-500 dark:text-zinc-400 font-medium">
               Defina turnos, dias de funcionamento e vincule especialidades individuais ou em grupos para compartilharem a mesma agenda sequencial.
             </p>
           </div>
@@ -1272,7 +1272,7 @@ export default function RestricoesView({
                                   {tituloRegra}
                                 </h4>
                               </div>
-                              <span className="text-[10px] font-bold text-[#86a621] dark:text-[#9FC131] uppercase tracking-wider block mt-1">
+                              <span className="text-[10px] font-bold text-brand-ink uppercase tracking-wider block mt-1">
                                 {subtituloTipo}
                               </span>
                               <p className="text-[11px] font-bold text-zinc-400 mt-1 uppercase tracking-widest flex items-center gap-1.5">

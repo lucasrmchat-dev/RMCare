@@ -1,272 +1,236 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import {
-  ArrowRight,
-  Search,
-  Activity,
-  ShieldCheck,
-  Clock,
-  Building2,
-  CalendarDays
-} from "lucide-react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { ArrowRight, Search, Building2, CalendarSearch, LockKeyhole, X, LogIn } from "lucide-react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import { supabase } from "@/lib/supabase";
+import { filtrarPorBusca } from "@/lib/buscaTolerante";
 import { playDopamineSound, triggerHaptic } from "@/lib/dopamine";
+
+const PASSOS = [
+  {
+    titulo: "Encontre sua clínica",
+    texto: "Digite o nome da clínica ou da especialidade. Pode escrever sem acento ou com erro — a busca entende."
+  },
+  {
+    titulo: "Escolha um horário livre",
+    texto: "O calendário mostra só os horários que a clínica realmente tem disponíveis naquele dia."
+  },
+  {
+    titulo: "Confirme pelo WhatsApp",
+    texto: "Você recebe um link pessoal para confirmar, remarcar ou cancelar sem precisar ligar."
+  }
+];
 
 export default function Home() {
   const [search, setSearch] = useState("");
   const [empresas, setEmpresas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const searchInputRef = useRef(null);
+  const listaRef = useRef(null);
 
   useEffect(() => {
     const fetchEmpresas = async () => {
-      const { data } = await supabase
-        .from("empresas")
-        .select("nome, slug, logo_url, config_campos")
-        .order("nome");
+      const { data } = await supabase.from("empresas").select("nome, slug, logo_url, config_campos").order("nome");
       if (data) setEmpresas(data);
       setLoading(false);
     };
     fetchEmpresas();
   }, []);
 
-  const filtered = empresas.filter(
-    (e) =>
-      e.nome.toLowerCase().includes(search.toLowerCase()) ||
-      e.slug.toLowerCase().includes(search.toLowerCase())
+  const filtered = useMemo(
+    () => filtrarPorBusca(empresas, search, ["nome", "slug"]).slice(0, 8),
+    [empresas, search]
   );
+  const aberto = search.trim().length > 0;
+
+  const irPara = (emp) => {
+    playDopamineSound("select");
+    triggerHaptic("light");
+    window.location.href = `/${emp.slug}/agendamentos`;
+  };
 
   const handleKeyDown = (e) => {
+    if (e.key === "Escape") return setSearch("");
     if (filtered.length === 0) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setSelectedIndex((prev) => (prev + 1) % filtered.length);
-      playDopamineSound("click");
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setSelectedIndex((prev) => (prev - 1 + filtered.length) % filtered.length);
-      playDopamineSound("click");
     } else if (e.key === "Enter" && filtered[selectedIndex]) {
       e.preventDefault();
-      playDopamineSound("select");
-      window.location.href = `/${filtered[selectedIndex].slug}/agendamentos`;
-    } else if (e.key === "Escape") {
-      setSearch("");
+      irPara(filtered[selectedIndex]);
     }
   };
 
   return (
-    <main className="relative min-h-[100dvh] bg-[#F8FAFC] dark:bg-[#060A12] overflow-x-hidden antialiased text-gray-950 dark:text-white transition-colors duration-400 flex flex-col justify-between">
+    <div className="relative min-h-[100dvh] bg-background text-zinc-900 dark:text-zinc-100 flex flex-col">
       <Navbar />
 
-      <div className="absolute top-[-8%] left-[-10%] w-[550px] h-[550px] bg-[#9FC131]/8 dark:bg-[#9FC131]/5 rounded-full blur-[130px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-blue-600/5 dark:bg-emerald-500/5 rounded-full blur-[140px] pointer-events-none" />
-
-      <section className="relative max-w-4xl mx-auto pt-24 md:pt-32 pb-16 px-6 flex flex-col items-center text-center z-10 w-full">
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-white/80 dark:bg-[#111622]/80 backdrop-blur-xl border border-zinc-200/80 dark:border-white/10 text-[11px] font-semibold text-zinc-600 dark:text-zinc-400 shadow-sm mb-6"
-        >
-          <div className="w-1.5 h-1.5 rounded-full bg-[#9FC131]" />
-          <span>Plataforma RMAgenda</span>
-          <span className="text-zinc-300 dark:text-zinc-700">·</span>
-          <span className="text-[10px] text-zinc-400">Atendimento Clínico</span>
-        </motion.div>
-
-        <motion.h1
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.05 }}
-          className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight text-zinc-950 dark:text-white leading-[1.18] max-w-2xl"
-        >
-          Agendamento clínico simplificado,{" "}
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#86a621] via-emerald-600 to-teal-600 dark:from-[#9FC131] dark:via-emerald-400 dark:to-teal-400">
-            inteligente e seguro.
+      {/* Cabeçalho: marca à esquerda (início da leitura em F), acesso da clínica à direita */}
+      <header className="w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-5 sm:pt-7 flex items-center justify-between gap-4">
+        <Link href="/" className="flex items-center gap-2.5 font-bold tracking-tight text-zinc-950 dark:text-white">
+          <span aria-hidden className="w-8 h-8 rounded-lg bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 grid place-items-center text-xs font-black">
+            RM
           </span>
-        </motion.h1>
-
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.5, delay: 0.15 }}
-          className="mt-4 text-sm sm:text-base text-zinc-500 dark:text-zinc-400 max-w-lg font-normal leading-relaxed"
+          RMAgenda
+        </Link>
+        <Link
+          href="/login"
+          className="inline-flex items-center gap-1.5 min-h-[40px] px-3.5 rounded-lg text-sm font-semibold text-zinc-700 dark:text-zinc-300 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors"
         >
-          Localize sua clínica ou profissional, consulte horários disponíveis em tempo real e confirme seu atendimento.
-        </motion.p>
+          <LogIn size={15} aria-hidden /> Sou da clínica
+        </Link>
+      </header>
 
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-          className="mt-8 w-full max-w-md relative"
-        >
-          <div className="relative flex items-center group">
-            <Search
-              className="absolute left-4 text-zinc-400 group-focus-within:text-[#9FC131] transition-colors pointer-events-none"
-              size={17}
-              strokeWidth={1.5}
-            />
-            <input
-              ref={searchInputRef}
-              type="text"
-              role="combobox"
-              aria-expanded={search.length > 0}
-              aria-label="Buscar clínica ou especialidade médica"
-              placeholder="Buscar por clínica ou especialidade..."
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setSelectedIndex(0);
-              }}
-              onKeyDown={handleKeyDown}
-              className="w-full bg-white/90 dark:bg-[#0f141f]/90 backdrop-blur-2xl border border-zinc-200/90 dark:border-white/10 rounded-full px-5 py-3.5 pl-11 pr-10 text-xs sm:text-sm outline-none focus:border-[#9FC131] dark:focus:border-[#9FC131] shadow-sm transition-all placeholder:text-zinc-400 font-medium"
-            />
-            {search && (
-              <button
-                onClick={() => setSearch("")}
-                aria-label="Limpar busca"
-                className="absolute right-3.5 p-1 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-full transition-colors text-xs"
-              >
-                ✕
-              </button>
-            )}
-          </div>
+      <main id="conteudo" className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-12 sm:pt-16 lg:pt-24 pb-28 md:pb-20">
+        {/* Grade assimétrica na proporção áurea (1.618 : 1) */}
+        <div className="grid lg:grid-cols-[1.618fr_1fr] gap-12 lg:gap-16 items-start">
+          <section aria-labelledby="titulo-home">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-ink">Para pacientes</p>
+            <h1 id="titulo-home" className="mt-3 text-4xl sm:text-5xl font-black tracking-tight text-zinc-950 dark:text-white max-w-[16ch]">
+              Marque sua consulta sem ligar para a clínica.
+            </h1>
+            <p className="mt-5 text-base sm:text-lg text-muted max-w-[52ch]">
+              Escolha a clínica, veja os horários livres e reserve pelo celular. Recebeu um link no WhatsApp? Ele já leva direto ao seu agendamento.
+            </p>
 
-          <AnimatePresence>
-            {search.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: 6, scale: 0.99 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 6, scale: 0.99 }}
-                transition={{ duration: 0.15 }}
-                className="absolute top-full left-0 right-0 mt-2 bg-white/95 dark:bg-[#0f141f]/95 backdrop-blur-3xl border border-zinc-200/90 dark:border-white/10 rounded-2xl shadow-xl overflow-hidden z-50 max-h-64 overflow-y-auto custom-scrollbar text-left p-1.5 divide-y divide-zinc-100 dark:divide-zinc-800/40"
-              >
-                {loading ? (
-                  <div className="p-6 text-center text-xs text-zinc-500 flex flex-col items-center justify-center gap-2">
-                    <Activity className="animate-spin text-[#9FC131]" size={18} strokeWidth={1.5} />
-                    <span>Localizando clínicas...</span>
-                  </div>
-                ) : filtered.length > 0 ? (
-                  filtered.map((emp, index) => {
-                    const isSelected = selectedIndex === index;
-                    const logo = emp.logo_url || emp.config_campos?.logo_url;
-                    const formato = emp.config_campos?.formato_logo || "arredondada";
-                    const shapeClass =
-                      formato === "circular"
-                        ? "rounded-full"
-                        : formato === "quadrada"
-                        ? "rounded-lg"
-                        : "rounded-xl";
-                    return (
-                      <Link
-                        key={emp.slug}
-                        href={`/${emp.slug}/agendamentos`}
-                        onClick={() => {
-                          playDopamineSound("select");
-                          triggerHaptic("light");
-                        }}
-                      >
-                        <div
-                          onMouseEnter={() => setSelectedIndex(index)}
-                          className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all cursor-pointer ${
-                            isSelected
-                              ? "bg-zinc-100 dark:bg-white/10"
-                              : "hover:bg-zinc-50 dark:hover:bg-white/5"
-                          }`}
-                        >
-                          <div className={`w-9 h-9 ${shapeClass} bg-[#9FC131]/10 border border-[#9FC131]/20 flex items-center justify-center text-[#9FC131] shrink-0 overflow-hidden shadow-sm`}>
-                            {logo ? (
-                              <img src={logo} alt={emp.nome} className="w-full h-full object-cover" />
-                            ) : (
-                              <Building2 size={16} strokeWidth={1.5} />
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-bold text-zinc-950 dark:text-white text-xs sm:text-sm truncate">
-                              {emp.nome}
-                            </h4>
-                            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 flex items-center gap-1">
-                              <CalendarDays size={11} strokeWidth={1.5} className="text-emerald-500" />
-                              <span>Acessar portal</span>
-                            </p>
-                          </div>
-                          <ArrowRight
-                            size={14}
-                            strokeWidth={1.5}
-                            className={`text-zinc-400 transition-transform ${
-                              isSelected ? "translate-x-1 text-[#9FC131]" : ""
-                            }`}
-                          />
-                        </div>
-                      </Link>
-                    );
-                  })
-                ) : (
-                  <div className="p-6 text-center text-xs text-zinc-500">
-                    Nenhuma clínica encontrada.
-                  </div>
+            {/* Busca com sugestões automáticas e tolerância a erros */}
+            <div className="mt-8 max-w-xl relative">
+              <label htmlFor="busca-clinica" className="block text-sm font-semibold text-zinc-800 dark:text-zinc-200 mb-2">
+                Qual é a sua clínica?
+              </label>
+              <div className="relative">
+                <Search aria-hidden size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+                <input
+                  id="busca-clinica"
+                  type="text"
+                  role="combobox"
+                  autoComplete="off"
+                  aria-expanded={aberto}
+                  aria-controls="sugestoes-clinica"
+                  aria-activedescendant={aberto && filtered[selectedIndex] ? `clinica-${filtered[selectedIndex].slug}` : undefined}
+                  placeholder="Ex.: e-Gastro, cardiologia…"
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setSelectedIndex(0);
+                  }}
+                  onKeyDown={handleKeyDown}
+                  className="w-full min-h-[56px] rounded-xl bg-surface border border-black/[0.1] dark:border-white/[0.12] pl-11 pr-11 text-base text-zinc-900 dark:text-white placeholder:text-zinc-400 shadow-sm outline-none focus:border-zinc-900 dark:focus:border-zinc-300 focus:ring-4 focus:ring-black/[0.05] dark:focus:ring-white/[0.08] transition-[border-color,box-shadow]"
+                />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch("")}
+                    aria-label="Limpar busca"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 grid place-items-center rounded-lg text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                  >
+                    <X size={16} />
+                  </button>
                 )}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.div>
+              </div>
 
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.7, delay: 0.3 }}
-          className="mt-16 grid grid-cols-1 sm:grid-cols-3 gap-4 w-full border-t border-zinc-200/70 dark:border-white/[0.06] pt-10 text-left"
-        >
-          <div className="flex gap-3.5 items-start bg-white/60 dark:bg-[#0c101a]/50 backdrop-blur-xl p-5 rounded-2xl border border-zinc-200/70 dark:border-white/[0.06]">
-            <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-200/50 dark:border-emerald-800/50">
-              <ShieldCheck size={18} strokeWidth={1.5} />
+              {aberto && (
+                <div
+                  ref={listaRef}
+                  className="absolute top-full left-0 right-0 mt-2 z-50 rounded-xl bg-surface border border-black/[0.08] dark:border-white/[0.1] shadow-xl overflow-hidden"
+                >
+                  {loading ? (
+                    <p className="p-5 text-sm text-muted">Carregando clínicas…</p>
+                  ) : filtered.length > 0 ? (
+                    <ul id="sugestoes-clinica" role="listbox" aria-label="Clínicas encontradas" className="max-h-80 overflow-y-auto custom-scrollbar p-1.5">
+                      {filtered.map((emp, index) => {
+                        const logo = emp.logo_url || emp.config_campos?.logo_url;
+                        const ativo = selectedIndex === index;
+                        return (
+                          <li
+                            key={emp.slug}
+                            id={`clinica-${emp.slug}`}
+                            role="option"
+                            aria-selected={ativo}
+                            onMouseEnter={() => setSelectedIndex(index)}
+                            onClick={() => irPara(emp)}
+                            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${
+                              ativo ? "bg-black/[0.05] dark:bg-white/[0.08]" : ""
+                            }`}
+                          >
+                            <span className="w-10 h-10 rounded-full bg-background border border-black/[0.06] dark:border-white/[0.08] grid place-items-center overflow-hidden shrink-0 text-zinc-500">
+                              {logo ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={logo} alt="" loading="lazy" className="w-full h-full object-cover" />
+                              ) : (
+                                <Building2 size={17} aria-hidden />
+                              )}
+                            </span>
+                            <span className="flex-1 min-w-0">
+                              <span className="block text-sm font-semibold text-zinc-950 dark:text-white truncate">{emp.nome}</span>
+                              <span className="block text-xs text-muted">Ver horários e agendar</span>
+                            </span>
+                            <ArrowRight size={16} aria-hidden className={`shrink-0 transition-transform ${ativo ? "translate-x-0.5 text-brand-ink" : "text-zinc-300"}`} />
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : (
+                    <div className="p-5 text-sm">
+                      <p className="font-semibold text-zinc-900 dark:text-white">Nenhuma clínica com esse nome.</p>
+                      <p className="mt-1 text-muted">Confira a grafia ou peça à clínica o link de agendamento dela.</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-            <div>
-              <h4 className="font-bold text-xs sm:text-sm text-zinc-950 dark:text-white">Privacidade & LGPD</h4>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 leading-relaxed">
-                Dados clínicos protegidos de ponta a ponta.
-              </p>
-            </div>
-          </div>
 
-          <div className="flex gap-3.5 items-start bg-white/60 dark:bg-[#0c101a]/50 backdrop-blur-xl p-5 rounded-2xl border border-zinc-200/70 dark:border-white/[0.06]">
-            <div className="w-9 h-9 rounded-xl bg-[#9FC131]/10 text-[#86a621] dark:text-[#9FC131] flex items-center justify-center shrink-0 border border-[#9FC131]/20">
-              <Activity size={18} strokeWidth={1.5} />
-            </div>
-            <div>
-              <h4 className="font-bold text-xs sm:text-sm text-zinc-950 dark:text-white">Especialistas</h4>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 leading-relaxed">
-                Acesso direto a médicos e exames da clínica.
-              </p>
-            </div>
-          </div>
+            <Link
+              href="/consultar"
+              className="mt-6 inline-flex items-center gap-2 min-h-[44px] text-sm font-semibold text-zinc-800 dark:text-zinc-200 group"
+            >
+              <CalendarSearch size={17} aria-hidden className="text-brand-ink" />
+              <span className="underline underline-offset-4 decoration-zinc-300 dark:decoration-zinc-600 group-hover:decoration-current">
+                Já tem horário marcado? Consulte, remarque ou cancele
+              </span>
+              <ArrowRight size={15} aria-hidden className="transition-transform group-hover:translate-x-0.5" />
+            </Link>
+          </section>
 
-          <div className="flex gap-3.5 items-start bg-white/60 dark:bg-[#0c101a]/50 backdrop-blur-xl p-5 rounded-2xl border border-zinc-200/70 dark:border-white/[0.06]">
-            <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 border border-blue-200/50 dark:border-blue-800/50">
-              <Clock size={18} strokeWidth={1.5} />
-            </div>
-            <div>
-              <h4 className="font-bold text-xs sm:text-sm text-zinc-950 dark:text-white">Disponibilidade 24/7</h4>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 leading-relaxed">
-                Consulte horários e marque sem filas.
-              </p>
-            </div>
-          </div>
-        </motion.div>
-      </section>
+          {/* Coluna menor: como funciona, em etapas numeradas */}
+          <aside aria-labelledby="como-funciona" className="lg:mt-14 rounded-2xl bg-surface border border-black/[0.06] dark:border-white/[0.08] shadow-sm p-6 sm:p-7">
+            <h2 id="como-funciona" className="text-lg font-bold tracking-tight text-zinc-950 dark:text-white">
+              Como funciona
+            </h2>
+            <ol className="mt-5 space-y-5">
+              {PASSOS.map((passo, i) => (
+                <li key={passo.titulo} className="grid grid-cols-[auto_1fr] gap-x-3.5">
+                  <span aria-hidden className="w-7 h-7 rounded-full bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 grid place-items-center text-xs font-bold">
+                    {i + 1}
+                  </span>
+                  <div>
+                    <h3 className="text-sm font-bold text-zinc-900 dark:text-white leading-7">{passo.titulo}</h3>
+                    <p className="mt-0.5 text-sm text-muted">{passo.texto}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+            <hr className="my-6 border-black/[0.06] dark:border-white/[0.08]" />
+            <p className="flex gap-2.5 text-xs text-muted">
+              <LockKeyhole size={15} aria-hidden className="shrink-0 mt-0.5 text-zinc-400" />
+              Seus dados ficam com a sua clínica e são tratados conforme a LGPD.
+            </p>
+          </aside>
+        </div>
+      </main>
 
-      <footer className="w-full py-6 text-center text-[11px] text-zinc-400 border-t border-zinc-200/60 dark:border-white/[0.06] relative z-10">
-        <p className="font-medium">
-          © {new Date().getFullYear()} RMAgenda · Sistema Clínico Digital
-        </p>
+      <footer className="w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 mb-20 md:mb-0 flex flex-col sm:flex-row gap-3 sm:items-center justify-between text-xs text-muted border-t border-black/[0.06] dark:border-white/[0.08]">
+        <p>© {new Date().getFullYear()} RMAgenda</p>
+        <nav aria-label="Links do rodapé" className="flex gap-5">
+          <Link href="/consultar" className="hover:text-zinc-900 dark:hover:text-white underline-offset-4 hover:underline">Meus agendamentos</Link>
+          <Link href="/login" className="hover:text-zinc-900 dark:hover:text-white underline-offset-4 hover:underline">Área da clínica</Link>
+        </nav>
       </footer>
-    </main>
+    </div>
   );
 }

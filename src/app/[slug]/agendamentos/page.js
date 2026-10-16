@@ -26,6 +26,18 @@ import { buildJourney, DEFAULT_JOURNEY, isDraftFresh } from "@/lib/journey";
 import { getAppointmentForReschedule, remarcarAgendamentoPaciente } from "@/actions/appointments";
 import { playDopamineSound, triggerHaptic } from "@/lib/dopamine";
 
+// Microcopy do botão principal: diz para onde o paciente vai, em vez de um "Continuar" genérico
+const ROTULOS_PROXIMA_ETAPA = {
+  identificacao: "Informar meus dados",
+  especialidade: "Escolher atendimento",
+  modalidade: "Escolher convênio ou particular",
+  triagem: "Responder perguntas rápidas",
+  agenda: "Escolher dia e horário",
+  checkout: "Ir para o pagamento",
+  concluido: "Reservar meu horário"
+};
+const rotuloProximaEtapa = (etapa) => ROTULOS_PROXIMA_ETAPA[etapa] || "Continuar";
+
 function AgendamentoOrquestrador() {
     const params = useParams();
     const searchParams = useSearchParams();
@@ -660,7 +672,7 @@ function AgendamentoOrquestrador() {
               .neq("status_atendimento", "cancelado"),
             supabase
               .from("bloqueios_horarios")
-              .select("horario, medico_profissional, especialidade")
+              .select("horario, horario_fim, medico_profissional, especialidade, situacao")
               .eq("data", formData.data_agendamento)
               .eq("empresa_id", empresaDados.id)
           ]);
@@ -1265,7 +1277,7 @@ function AgendamentoOrquestrador() {
       const cnInput =
         "w-full min-h-[52px] p-4 pt-6 bg-transparent outline-none text-zinc-950 dark:text-white font-semibold text-sm sm:text-base peer placeholder-transparent";
       const cnLabel =
-        "absolute left-4 top-2 text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-widest transition-all duration-200 peer-placeholder-shown:top-4 peer-placeholder-shown:text-xs peer-placeholder-shown:font-medium peer-placeholder-shown:normal-case peer-placeholder-shown:tracking-normal peer-focus:top-2 peer-focus:text-[10px] peer-focus:font-bold peer-focus:uppercase peer-focus:text-[#86a621] dark:peer-focus:text-[#9FC131] pointer-events-none";
+        "absolute left-4 top-2 text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-widest transition-all duration-200 peer-placeholder-shown:top-4 peer-placeholder-shown:text-xs peer-placeholder-shown:font-medium peer-placeholder-shown:normal-case peer-placeholder-shown:tracking-normal peer-focus:top-2 peer-focus:text-[10px] peer-focus:font-bold peer-focus:uppercase peer-focus:text-brand-ink pointer-events-none";
 
       if (isLocked && value) {
         return (
@@ -1430,7 +1442,7 @@ function AgendamentoOrquestrador() {
     if (loadingConfig)
       return (
         <div className="text-zinc-500 mt-28 flex flex-col items-center gap-3">
-          <Activity className="animate-spin text-[#9FC131]" size={28} />
+          <Activity className="animate-spin text-brand-ink" size={28} />
           <span className="text-sm font-semibold">Carregando portal da clínica...</span>
         </div>
       );
@@ -1488,14 +1500,16 @@ function AgendamentoOrquestrador() {
       <AgendamentoContext.Provider value={contextValue}>
         {/* CABEÇALHO DYNAMIC ISLAND */}
         <div
-          className={`absolute left-0 right-0 w-full z-[9999] px-4 flex justify-center pointer-events-none transition-all duration-300 ease-out ${
-            isBoasVindas ? "top-3.5 sm:top-4 md:top-6" : "top-[70px] sm:top-[74px] md:top-6"
+          className={`absolute left-0 right-0 w-full z-[9999] px-4 flex pointer-events-none transition-all duration-300 ease-out ${
+            // No celular a ilha de progresso fica na linha do cabeçalho da clínica (à direita),
+            // em vez de flutuar sobre o conteúdo e exigir 124px de espaço vazio no topo
+            isBoasVindas ? "top-3.5 sm:top-4 md:top-6 justify-center" : "top-[18px] justify-end md:justify-center md:top-6"
           }`}
         >
           <motion.div
             layout
             transition={{ type: "spring", stiffness: 450, damping: 30 }}
-            className={`pointer-events-auto rounded-full px-4 sm:px-5 py-2 sm:py-2.5 max-w-md flex items-center justify-center transition-all shadow-[0_12px_36px_rgba(0,0,0,0.15)] ${
+            className={`pointer-events-auto rounded-full px-4 sm:px-5 py-2 sm:py-2.5 max-w-md flex items-center justify-center transition-all shadow-[0_12px_36px_rgba(0,0,0,0.08)] ${
               islandState === "error"
                 ? "bg-red-600 text-white"
                 : islandState === "success"
@@ -1558,7 +1572,7 @@ function AgendamentoOrquestrador() {
                           key={i}
                           className={`h-1.5 rounded-full transition-all duration-300 ${
                             currentStepIndex === i
-                              ? "w-5 bg-[#34C759] dark:bg-[#30D158] shadow-[0_0_8px_rgba(159,193,49,0.7)]"
+                              ? "w-5 bg-[#34C759] dark:bg-[#30D158] shadow-[0_0_8px_rgba(159,193,49,0.35)]"
                               : currentStepIndex > i
                               ? "w-2 bg-zinc-900/40 dark:bg-white/40"
                               : "w-1.5 bg-zinc-300 dark:bg-white/10"
@@ -1566,7 +1580,7 @@ function AgendamentoOrquestrador() {
                         />
                       ))}
                   </div>
-                  <div className="text-[10px] font-extrabold tracking-widest text-zinc-600 dark:text-zinc-300 border-l border-zinc-300 dark:border-zinc-700 pl-3 uppercase whitespace-nowrap">
+                  <div className="hidden min-[380px]:block text-[10px] font-extrabold tracking-widest text-zinc-600 dark:text-zinc-300 border-l border-zinc-300 dark:border-zinc-700 pl-3 uppercase whitespace-nowrap">
                     {stepLabels[currentModuleKey] || currentModuleKey}
                   </div>
                 </motion.div>
@@ -1589,7 +1603,7 @@ function AgendamentoOrquestrador() {
                 transition={{ type: "spring", stiffness: 420, damping: 32 }}
                 className="md:hidden w-full max-w-[860px] px-5 pt-3 pb-1 flex items-center justify-between z-20"
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0 max-w-[52%]">
                   {logoUrl ? (
                     <div
                       className={`${headerLogoShapeClass} overflow-hidden bg-white dark:bg-[#161618] border border-black/[0.06] dark:border-white/[0.08] flex items-center justify-center shadow-sm shrink-0`}
@@ -1609,7 +1623,7 @@ function AgendamentoOrquestrador() {
                     <span className="font-black text-sm text-zinc-950 dark:text-white truncate block leading-tight">
                       {empresaDados?.nome || "Portal de Agendamento"}
                     </span>
-                    <span className="text-[10px] font-bold text-[#86a621] dark:text-[#9FC131] uppercase tracking-widest block">
+                    <span className="text-[10px] font-bold text-brand-ink uppercase tracking-widest block">
                       Agendamento Oficial
                     </span>
                   </div>
@@ -1621,7 +1635,7 @@ function AgendamentoOrquestrador() {
           <motion.div
             layout
             transition={{ type: "spring", stiffness: 420, damping: 34 }}
-            className="w-full max-w-[860px] flex-1 md:flex-none md:h-[85vh] md:max-h-[780px] bg-white/90 dark:bg-[#161618]/95 backdrop-blur-3xl saturate-150 md:rounded-3xl border-0 md:border border-black/[0.06] dark:border-white/[0.08] flex flex-col overflow-hidden md:shadow-[0_30px_90px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.85)] dark:md:shadow-[0_30px_90px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.06)] relative"
+            className="w-full max-w-[860px] flex-1 md:flex-none md:h-[85vh] md:max-h-[780px] bg-white/90 dark:bg-[#161618]/95 backdrop-blur-3xl saturate-150 md:rounded-3xl border-0 md:border border-black/[0.06] dark:border-white/[0.08] flex flex-col overflow-hidden md:shadow-[0_30px_90px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.85)] dark:md:shadow-[0_30px_90px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.06)] relative"
           >
             {/* DESKTOP HEADER ACTION BAR */}
             {showActionButtons && (
@@ -1672,12 +1686,12 @@ function AgendamentoOrquestrador() {
                       }`}
                     >
                       {loading
-                        ? "Processando..."
+                        ? "Reservando seu horário…"
                         : currentModuleKey === "agenda" &&
                           (formData.modalidade === "Convênio" ||
                             formData.tipo_servico === "Retorno")
-                        ? "Finalizar Agendamento"
-                        : "Continuar"}
+                        ? "Reservar meu horário"
+                        : rotuloProximaEtapa(modulosAtivos[currentStepIndex + 1])}
                       {!loading && <ArrowRight size={14} strokeWidth={2.5} />}
                     </motion.button>
                   ) : (
@@ -1694,8 +1708,8 @@ function AgendamentoOrquestrador() {
                 isBoasVindas
                   ? "pt-12 sm:pt-14 pb-16 sm:pb-20 flex flex-col justify-center"
                   : isConcluido
-                  ? "pt-16 pb-28"
-                  : "pt-[124px] sm:pt-[130px] pb-44"
+                  ? "pt-4 pb-28"
+                  : "pt-3 pb-44"
               } md:p-8 md:pb-10 overscroll-contain`}
             >
               <AnimatePresence mode="wait" initial={false}>
@@ -1756,12 +1770,12 @@ function AgendamentoOrquestrador() {
                       }`}
                     >
                       {loading
-                        ? "Processando..."
+                        ? "Reservando seu horário…"
                         : currentModuleKey === "agenda" &&
                           (formData.modalidade === "Convênio" ||
                             formData.tipo_servico === "Retorno")
-                        ? "Finalizar Agendamento"
-                        : "Continuar"}
+                        ? "Reservar meu horário"
+                        : rotuloProximaEtapa(modulosAtivos[currentStepIndex + 1])}
                       {!loading && <ArrowRight size={14} strokeWidth={2.5} />}
                     </motion.button>
                   ) : (
@@ -1783,9 +1797,9 @@ export default function AgendamentoPremium() {
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
 
   return (
-    <div className="flex min-h-[100dvh] w-full bg-[#F8FAFC] dark:bg-[#060A12] text-zinc-900 dark:text-zinc-50 transition-colors duration-400 font-sans antialiased">
+    <div className="flex min-h-[100dvh] w-full bg-background dark:bg-background text-zinc-900 dark:text-zinc-50 transition-colors duration-400 font-sans antialiased">
       <SidebarPremium isExpanded={isSidebarExpanded} setIsExpanded={setIsSidebarExpanded} />
-      <main
+      <main id="conteudo"
         className={`flex-1 relative flex flex-col items-center transition-[margin] duration-500 ease-out w-full min-h-[100dvh] overflow-hidden ${
           isSidebarExpanded ? "md:ml-[240px]" : "md:ml-[68px]"
         }`}

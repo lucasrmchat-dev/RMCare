@@ -102,7 +102,7 @@ export default function ModuleConcluido() {
           transition={{ delay: 0.3 }}
           className="absolute -top-1 -right-1 w-7 h-7 rounded-full bg-white dark:bg-black border-2 border-[#9FC131] flex items-center justify-center shadow-sm"
         >
-          <Sparkles size={14} className="text-[#9FC131]" />
+          <Sparkles size={14} className="text-brand-ink" />
         </motion.div>
       </motion.div>
 
@@ -114,13 +114,13 @@ export default function ModuleConcluido() {
         <CheckCircle2 size={13} strokeWidth={2.5} /> {!pixData && formData?.modalidade?.toLowerCase().includes("partic") && !formData?.status_pagamento_antecipado ? "Horário Pré-Reservado" : "Agendamento Concluído com Sucesso"}
       </div>
 
-      <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-zinc-950 dark:text-white tracking-tight leading-tight">
+      <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-zinc-950 dark:text-white tracking-tight leading-tight">
         {pixData
           ? "Finalize seu pagamento Pix"
           : !pixData && formData?.modalidade?.toLowerCase().includes("partic") && !formData?.status_pagamento_antecipado
           ? "Horário Reservado!"
           : "Agendamento Confirmado!"}
-      </h2>
+      </h1>
 
       <p className="text-zinc-500 dark:text-zinc-400 mt-2.5 text-xs sm:text-sm leading-relaxed max-w-md">
         {pixData
@@ -167,7 +167,7 @@ export default function ModuleConcluido() {
 
             <div className="p-4 bg-[#F8F8FA] dark:bg-[#222225] rounded-2xl border border-zinc-200/60 dark:border-zinc-800 flex items-center justify-between">
               <span className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5">
-                {timeLeft > 0 && <RefreshCw size={12} className="animate-spin text-[#9FC131]" />}
+                {timeLeft > 0 && <RefreshCw size={12} className="animate-spin text-brand-ink" />}
                 Verificação Automática
               </span>
               <span className="text-base font-mono font-bold text-zinc-900 dark:text-white">
@@ -210,7 +210,7 @@ export default function ModuleConcluido() {
 
         <div className="flex justify-between items-center text-xs border-t border-black/[0.04] dark:border-white/[0.06] pt-3">
           <span className="text-zinc-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
-            <Calendar size={14} className="text-[#86a621] dark:text-[#9FC131]" /> Data & Horário
+            <Calendar size={14} className="text-brand-ink" /> Data & Horário
           </span>
           <span className="font-bold text-zinc-900 dark:text-white">
             {dataFormatada} às {formData.horario_agendamento}h

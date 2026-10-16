@@ -27,7 +27,7 @@ export default function ModuleBoasVindas() {
         return "w-32 h-16 sm:w-44 sm:h-24 rounded-2xl";
       case "arredondada":
       default:
-        return "w-20 h-20 sm:w-28 sm:h-28 rounded-[1.5rem] sm:rounded-[1.75rem]";
+        return "w-20 h-20 sm:w-28 sm:h-28 rounded-2xl sm:rounded-2xl";
     }
   };
 
@@ -66,18 +66,18 @@ export default function ModuleBoasVindas() {
             variants={{ hidden: { scale: 0.85, opacity: 0 }, show: { scale: 1, opacity: 1 } }}
             className="relative"
           >
-            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-[1.5rem] bg-gradient-to-br from-[#9FC131] to-[#86a621] text-black flex items-center justify-center shadow-xl shadow-[#9FC131]/25 border border-white/20">
+            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-gradient-to-br from-[#9FC131] to-[#86a621] text-black flex items-center justify-center shadow-xl shadow-[#9FC131]/25 border border-white/20">
               <HeartPulse size={36} strokeWidth={2} />
             </div>
             <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-white dark:bg-black border-2 border-[#9FC131] flex items-center justify-center shadow-sm">
-              <Sparkles size={12} className="text-[#9FC131]" />
+              <Sparkles size={12} className="text-brand-ink" />
             </div>
           </motion.div>
         )}
 
         {/* TEXTOS CENTRALIZADOS */}
         <motion.div variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }} className="w-full flex flex-col items-center">
-          <div className="inline-flex items-center gap-1.5 text-[10.5px] font-bold text-[#86a621] dark:text-[#9FC131] uppercase tracking-widest px-3.5 py-1 rounded-full bg-[#9FC131]/10 border border-[#9FC131]/20 mb-2 shadow-sm">
+          <div className="inline-flex items-center gap-1.5 text-[10.5px] font-bold text-brand-ink uppercase tracking-widest px-3.5 py-1 rounded-full bg-[#9FC131]/10 border border-[#9FC131]/20 mb-2 shadow-sm">
             <CheckCircle2 size={12} strokeWidth={2.5} /> Portal de Atendimento Oficial
           </div>
 
@@ -104,7 +104,7 @@ export default function ModuleBoasVindas() {
             </div>
 
             <div className="p-2.5 sm:p-3.5 rounded-2xl bg-white/70 dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.08] backdrop-blur-xl shadow-sm flex flex-col items-center">
-              <div className="w-7 h-7 rounded-xl bg-[#9FC131]/15 text-[#86a621] dark:text-[#9FC131] flex items-center justify-center mb-1">
+              <div className="w-7 h-7 rounded-xl bg-[#9FC131]/15 text-brand-ink flex items-center justify-center mb-1">
                 <Calendar size={15} strokeWidth={2} />
               </div>
               <span className="text-[11px] sm:text-xs font-bold text-zinc-900 dark:text-white leading-tight">Vagas Reais</span>

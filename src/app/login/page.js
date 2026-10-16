@@ -40,8 +40,8 @@ const SLIDES = [
   {
     id: "agenda",
     tag: "Agenda & Grade Médica",
-    titulo: "Controle cirúrgico de horários e pacientes em tempo real.",
-    descricao: "Sincronização bidirecional, gestão de salas e zero choques de horários na clínica.",
+    titulo: "A agenda do dia inteira em uma tela.",
+    descricao: "Horários vindos do MedicalSYS e marcados pelo site aparecem juntos, e o sistema impede dois pacientes no mesmo horário.",
     metric: "99.4% de pontualidade operacional",
     preview: {
       tipo: "agenda",
@@ -76,8 +76,8 @@ const SLIDES = [
   {
     id: "whatsapp",
     tag: "Automação WhatsApp",
-    titulo: "Lembretes e confirmação ativa em um único clique.",
-    descricao: "Reduza faltas e no-shows com notificações automáticas enviadas antes do atendimento.",
+    titulo: "Saiba quem confirmou antes de o paciente faltar.",
+    descricao: "O lembrete no WhatsApp leva um link para o paciente confirmar, remarcar ou cancelar — e a agenda fica verde quando ele confirma.",
     metric: "Menos 62% de absenteísmo",
     preview: {
       tipo: "whatsapp",
@@ -91,8 +91,8 @@ const SLIDES = [
   {
     id: "triagem",
     tag: "Segurança & Conformidade",
-    titulo: "Triagem prévia com proteção rigorosa de sigilo clínico.",
-    descricao: "Questionários dinâmicos de saúde, consentimento digital e auditoria completa de acessos.",
+    titulo: "Triagem respondida antes da consulta.",
+    descricao: "O paciente responde às perguntas da especialidade em casa, e só quem tem permissão de sigilo clínico vê as respostas.",
     metric: "100% em conformidade com LGPD",
     preview: {
       tipo: "triagem",
@@ -107,8 +107,8 @@ const SLIDES = [
   {
     id: "financeiro",
     tag: "Conciliação Financeira",
-    titulo: "Faturamento e pagamentos conciliados instantaneamente.",
-    descricao: "Controle de consultas particulares, repasses aos profissionais e relatórios consolidados.",
+    titulo: "Pagamentos particulares acompanhados por atendimento.",
+    descricao: "Veja o que já foi pago, o que está pendente e aprove comprovantes sem sair da agenda.",
     metric: "Zero retrabalho contábil",
     preview: {
       tipo: "financeiro",
@@ -395,7 +395,7 @@ export default function LoginUnificado() {
   const currentSlide = SLIDES[currentSlideIndex];
 
   return (
-    <main className="min-h-screen w-screen bg-[#FAFAFC] text-zinc-900 flex flex-col lg:flex-row overflow-hidden font-sans select-none">
+    <main id="conteudo" className="min-h-screen w-screen bg-[#FAFAFC] text-zinc-900 flex flex-col lg:flex-row overflow-hidden font-sans select-none">
       {/* ========================================================= */}
       {/* LADO ESQUERDO: SHOWCASE LIMPO, MODERNO E PROFISSIONAL      */}
       {/* ========================================================= */}
@@ -417,7 +417,7 @@ export default function LoginUnificado() {
 
           <div className="flex items-center gap-2 text-xs text-zinc-500">
             <span className="w-2 h-2 rounded-full bg-emerald-500" />
-            <span className="font-medium text-zinc-600">Sistema Operacional</span>
+            <span className="font-medium text-zinc-600">Acesso protegido</span>
           </div>
         </div>
 
@@ -655,7 +655,7 @@ export default function LoginUnificado() {
                 ? "Criar Nova Senha"
                 : isDefiningPassword
                 ? "Ativação de Conta"
-                : "Entrar no Sistema"}
+                : "Acessar minha conta"}
             </h2>
             <p className="text-xs text-zinc-500 font-normal">
               {step === 3
@@ -717,7 +717,7 @@ export default function LoginUnificado() {
                     value={identificador}
                     onChange={(e) => setIdentificador(e.target.value)}
                     placeholder="usuario@clinica.com ou CPF..."
-                    className="w-full h-10 px-3.5 bg-white border border-zinc-300 rounded-lg text-sm text-zinc-900 placeholder:text-zinc-400 outline-none focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900 transition-colors"
+                    className="w-full h-11 px-3.5 bg-white border border-zinc-300 rounded-lg text-sm text-zinc-900 placeholder:text-zinc-400 outline-none focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900 transition-colors"
                   />
                 </div>
 
@@ -729,13 +729,13 @@ export default function LoginUnificado() {
                 <button
                   disabled={loading || !identificador.trim() || !humanVerified}
                   type="submit"
-                  className="w-full h-10 bg-zinc-900 hover:bg-black text-white text-xs font-medium rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.99]"
+                  className="w-full h-11 bg-zinc-900 hover:bg-black text-white text-xs font-medium rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.99]"
                 >
                   {loading ? (
                     <Activity size={15} className="animate-spin text-white" />
                   ) : (
                     <>
-                      <span>Continuar</span>
+                      <span>Continuar para a senha</span>
                       <ArrowRight size={14} />
                     </>
                   )}
@@ -779,7 +779,7 @@ export default function LoginUnificado() {
                       type="date"
                       value={birthDate}
                       onChange={(e) => setBirthDate(e.target.value)}
-                      className="w-full h-10 px-3.5 bg-white border border-zinc-300 rounded-lg text-sm text-zinc-900 outline-none focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900 transition-colors"
+                      className="w-full h-11 px-3.5 bg-white border border-zinc-300 rounded-lg text-sm text-zinc-900 outline-none focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900 transition-colors"
                     />
                   </div>
                 )}
@@ -795,7 +795,7 @@ export default function LoginUnificado() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="w-full h-10 px-3.5 pr-10 bg-white border border-zinc-300 rounded-lg text-sm text-zinc-900 placeholder:text-zinc-400 tracking-wider outline-none focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900 transition-colors"
+                      className="w-full h-11 px-3.5 pr-10 bg-white border border-zinc-300 rounded-lg text-sm text-zinc-900 placeholder:text-zinc-400 tracking-wider outline-none focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900 transition-colors"
                     />
                     <button
                       type="button"
@@ -888,7 +888,7 @@ export default function LoginUnificado() {
                         value={resetNewPass}
                         onChange={(e) => setResetNewPass(e.target.value)}
                         placeholder="••••••••"
-                        className="w-full h-10 px-3.5 pr-10 bg-white border border-zinc-300 rounded-lg text-sm text-zinc-900 placeholder:text-zinc-400 outline-none focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900 transition-colors"
+                        className="w-full h-11 px-3.5 pr-10 bg-white border border-zinc-300 rounded-lg text-sm text-zinc-900 placeholder:text-zinc-400 outline-none focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900 transition-colors"
                       />
                       <button
                         type="button"
@@ -911,7 +911,7 @@ export default function LoginUnificado() {
                         value={resetConfirmPass}
                         onChange={(e) => setResetConfirmPass(e.target.value)}
                         placeholder="••••••••"
-                        className="w-full h-10 px-3.5 pr-10 bg-white border border-zinc-300 rounded-lg text-sm text-zinc-900 placeholder:text-zinc-400 outline-none focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900 transition-colors"
+                        className="w-full h-11 px-3.5 pr-10 bg-white border border-zinc-300 rounded-lg text-sm text-zinc-900 placeholder:text-zinc-400 outline-none focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900 transition-colors"
                       />
                       <button
                         type="button"
@@ -979,7 +979,7 @@ export default function LoginUnificado() {
                 <button
                   disabled={loading || !passwordSecurityMetrics.isValid}
                   type="submit"
-                  className="w-full h-10 bg-zinc-900 hover:bg-black text-white text-xs font-medium rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.99]"
+                  className="w-full h-11 bg-zinc-900 hover:bg-black text-white text-xs font-medium rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.99]"
                 >
                   {loading ? (
                     <Activity size={15} className="animate-spin text-white" />

@@ -141,9 +141,9 @@ export default function ModuleEspecialidade() {
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 text-[11px] font-bold uppercase tracking-wider mb-2.5 shadow-sm">
           <Stethoscope size={13} strokeWidth={2} /> Atendimento Clínico
         </div>
-        <h2 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-zinc-950 dark:text-white leading-tight">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-zinc-950 dark:text-white leading-tight">
           Direcionamento Clínico
-        </h2>
+        </h1>
         <p className="text-zinc-500 dark:text-zinc-400 text-xs sm:text-sm mt-1.5 leading-relaxed">
           {!formData.especialidade
             ? "Selecione a especialidade ou procedimento desejado para visualizar os especialistas disponíveis."
@@ -250,7 +250,7 @@ export default function ModuleEspecialidade() {
                       className="min-h-[64px] p-4 sm:p-5 border rounded-2xl flex items-center justify-between text-left transition-all border-black/[0.06] dark:border-white/[0.08] hover:border-[#9FC131] bg-white/80 dark:bg-[#161618]/80 backdrop-blur-xl shadow-sm hover:shadow-md group cursor-pointer"
                     >
                       <div className="flex items-center gap-3.5 min-w-0">
-                        <div className="w-11 h-11 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 border border-blue-500/20 group-hover:bg-[#9FC131]/20 group-hover:text-[#86a621] dark:group-hover:text-[#9FC131] transition-colors">
+                        <div className="w-11 h-11 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 border border-blue-500/20 group-hover:bg-[#9FC131]/20 group-hover:text-brand-ink transition-colors">
                           <Stethoscope size={20} strokeWidth={2} />
                         </div>
                         <div className="truncate">

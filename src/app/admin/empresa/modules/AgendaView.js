@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useRef, useSyncExternalStore } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronLeft,
@@ -88,6 +88,8 @@ import {
   actionLimparTodosAgendamentosEmpresa
 } from "@/actions/adminData";
 import { playDopamineSound, triggerHaptic } from "@/lib/dopamine";
+import InfoTooltip from "@/components/ui/InfoTooltip";
+import { statusDaSituacaoMedicalsys, bloqueioOcupaHorario } from "@/lib/medicalsysSituacao";
 import { formatarTelefoneEnvio, formatarTelefoneExibicao } from "@/lib/phoneUtils";
 
 // Helper para cálculo de idade
@@ -168,10 +170,25 @@ const renderStatusAtendimentoBadge = (item) => {
       </span>
     );
   }
+  if (["compareceu", "concluido", "realizado"].includes(item.statusAtendimento)) {
+    return (
+      <span className="text-[10.5px] font-semibold px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/20 inline-flex items-center gap-1">
+        <CheckCircle2 size={11} strokeWidth={2.5} />
+        {item.statusAtendimento === "compareceu" ? "Na clínica" : "Atendido"}
+      </span>
+    );
+  }
+  if (item.statusAtendimento === "nao_compareceu") {
+    return (
+      <span className="text-[10.5px] font-semibold px-2.5 py-0.5 rounded-full bg-zinc-500/10 text-zinc-700 dark:text-zinc-300 border border-zinc-500/20 inline-flex items-center gap-1">
+        Faltou
+      </span>
+    );
+  }
   if (item.statusAtendimento === "confirmado") {
     return (
       <span
-        className="text-[10.5px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500 text-white inline-flex items-center gap-1 shadow-[0_4px_12px_-4px_rgba(16,185,129,0.6)]"
+        className="text-[10.5px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500 text-white inline-flex items-center gap-1 shadow-[0_4px_12px_-4px_rgba(16,185,129,0.35)]"
         title={item.confirmadoEm ? `Confirmado pelo paciente em ${formatarDataHoraAmigavel(item.confirmadoEm)}` : "Presença confirmada"}
       >
         <Check size={11} strokeWidth={3} />
@@ -211,7 +228,7 @@ const classeCartaoAtendimento = (item) => {
 
 const classeHorarioAtendimento = (item) =>
   item.statusAtendimento === "confirmado"
-    ? "bg-emerald-500 text-white border border-emerald-500 px-3 py-2 rounded-2xl text-center min-w-[68px] shadow-[0_6px_16px_-6px_rgba(16,185,129,0.7)] shrink-0 [&_span]:!text-white"
+    ? "bg-emerald-500 text-white border border-emerald-500 px-3 py-2 rounded-2xl text-center min-w-[68px] shadow-[0_6px_16px_-6px_rgba(16,185,129,0.35)] shrink-0 [&_span]:!text-white"
     : "bg-[#F8F8FA] dark:bg-[#222225] border border-black/[0.06] dark:border-white/[0.08] px-3 py-2 rounded-2xl text-center min-w-[68px] shadow-2xs shrink-0";
 
 const renderStatusTabela = (item) => {
@@ -371,6 +388,17 @@ export default function AgendaView({
   loggedAdmin = null
 }) {
   const currentSubTab = subTab === "lista" ? "lista" : "calendario";
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
+  // No celular a lista é sempre em cards: a tabela exige rolagem horizontal
+  const ehCelular = useSyncExternalStore(
+    (avisar) => {
+      const mq = window.matchMedia("(max-width: 767px)");
+      mq.addEventListener("change", avisar);
+      return () => mq.removeEventListener("change", avisar);
+    },
+    () => window.matchMedia("(max-width: 767px)").matches,
+    () => false
+  );
   const [viewMode, setViewMode] = useState(() => {
     if (typeof window !== "undefined") {
       const saved =
@@ -381,6 +409,7 @@ export default function AgendaView({
     }
     return "cards";
   });
+  const modoVisual = ehCelular ? "cards" : viewMode;
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const [mounted, setMounted] = useState(false);
@@ -587,12 +616,21 @@ export default function AgendaView({
   const [modalidadeFilter, setModalidadeFilter] = useState("todas");
   const [pagamentoFilter, setPagamentoFilter] = useState("todos");
   const [filterMedico, setFilterMedico] = useState("Todos");
+  const qtdFiltrosAtivos = [origemFilter !== "todos", modalidadeFilter !== "todas", statusFilter !== "todos", pagamentoFilter !== "todos", filterMedico !== "Todos"].filter(Boolean).length;
 
   // Ordenação de colunas da tabela e cards de pacientes
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(getHojeLocal());
+  const [calendarioAberto, setCalendarioAberto] = useState(false);
+  const mudarDia = (delta) => {
+    playDopamineSound("click");
+    const [y, m, d] = selectedDay.split("-").map(Number);
+    const nova = new Date(y, m - 1, d + delta);
+    setSelectedDay(`${nova.getFullYear()}-${String(nova.getMonth() + 1).padStart(2, "0")}-${String(nova.getDate()).padStart(2, "0")}`);
+    setCurrentDate(new Date(nova.getFullYear(), nova.getMonth(), 1));
+  };
 
   // Regras de Agenda da Empresa
   const [regrasAgenda, setRegrasAgenda] = useState([]);
@@ -916,7 +954,7 @@ export default function AgendaView({
           tipoServico: isExame ? "Exame" : "Consulta",
           convenio: b.convenio || "Convênio",
           modalidade: b.convenio || "Convênio",
-          statusAtendimento: b.situacao === "canc" ? "cancelado" : "agendado",
+          statusAtendimento: statusDaSituacaoMedicalsys(b.situacao),
           pago: false,
           remarcado: false,
           medicalsysId: b.medicalsys_id,
@@ -1509,7 +1547,7 @@ export default function AgendaView({
     });
 
     (bloqueios || []).forEach((b) => {
-      if (b.data !== targetDate) return;
+      if (b.data !== targetDate || !bloqueioOcupaHorario(b)) return;
       const bProf = normalizeText(b.medico_profissional);
       const bEsp = normalizeText(b.especialidade);
 
@@ -2270,12 +2308,12 @@ export default function AgendaView({
     >
       <div className="bg-white dark:bg-[#161618] rounded-3xl border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex flex-col h-full overflow-hidden">
         {/* CABEÇALHO & TOOLBAR PADRÃO APPLE MACOS */}
-        <div className="px-5 sm:px-7 py-4 border-b border-black/[0.06] dark:border-white/[0.08] bg-black/[0.01] dark:bg-white/[0.01] flex flex-col gap-3.5 shrink-0">
+        <div className="px-3 sm:px-7 py-3 sm:py-4 border-b border-black/[0.06] dark:border-white/[0.08] bg-black/[0.01] dark:bg-white/[0.01] flex flex-col gap-2.5 sm:gap-3.5 shrink-0">
           {/* LINHA SUPERIOR: TÍTULO, SUB-TABS CENTRAIS, MODO DE VISUALIZAÇÃO E AÇÕES */}
-          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3.5">
+          <div className="flex flex-wrap lg:flex-nowrap justify-between items-center gap-2.5 sm:gap-3.5">
             {/* LADO ESQUERDO: TÍTULO + STATUS */}
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-zinc-100 to-zinc-200 dark:from-zinc-800 dark:to-zinc-900 border border-black/[0.06] dark:border-white/[0.08] flex items-center justify-center text-zinc-900 dark:text-white shadow-2xs shrink-0">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="hidden sm:flex w-10 h-10 rounded-2xl bg-gradient-to-br from-zinc-100 to-zinc-200 dark:from-zinc-800 dark:to-zinc-900 border border-black/[0.06] dark:border-white/[0.08] flex items-center justify-center text-zinc-900 dark:text-white shadow-2xs shrink-0">
                 <CalendarDays size={20} strokeWidth={2} />
               </div>
               <div>
@@ -2283,18 +2321,18 @@ export default function AgendaView({
                   <h2 className="text-lg sm:text-xl font-bold text-zinc-950 dark:text-white tracking-tight">
                     Agenda
                   </h2>
-                  <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-black/[0.04] dark:bg-white/[0.06] text-zinc-600 dark:text-zinc-400 border border-black/[0.04] dark:border-white/[0.06]">
+                  <span className="hidden sm:inline text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-black/[0.04] dark:bg-white/[0.06] text-zinc-600 dark:text-zinc-400 border border-black/[0.04] dark:border-white/[0.06]">
                     {(currentSubTab === "calendario" ? eventosAgendaMistaDiaria.length : listaUnificadaTodosPacientes.length)} atendimentos
                   </span>
                 </div>
                 <p className="text-xs text-zinc-400 hidden sm:block">
-                  Visão consolidada de consultas e sincronização em tempo real
+                  Consultas do site e do MedicalSYS em uma só lista
                 </p>
               </div>
             </div>
 
             {/* CENTRO: APPLE SEGMENTED CONTROL (Pacientes do Dia vs Todos os Pacientes) */}
-            <div className="flex p-1 bg-black/[0.04] dark:bg-white/[0.06] rounded-2xl border border-black/[0.04] dark:border-white/[0.04] gap-1 relative self-stretch sm:self-auto justify-center">
+            <div className="order-last lg:order-none w-full lg:w-auto grid grid-cols-2 lg:flex p-1 bg-black/[0.04] dark:bg-white/[0.06] rounded-2xl border border-black/[0.04] dark:border-white/[0.04] gap-1 relative">
               <button
                 type="button"
                 onClick={() => {
@@ -2302,7 +2340,7 @@ export default function AgendaView({
                   triggerHaptic("light");
                   setSubTab("calendario");
                 }}
-                className={`relative px-4 py-1.5 rounded-xl transition-colors min-h-[32px] flex items-center gap-2 cursor-pointer text-xs font-semibold z-10 ${
+                className={`relative px-3 sm:px-4 py-1.5 rounded-xl transition-colors min-h-[40px] lg:min-h-[32px] flex items-center justify-center gap-2 cursor-pointer text-xs font-semibold z-10 whitespace-nowrap ${
                   currentSubTab === "calendario"
                     ? "text-zinc-950 dark:text-white font-bold"
                     : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
@@ -2325,7 +2363,7 @@ export default function AgendaView({
                   triggerHaptic("light");
                   setSubTab("lista");
                 }}
-                className={`relative px-4 py-1.5 rounded-xl transition-colors min-h-[32px] flex items-center gap-2 cursor-pointer text-xs font-semibold z-10 ${
+                className={`relative px-3 sm:px-4 py-1.5 rounded-xl transition-colors min-h-[40px] lg:min-h-[32px] flex items-center justify-center gap-2 cursor-pointer text-xs font-semibold z-10 whitespace-nowrap ${
                   currentSubTab === "lista"
                     ? "text-zinc-950 dark:text-white font-bold"
                     : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
@@ -2344,8 +2382,9 @@ export default function AgendaView({
             </div>
 
             {/* LADO DIREITO: CARDS / LISTA + ATUALIZAR + NOVO AGENDAMENTO */}
-            <div className="flex items-center justify-end gap-2.5 flex-wrap w-full lg:w-auto">
-              <div className="flex p-1 bg-black/[0.04] dark:bg-white/[0.06] rounded-2xl border border-black/[0.04] dark:border-white/[0.04] gap-1 relative">
+            <div className="flex items-center justify-end gap-2 sm:gap-2.5 shrink-0">
+              {/* No celular a lista é sempre em cards (tabela não cabe), então o seletor só aparece do tablet em diante */}
+              <div className="hidden md:flex p-1 bg-black/[0.04] dark:bg-white/[0.06] rounded-2xl border border-black/[0.04] dark:border-white/[0.04] gap-1 relative">
                 <button
                   type="button"
                   onClick={() => {
@@ -2358,13 +2397,13 @@ export default function AgendaView({
                     } catch (e) {}
                   }}
                   className={`relative px-3.5 py-1.5 rounded-xl transition-colors min-h-[32px] flex items-center gap-1.5 cursor-pointer text-xs font-semibold z-10 ${
-                    viewMode === "cards"
+                    modoVisual === "cards"
                       ? "text-zinc-950 dark:text-white font-bold"
                       : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
                   }`}
                   title="Visão em Cards"
                 >
-                  {viewMode === "cards" && (
+                  {modoVisual === "cards" && (
                     <motion.div
                       layoutId="agenda-view-mode-pill"
                       className="absolute inset-0 bg-white dark:bg-[#2C2C2E] rounded-xl shadow-xs border border-black/[0.04] dark:border-white/[0.08] -z-10"
@@ -2386,13 +2425,13 @@ export default function AgendaView({
                     } catch (e) {}
                   }}
                   className={`relative px-3.5 py-1.5 rounded-xl transition-colors min-h-[32px] flex items-center gap-1.5 cursor-pointer text-xs font-semibold z-10 ${
-                    viewMode === "tabela"
+                    modoVisual === "tabela"
                       ? "text-zinc-950 dark:text-white font-bold"
                       : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
                   }`}
                   title="Visão em Lista / Tabela"
                 >
-                  {viewMode === "tabela" && (
+                  {modoVisual === "tabela" && (
                     <motion.div
                       layoutId="agenda-view-mode-pill"
                       className="absolute inset-0 bg-white dark:bg-[#2C2C2E] rounded-xl shadow-xs border border-black/[0.04] dark:border-white/[0.08] -z-10"
@@ -2408,28 +2447,30 @@ export default function AgendaView({
                 type="button"
                 onClick={handleManualRefresh}
                 disabled={isRefreshing}
-                className="min-h-[36px] px-3.5 py-1.5 bg-black/[0.04] hover:bg-black/[0.08] dark:bg-white/[0.06] dark:hover:bg-white/[0.1] text-zinc-800 dark:text-zinc-200 font-semibold text-xs rounded-2xl flex items-center gap-1.5 transition-all shadow-2xs border border-black/[0.04] dark:border-white/[0.06] cursor-pointer disabled:opacity-50"
+                className="min-h-[40px] min-w-[40px] px-2.5 sm:px-3.5 py-1.5 bg-black/[0.04] hover:bg-black/[0.08] dark:bg-white/[0.06] dark:hover:bg-white/[0.1] text-zinc-800 dark:text-zinc-200 font-semibold text-xs rounded-2xl flex items-center justify-center gap-1.5 transition-all shadow-2xs border border-black/[0.04] dark:border-white/[0.06] cursor-pointer disabled:opacity-50"
                 title="Puxar novos dados do banco agora"
+                aria-label="Atualizar agenda"
               >
-                <RefreshCw size={13} className={isRefreshing ? "animate-spin text-[#34C759]" : ""} />
-                <span>{isRefreshing ? "Atualizando..." : "Atualizar"}</span>
+                <RefreshCw size={14} className={isRefreshing ? "animate-spin text-[#34C759]" : ""} />
+                <span className="hidden sm:inline">{isRefreshing ? "Atualizando..." : "Atualizar"}</span>
               </button>
 
 
               <button
                 type="button"
                 onClick={handleAbrirNovoAgendamento}
-                className="min-h-[36px] px-4 py-1.5 bg-zinc-950 hover:bg-black dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-semibold text-xs rounded-2xl flex items-center gap-2 shadow-xs transition-all cursor-pointer shrink-0"
+                className="min-h-[40px] px-3 sm:px-4 py-1.5 bg-zinc-950 hover:bg-black dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-semibold text-xs rounded-2xl flex items-center gap-2 shadow-xs transition-all cursor-pointer shrink-0"
               >
                 <CalendarPlus size={15} strokeWidth={2} />
-                <span>Novo Agendamento</span>
+                <span className="sm:hidden">Novo</span>
+                <span className="hidden sm:inline">Novo Agendamento</span>
               </button>
             </div>
           </div>
 
           {/* LINHA INFERIOR: BARRA DE BUSCA E FILTROS COMPACTOS NO ESTILO APPLE TOOLBAR */}
-          <div className="flex flex-wrap items-center gap-2.5 pt-2 border-t border-black/[0.04] dark:border-white/[0.06]">
-            <div className="relative flex-1 min-w-[200px] max-w-xs">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 pt-2 border-t border-black/[0.04] dark:border-white/[0.06]">
+            <div className="relative flex-1 min-w-0 md:min-w-[200px] md:max-w-xs">
               <Search
                 size={14}
                 className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400"
@@ -2439,7 +2480,7 @@ export default function AgendaView({
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Buscar paciente, CPF..."
-                className="w-full h-9 pl-9 pr-8 bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.06] dark:border-white/[0.08] rounded-xl text-xs text-zinc-900 dark:text-white placeholder-zinc-400 outline-none focus:border-black/30 dark:focus:border-white/30 focus:ring-2 focus:ring-black/5 dark:focus:ring-white/10 transition-all"
+                className="w-full h-10 md:h-9 pl-9 pr-8 bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.06] dark:border-white/[0.08] rounded-xl text-xs text-zinc-900 dark:text-white placeholder-zinc-400 outline-none focus:border-black/30 dark:focus:border-white/30 focus:ring-2 focus:ring-black/5 dark:focus:ring-white/10 transition-all"
               />
               {searchTerm && (
                 <button
@@ -2451,7 +2492,19 @@ export default function AgendaView({
               )}
             </div>
 
-            <div className="w-[145px]">
+            <button
+              type="button"
+              onClick={() => setFiltrosAbertos((v) => !v)}
+              aria-expanded={filtrosAbertos}
+              aria-controls="filtros-agenda"
+              className="md:hidden h-10 px-3 rounded-xl border border-black/[0.08] dark:border-white/[0.1] text-xs font-semibold text-zinc-800 dark:text-zinc-200 inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <SlidersHorizontal size={14} />
+              Filtros{qtdFiltrosAtivos > 0 ? ` (${qtdFiltrosAtivos})` : ""}
+            </button>
+
+            <div id="filtros-agenda" className={`${filtrosAbertos ? "grid" : "hidden"} grid-cols-2 gap-2 w-full md:contents`}>
+            <div className="md:w-[145px]">
               <CustomSelect
                 value={origemFilter}
                 onChange={setOrigemFilter}
@@ -2463,7 +2516,7 @@ export default function AgendaView({
               />
             </div>
 
-            <div className="w-[155px]">
+            <div className="md:w-[155px]">
               <CustomSelect
                 value={modalidadeFilter}
                 onChange={setModalidadeFilter}
@@ -2475,7 +2528,7 @@ export default function AgendaView({
               />
             </div>
 
-            <div className="w-[155px]">
+            <div className="md:w-[155px]">
               <CustomSelect
                 value={statusFilter}
                 onChange={setStatusFilter}
@@ -2488,7 +2541,7 @@ export default function AgendaView({
               />
             </div>
 
-            <div className="w-[165px]">
+            <div className="md:w-[165px]">
               <CustomSelect
                 value={pagamentoFilter}
                 onChange={setPagamentoFilter}
@@ -2500,7 +2553,7 @@ export default function AgendaView({
               />
             </div>
 
-            <div className="w-[185px]">
+            <div className="md:w-[185px]">
               <CustomSelect
                 value={filterMedico}
                 onChange={setFilterMedico}
@@ -2509,7 +2562,7 @@ export default function AgendaView({
               />
             </div>
 
-            {(searchTerm || origemFilter !== "todos" || modalidadeFilter !== "todas" || statusFilter !== "todos" || pagamentoFilter !== "todos" || filterMedico !== "todos") && (
+            {(searchTerm || origemFilter !== "todos" || modalidadeFilter !== "todas" || statusFilter !== "todos" || pagamentoFilter !== "todos" || filterMedico !== "Todos") && (
               <button
                 type="button"
                 onClick={() => {
@@ -2518,14 +2571,15 @@ export default function AgendaView({
                   setModalidadeFilter("todas");
                   setStatusFilter("todos");
                   setPagamentoFilter("todos");
-                  setFilterMedico("todos");
+                  setFilterMedico("Todos");
                 }}
-                className="h-9 px-3 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors cursor-pointer inline-flex items-center gap-1 border border-rose-500/20"
+                className="h-10 md:h-9 px-3 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors cursor-pointer inline-flex items-center justify-center gap-1 border border-rose-500/20"
               >
                 <X size={13} />
                 <span>Limpar filtros</span>
               </button>
             )}
+            </div>
 
             <div className="text-[11px] text-zinc-400 font-medium ml-auto hidden sm:flex items-center gap-1.5" suppressHydrationWarning>
               <span className="w-1.5 h-1.5 rounded-full bg-[#34C759]" />
@@ -2545,12 +2599,36 @@ export default function AgendaView({
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.16, ease: "easeOut" }}
-                className="flex flex-col md:flex-row h-full overflow-hidden flex-1 min-h-0"
+                className="flex flex-col md:flex-row h-full overflow-y-auto md:overflow-hidden flex-1 min-h-0"
               >
+                {/* CELULAR: barra de dia compacta — a lista aparece logo, o mês abre só se pedir */}
+                <div className="md:hidden sticky top-0 z-10 flex items-center gap-1 px-2 py-2 bg-surface/95 backdrop-blur border-b border-black/[0.06] dark:border-white/[0.08]">
+                  <button type="button" onClick={() => mudarDia(-1)} aria-label="Dia anterior" className="w-11 h-11 grid place-items-center rounded-xl text-zinc-600 dark:text-zinc-300 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] cursor-pointer">
+                    <ChevronLeft size={18} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCalendarioAberto((v) => !v)}
+                    aria-expanded={calendarioAberto}
+                    className="flex-1 min-w-0 min-h-[44px] rounded-xl flex items-center justify-center gap-1.5 text-sm font-bold whitespace-nowrap text-zinc-900 dark:text-white hover:bg-black/[0.04] dark:hover:bg-white/[0.06] cursor-pointer"
+                  >
+                    <CalendarDays size={16} className="text-brand-ink" />
+                    {(() => {
+                      const t = new Date(selectedDay + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "short", day: "numeric", month: "short" });
+                      return t.charAt(0).toUpperCase() + t.slice(1);
+                    })()}
+                    {selectedDay === getHojeLocal() && <span className="hidden min-[360px]:inline text-[11px] font-semibold text-brand-ink">· Hoje</span>}
+                    <ChevronRight size={14} className={`text-zinc-400 transition-transform ${calendarioAberto ? "-rotate-90" : "rotate-90"}`} />
+                  </button>
+                  <button type="button" onClick={() => mudarDia(1)} aria-label="Próximo dia" className="w-11 h-11 grid place-items-center rounded-xl text-zinc-600 dark:text-zinc-300 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] cursor-pointer">
+                    <ChevronRight size={18} />
+                  </button>
+                </div>
+
                 {/* CALENDÁRIO MENSAL */}
-                <div className="w-full md:w-[320px] border-r border-black/[0.06] dark:border-white/[0.08] p-5 flex flex-col overflow-y-auto bg-black/[0.01] dark:bg-white/[0.01]">
+                <div className={`${calendarioAberto ? "flex" : "hidden"} md:flex w-full md:w-[320px] shrink-0 border-b md:border-b-0 md:border-r border-black/[0.06] dark:border-white/[0.08] p-4 md:p-5 flex-col md:overflow-y-auto bg-black/[0.01] dark:bg-white/[0.01]`}>
                   <div className="flex justify-between items-center mb-6">
-                    <span className="font-bold capitalize text-zinc-950 dark:text-white text-base">
+                    <span className="inline-block first-letter:uppercase font-bold text-zinc-950 dark:text-white text-base">
                       {currentDate.toLocaleString("pt-BR", { month: "long", year: "numeric" })}
                     </span>
                     <div className="flex gap-1 bg-zinc-100/70 dark:bg-zinc-900/70 rounded-xl p-1 border border-zinc-200/50 dark:border-zinc-800">
@@ -2599,10 +2677,11 @@ export default function AgendaView({
                             playDopamineSound("select");
                             triggerHaptic("light");
                             setSelectedDay(dateStr);
+                            setCalendarioAberto(false);
                           }}
-                          className={`relative h-10 w-full rounded-xl text-xs sm:text-sm transition-all min-h-[38px] flex items-center justify-center cursor-pointer ${
+                          className={`relative h-10 w-full rounded-xl text-sm transition-all min-h-[40px] flex items-center justify-center cursor-pointer ${
                             isSel
-                              ? "bg-zinc-950 text-white dark:bg-white dark:text-black font-bold shadow-xs scale-105"
+                              ? "bg-zinc-950 text-white dark:bg-white dark:text-black font-bold shadow-xs"
                               : isTod
                               ? "bg-black/[0.05] dark:bg-white/[0.08] font-bold text-zinc-950 dark:text-white"
                               : "hover:bg-black/[0.03] dark:hover:bg-white/[0.05] text-zinc-700 dark:text-zinc-300 font-medium"
@@ -2625,11 +2704,11 @@ export default function AgendaView({
                 </div>
 
                 {/* LISTA DO DIA SELECIONADO */}
-                <div className="flex-1 p-5 md:p-6 overflow-y-auto custom-scrollbar bg-transparent">
-                  <div className="flex justify-between items-center mb-6 pb-4 border-b border-black/[0.04] dark:border-white/[0.06]">
-                    <div>
+                <div className="flex-1 p-3 sm:p-5 md:p-6 md:overflow-y-auto custom-scrollbar bg-transparent pb-24 md:pb-6">
+                  <div className="flex flex-wrap justify-between items-center gap-2 mb-3 sm:mb-6 pb-3 sm:pb-4 border-b border-black/[0.04] dark:border-white/[0.06]">
+                    <div className="hidden md:block">
                       <h3 className="text-base sm:text-lg font-bold text-zinc-950 dark:text-white flex items-center gap-2">
-                        <CalendarDays size={18} className="text-[#9FC131]" />
+                        <CalendarDays size={18} className="text-brand-ink" />
                         {new Date(selectedDay + "T12:00:00").toLocaleDateString("pt-BR", {
                           weekday: "long",
                           day: "numeric",
@@ -2642,7 +2721,7 @@ export default function AgendaView({
                       </p>
                     </div>
 
-                    <div className="flex flex-wrap items-center justify-end gap-2">
+                    <div className="flex flex-wrap items-center md:justify-end gap-2 w-full md:w-auto">
                       {(() => {
                         const ativosDoDia = eventosAgendaMistaDiaria.filter((e) => e.tipo === "rmclick" && e.statusAtendimento !== "cancelado");
                         if (ativosDoDia.length === 0) return null;
@@ -2650,10 +2729,13 @@ export default function AgendaView({
                         return (
                           <span
                             className="text-xs font-bold px-3 py-1 rounded-full inline-flex items-center gap-1.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20"
-                            title="Pacientes que confirmaram a presença pelo link ou WhatsApp"
                           >
                             <CheckCircle2 size={13} />
                             {confirmados}/{ativosDoDia.length} confirmados
+                            <InfoTooltip
+                              lado="bottom"
+                              texto="Pacientes que confirmaram presença pelo link ou respondendo o WhatsApp. Quem ainda não confirmou aparece em cinza: envie o link pelo botão Link de cada atendimento."
+                            />
                           </span>
                         );
                       })()}
@@ -2664,16 +2746,16 @@ export default function AgendaView({
                   </div>
 
                   {/* BARRA DE ORDENAÇÃO RÁPIDA (EXIBIDA APENAS NA VISUALIZAÇÃO EM CARDS) */}
-                  {viewMode === "cards" && eventosAgendaMistaDiaria.length > 0 && (
-                    <div className="flex items-center justify-between gap-2 mb-4 p-2.5 bg-white/70 dark:bg-zinc-900/60 backdrop-blur-xl rounded-2xl border border-zinc-200/70 dark:border-white/5 flex-wrap">
-                      <div className="flex items-center gap-1.5 text-xs text-zinc-500 font-semibold flex-wrap">
+                  {modoVisual === "cards" && eventosAgendaMistaDiaria.length > 0 && (
+                    <div className="flex items-center justify-between gap-2 mb-3 sm:mb-4 p-2 sm:p-2.5 bg-white/70 dark:bg-zinc-900/60 backdrop-blur-xl rounded-2xl border border-zinc-200/70 dark:border-white/5 flex-wrap">
+                      <div className="flex items-center gap-1.5 text-xs text-zinc-500 font-semibold flex-nowrap md:flex-wrap overflow-x-auto -mx-1 px-1 [scrollbar-width:none]">
                         <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-400 flex items-center gap-1">
-                          <ArrowUpDown size={11} /> Ordenar Cards:
+                          <ArrowUpDown size={11} /> <span className="hidden sm:inline">Ordenar Cards:</span>
                         </span>
                         <button
                           type="button"
                           onClick={() => handleSort("horario")}
-                          className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                          className={`shrink-0 whitespace-nowrap min-h-[36px] px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
                             sortConfig.key === "horario"
                               ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
                               : "bg-white/90 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"
@@ -2688,7 +2770,7 @@ export default function AgendaView({
                         <button
                           type="button"
                           onClick={() => handleSort("paciente")}
-                          className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                          className={`shrink-0 whitespace-nowrap min-h-[36px] px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
                             sortConfig.key === "paciente"
                               ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
                               : "bg-white/90 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"
@@ -2703,7 +2785,7 @@ export default function AgendaView({
                         <button
                           type="button"
                           onClick={() => handleSort("especialista")}
-                          className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                          className={`shrink-0 whitespace-nowrap min-h-[36px] px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
                             sortConfig.key === "especialista"
                               ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
                               : "bg-white/90 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"
@@ -2718,7 +2800,7 @@ export default function AgendaView({
                         <button
                           type="button"
                           onClick={() => handleSort("status")}
-                          className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                          className={`shrink-0 whitespace-nowrap min-h-[36px] px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
                             sortConfig.key === "status"
                               ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
                               : "bg-white/90 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"
@@ -2759,7 +2841,7 @@ export default function AgendaView({
                         <Plus size={14} /> Agendar Paciente
                       </button>
                     </div>
-                  ) : viewMode === "cards" ? (
+                  ) : modoVisual === "cards" ? (
                     <div className="grid gap-3.5">
                       {eventosAgendaMistaDiaria.map((item) => {
                         const isCanceled = item.statusAtendimento === "cancelado";
@@ -2851,7 +2933,7 @@ export default function AgendaView({
                             </div>
 
                             {/* AÇÕES NO CARD */}
-                            <div className="flex items-center gap-2 self-end md:self-center flex-wrap shrink-0">
+                            <div className="grid grid-cols-2 gap-2 w-full md:w-auto md:flex md:items-center md:self-center md:flex-wrap shrink-0">
                               {!item.pago &&
                                 item.tipo === "rmclick" &&
                                 isItemParticular(item) &&
@@ -2860,7 +2942,7 @@ export default function AgendaView({
                                     type="button"
                                     onClick={() => setConfirmApproveModalItem(item.rawItem || item)}
                                     disabled={isApproving}
-                                    className="min-h-[38px] px-3.5 py-1.5 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
+                                    className="min-h-[44px] md:min-h-[38px] justify-center px-3.5 py-1.5 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
                                     title="Confirmar que o paciente particular efetuou o pagamento"
                                   >
                                     {isApproving ? (
@@ -2868,14 +2950,14 @@ export default function AgendaView({
                                     ) : (
                                       <CheckCircle2 size={14} />
                                     )}
-                                    <span>Aprovar Pagamento</span>
+                                    <span className="whitespace-nowrap"><span className="md:hidden">Aprovar pgto.</span><span className="hidden md:inline">Aprovar Pagamento</span></span>
                                   </button>
                                 )}
 
                               {temPermissaoSigiloClinico ? (
                                 <button
                                   onClick={() => handleOpenSensitiveModal(item)}
-                                  className="min-h-[38px] px-3.5 py-1.5 rounded-2xl bg-black/[0.04] hover:bg-black/[0.08] dark:bg-white/[0.06] dark:hover:bg-white/[0.1] text-zinc-900 dark:text-white border border-black/[0.04] dark:border-white/[0.06] flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
+                                  className="min-h-[44px] md:min-h-[38px] justify-center px-3.5 py-1.5 rounded-2xl bg-black/[0.04] hover:bg-black/[0.08] dark:bg-white/[0.06] dark:hover:bg-white/[0.1] text-zinc-900 dark:text-white border border-black/[0.04] dark:border-white/[0.06] flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
                                   title="Ver Ficha Clínica, Enfermidades & Mensagens"
                                 >
                                   <ShieldCheck size={14} className="text-blue-500" />
@@ -2883,7 +2965,7 @@ export default function AgendaView({
                                 </button>
                               ) : (
                                 <span
-                                  className="min-h-[38px] px-3 py-1.5 rounded-2xl bg-black/[0.02] dark:bg-white/[0.03] text-zinc-400 text-[11px] font-medium inline-flex items-center gap-1 border border-black/[0.04] dark:border-white/[0.06] opacity-60 cursor-not-allowed"
+                                  className="min-h-[44px] md:min-h-[38px] justify-center px-3 py-1.5 rounded-2xl bg-black/[0.02] dark:bg-white/[0.03] text-zinc-400 text-[11px] font-medium inline-flex items-center gap-1 border border-black/[0.04] dark:border-white/[0.06] opacity-60 cursor-not-allowed"
                                   title="Acesso Restrito: Requer permissão de Sigilo Clínico"
                                 >
                                   <Lock size={12} /> Ficha Restrita
@@ -2895,7 +2977,7 @@ export default function AgendaView({
                                   onClick={() => handleLinkConfirmacao(item)}
                                   disabled={gerandoLinkId === item.id}
                                   title="Copiar link de confirmação (confirmar, remarcar ou cancelar) para enviar ao paciente"
-                                  className="min-h-[38px] px-3.5 py-1.5 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer disabled:opacity-50"
+                                  className="min-h-[44px] md:min-h-[38px] justify-center px-3.5 py-1.5 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer disabled:opacity-50"
                                 >
                                   {gerandoLinkId === item.id ? <RefreshCw size={13} className="animate-spin" /> : <Link2 size={13} />}
                                   <span>Link</span>
@@ -2907,16 +2989,17 @@ export default function AgendaView({
                                   disabled={gerandoLinkId === item.id}
                                   title="Enviar link de confirmação pelo WhatsApp"
                                   aria-label="Enviar link de confirmação pelo WhatsApp"
-                                  className="min-h-[38px] px-2.5 py-1.5 rounded-2xl bg-black/[0.04] hover:bg-black/[0.08] dark:bg-white/[0.06] dark:hover:bg-white/[0.1] text-emerald-600 dark:text-emerald-400 border border-black/[0.04] dark:border-white/[0.06] flex items-center text-xs transition-all shadow-2xs cursor-pointer disabled:opacity-50"
+                                  className="min-h-[44px] md:min-h-[38px] justify-center px-2.5 py-1.5 rounded-2xl bg-black/[0.04] hover:bg-black/[0.08] dark:bg-white/[0.06] dark:hover:bg-white/[0.1] text-emerald-600 dark:text-emerald-400 border border-black/[0.04] dark:border-white/[0.06] flex items-center gap-1.5 text-xs transition-all shadow-2xs cursor-pointer disabled:opacity-50"
                                 >
                                   <Send size={13} />
+                                  <span className="md:hidden font-semibold">WhatsApp</span>
                                 </button>
                               )}
                               {!isCanceled && (
                                 <>
                                   <button
                                     onClick={() => handleAbrirRemarcacao(item)}
-                                    className="min-h-[38px] px-3.5 py-1.5 rounded-2xl bg-black/[0.04] hover:bg-black/[0.08] dark:bg-white/[0.06] dark:hover:bg-white/[0.1] text-zinc-900 dark:text-white border border-black/[0.04] dark:border-white/[0.06] flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
+                                    className="min-h-[44px] md:min-h-[38px] justify-center px-3.5 py-1.5 rounded-2xl bg-black/[0.04] hover:bg-black/[0.08] dark:bg-white/[0.06] dark:hover:bg-white/[0.1] text-zinc-900 dark:text-white border border-black/[0.04] dark:border-white/[0.06] flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
                                   >
                                     <RotateCcw
                                       size={13}
@@ -2926,7 +3009,7 @@ export default function AgendaView({
                                   </button>
                                   <button
                                     onClick={() => handleAbrirModalCancelamento(item)}
-                                    className="min-h-[38px] px-3.5 py-1.5 rounded-2xl bg-rose-500/10 hover:bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20 flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
+                                    className="min-h-[44px] md:min-h-[38px] justify-center px-3.5 py-1.5 rounded-2xl bg-rose-500/10 hover:bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20 flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
                                   >
                                     <Trash2 size={13} />
                                     <span>Cancelar</span>
@@ -3155,7 +3238,7 @@ export default function AgendaView({
                                       >
                                         <RotateCcw
                                           size={12}
-                                          className="text-[#86a621] dark:text-[#9FC131]"
+                                          className="text-brand-ink"
                                         />
                                         <span>Remarcar</span>
                                       </button>
@@ -3205,16 +3288,16 @@ export default function AgendaView({
                 </div>
 
                 {/* BARRA DE ORDENAÇÃO RÁPIDA DE TODOS OS PACIENTES (APENAS NA VISUALIZAÇÃO EM CARDS) */}
-                {viewMode === "cards" && listaUnificadaTodosPacientes.length > 0 && (
-                  <div className="flex items-center justify-between gap-2 mb-4 p-2.5 bg-white/70 dark:bg-zinc-900/60 backdrop-blur-xl rounded-2xl border border-zinc-200/70 dark:border-white/5 flex-wrap">
-                    <div className="flex items-center gap-1.5 text-xs text-zinc-500 font-semibold flex-wrap">
+                {modoVisual === "cards" && listaUnificadaTodosPacientes.length > 0 && (
+                  <div className="flex items-center justify-between gap-2 mb-3 sm:mb-4 p-2 sm:p-2.5 bg-white/70 dark:bg-zinc-900/60 backdrop-blur-xl rounded-2xl border border-zinc-200/70 dark:border-white/5 flex-wrap">
+                    <div className="flex items-center gap-1.5 text-xs text-zinc-500 font-semibold flex-nowrap md:flex-wrap overflow-x-auto -mx-1 px-1 [scrollbar-width:none]">
                       <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-400 flex items-center gap-1">
-                        <ArrowUpDown size={11} /> Ordenar Cards:
+                        <ArrowUpDown size={11} /> <span className="hidden sm:inline">Ordenar Cards:</span>
                       </span>
                     <button
                       type="button"
                       onClick={() => handleSort("data")}
-                      className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                      className={`shrink-0 whitespace-nowrap min-h-[36px] px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
                         sortConfig.key === "data"
                           ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
                           : "bg-white/90 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"
@@ -3229,7 +3312,7 @@ export default function AgendaView({
                     <button
                       type="button"
                       onClick={() => handleSort("horario")}
-                      className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                      className={`shrink-0 whitespace-nowrap min-h-[36px] px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
                         sortConfig.key === "horario"
                           ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
                           : "bg-white/90 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"
@@ -3244,7 +3327,7 @@ export default function AgendaView({
                     <button
                       type="button"
                       onClick={() => handleSort("paciente")}
-                      className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                      className={`shrink-0 whitespace-nowrap min-h-[36px] px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
                         sortConfig.key === "paciente"
                           ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
                           : "bg-white/90 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"
@@ -3259,7 +3342,7 @@ export default function AgendaView({
                     <button
                       type="button"
                       onClick={() => handleSort("especialista")}
-                      className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                      className={`shrink-0 whitespace-nowrap min-h-[36px] px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
                         sortConfig.key === "especialista"
                           ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
                           : "bg-white/90 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"
@@ -3274,7 +3357,7 @@ export default function AgendaView({
                     <button
                       type="button"
                       onClick={() => handleSort("status")}
-                      className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                      className={`shrink-0 whitespace-nowrap min-h-[36px] px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
                         sortConfig.key === "status"
                           ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
                           : "bg-white/90 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"
@@ -3289,7 +3372,7 @@ export default function AgendaView({
                     <button
                       type="button"
                       onClick={() => handleSort("pagamento")}
-                      className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                      className={`shrink-0 whitespace-nowrap min-h-[36px] px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
                         sortConfig.key === "pagamento"
                           ? "bg-zinc-950 text-white dark:bg-white dark:text-black border-zinc-950 dark:border-white shadow-xs font-black"
                           : "bg-white/90 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300"
@@ -3318,7 +3401,7 @@ export default function AgendaView({
                   <div className="py-20 text-center rounded-3xl border border-dashed border-zinc-200 dark:border-zinc-800 text-zinc-500 bg-white/40 dark:bg-white/[0.02]">
                     Nenhum paciente encontrado com esses filtros de busca.
                   </div>
-                ) : viewMode === "cards" ? (
+                ) : modoVisual === "cards" ? (
                   <div className="grid gap-3.5">
                     {listaUnificadaTodosPacientes.map((item) => {
                       const isCanceled = item.statusAtendimento === "cancelado";
@@ -3405,7 +3488,7 @@ export default function AgendaView({
                             </div>
 
                             {/* AÇÕES NO CARD */}
-                            <div className="flex items-center gap-2 self-end md:self-center flex-wrap shrink-0">
+                            <div className="grid grid-cols-2 gap-2 w-full md:w-auto md:flex md:items-center md:self-center md:flex-wrap shrink-0">
                               {!item.pago &&
                                 item.tipo === "rmclick" &&
                                 isItemParticular(item) &&
@@ -3414,7 +3497,7 @@ export default function AgendaView({
                                     type="button"
                                     onClick={() => setConfirmApproveModalItem(item.rawItem || item)}
                                     disabled={isApproving}
-                                    className="min-h-[38px] px-3.5 py-1.5 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
+                                    className="min-h-[44px] md:min-h-[38px] justify-center px-3.5 py-1.5 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
                                     title="Confirmar que o paciente particular efetuou o pagamento"
                                   >
                                     {isApproving ? (
@@ -3422,14 +3505,14 @@ export default function AgendaView({
                                     ) : (
                                       <CheckCircle2 size={14} />
                                     )}
-                                    <span>Aprovar Pagamento</span>
+                                    <span className="whitespace-nowrap"><span className="md:hidden">Aprovar pgto.</span><span className="hidden md:inline">Aprovar Pagamento</span></span>
                                   </button>
                                 )}
 
                               {temPermissaoSigiloClinico ? (
                                 <button
                                   onClick={() => handleOpenSensitiveModal(item)}
-                                  className="min-h-[38px] px-3.5 py-1.5 rounded-2xl bg-black/[0.04] hover:bg-black/[0.08] dark:bg-white/[0.06] dark:hover:bg-white/[0.1] text-zinc-900 dark:text-white border border-black/[0.04] dark:border-white/[0.06] flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
+                                  className="min-h-[44px] md:min-h-[38px] justify-center px-3.5 py-1.5 rounded-2xl bg-black/[0.04] hover:bg-black/[0.08] dark:bg-white/[0.06] dark:hover:bg-white/[0.1] text-zinc-900 dark:text-white border border-black/[0.04] dark:border-white/[0.06] flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
                                   title="Ver Ficha Clínica, Enfermidades & Mensagens"
                                 >
                                   <ShieldCheck size={14} className="text-blue-500" />
@@ -3437,7 +3520,7 @@ export default function AgendaView({
                                 </button>
                               ) : (
                                 <span
-                                  className="min-h-[38px] px-3 py-1.5 rounded-2xl bg-black/[0.02] dark:bg-white/[0.03] text-zinc-400 text-[11px] font-medium inline-flex items-center gap-1 border border-black/[0.04] dark:border-white/[0.06] opacity-60 cursor-not-allowed"
+                                  className="min-h-[44px] md:min-h-[38px] justify-center px-3 py-1.5 rounded-2xl bg-black/[0.02] dark:bg-white/[0.03] text-zinc-400 text-[11px] font-medium inline-flex items-center gap-1 border border-black/[0.04] dark:border-white/[0.06] opacity-60 cursor-not-allowed"
                                   title="Acesso Restrito: Requer permissão de Sigilo Clínico"
                                 >
                                   <Lock size={12} /> Ficha Restrita
@@ -3449,7 +3532,7 @@ export default function AgendaView({
                                   onClick={() => handleLinkConfirmacao(item)}
                                   disabled={gerandoLinkId === item.id}
                                   title="Copiar link de confirmação (confirmar, remarcar ou cancelar) para enviar ao paciente"
-                                  className="min-h-[38px] px-3.5 py-1.5 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer disabled:opacity-50"
+                                  className="min-h-[44px] md:min-h-[38px] justify-center px-3.5 py-1.5 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer disabled:opacity-50"
                                 >
                                   {gerandoLinkId === item.id ? <RefreshCw size={13} className="animate-spin" /> : <Link2 size={13} />}
                                   <span>Link</span>
@@ -3461,16 +3544,17 @@ export default function AgendaView({
                                   disabled={gerandoLinkId === item.id}
                                   title="Enviar link de confirmação pelo WhatsApp"
                                   aria-label="Enviar link de confirmação pelo WhatsApp"
-                                  className="min-h-[38px] px-2.5 py-1.5 rounded-2xl bg-black/[0.04] hover:bg-black/[0.08] dark:bg-white/[0.06] dark:hover:bg-white/[0.1] text-emerald-600 dark:text-emerald-400 border border-black/[0.04] dark:border-white/[0.06] flex items-center text-xs transition-all shadow-2xs cursor-pointer disabled:opacity-50"
+                                  className="min-h-[44px] md:min-h-[38px] justify-center px-2.5 py-1.5 rounded-2xl bg-black/[0.04] hover:bg-black/[0.08] dark:bg-white/[0.06] dark:hover:bg-white/[0.1] text-emerald-600 dark:text-emerald-400 border border-black/[0.04] dark:border-white/[0.06] flex items-center gap-1.5 text-xs transition-all shadow-2xs cursor-pointer disabled:opacity-50"
                                 >
                                   <Send size={13} />
+                                  <span className="md:hidden font-semibold">WhatsApp</span>
                                 </button>
                               )}
                               {!isCanceled && (
                                 <>
                                   <button
                                     onClick={() => handleAbrirRemarcacao(item)}
-                                    className="min-h-[38px] px-3.5 py-1.5 rounded-2xl bg-black/[0.04] hover:bg-black/[0.08] dark:bg-white/[0.06] dark:hover:bg-white/[0.1] text-zinc-900 dark:text-white border border-black/[0.04] dark:border-white/[0.06] flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
+                                    className="min-h-[44px] md:min-h-[38px] justify-center px-3.5 py-1.5 rounded-2xl bg-black/[0.04] hover:bg-black/[0.08] dark:bg-white/[0.06] dark:hover:bg-white/[0.1] text-zinc-900 dark:text-white border border-black/[0.04] dark:border-white/[0.06] flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
                                   >
                                     <RotateCcw
                                       size={13}
@@ -3480,7 +3564,7 @@ export default function AgendaView({
                                   </button>
                                   <button
                                     onClick={() => handleAbrirModalCancelamento(item)}
-                                    className="min-h-[38px] px-3.5 py-1.5 rounded-2xl bg-rose-500/10 hover:bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20 flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
+                                    className="min-h-[44px] md:min-h-[38px] justify-center px-3.5 py-1.5 rounded-2xl bg-rose-500/10 hover:bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20 flex items-center gap-1.5 text-xs font-semibold transition-all shadow-2xs cursor-pointer"
                                   >
                                     <Trash2 size={13} />
                                     <span>Cancelar</span>
@@ -3705,7 +3789,7 @@ export default function AgendaView({
                                     >
                                       <RotateCcw
                                         size={12}
-                                        className="text-[#86a621] dark:text-[#9FC131]"
+                                        className="text-brand-ink"
                                       />
                                       <span>Remarcar</span>
                                     </button>
@@ -3797,7 +3881,7 @@ export default function AgendaView({
                     >
                       <ChevronLeft size={16} />
                     </button>
-                    <span className="text-xs font-black capitalize text-zinc-900 dark:text-white">
+                    <span className="inline-block first-letter:uppercase text-xs font-black text-zinc-900 dark:text-white">
                       {rescheduleMonth.toLocaleString("pt-BR", {
                         month: "long",
                         year: "numeric"
@@ -3887,7 +3971,7 @@ export default function AgendaView({
                 <div className="p-4 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 bg-[#F8F8FA] dark:bg-[#222225] flex flex-col">
                   <div className="flex justify-between items-center border-b border-zinc-200/60 dark:border-zinc-800 pb-2 mb-3">
                     <span className="text-xs font-extrabold text-zinc-900 dark:text-white flex items-center gap-1.5">
-                      <Clock3 size={14} className="text-[#9FC131]" /> Horários Livres
+                      <Clock3 size={14} className="text-brand-ink" /> Horários Livres
                     </span>
                     <span className="text-[10px] text-zinc-400 font-bold">
                       {rescheduleSelectedDate
@@ -4164,7 +4248,7 @@ export default function AgendaView({
                       >
                         <ChevronLeft size={16} />
                       </button>
-                      <span className="text-xs font-black capitalize text-zinc-900 dark:text-white">
+                      <span className="inline-block first-letter:uppercase text-xs font-black text-zinc-900 dark:text-white">
                         {novoAgendMonth.toLocaleString("pt-BR", {
                           month: "long",
                           year: "numeric"
@@ -4246,7 +4330,7 @@ export default function AgendaView({
                   <div className="p-3 bg-white dark:bg-black rounded-xl border border-zinc-200 dark:border-zinc-800 flex flex-col">
                     <div className="flex justify-between items-center border-b border-zinc-100 dark:border-zinc-800 pb-2 mb-2">
                       <span className="text-xs font-extrabold text-zinc-900 dark:text-white flex items-center gap-1">
-                        <Clock3 size={13} className="text-[#9FC131]" /> Horários Livres
+                        <Clock3 size={13} className="text-brand-ink" /> Horários Livres
                       </span>
                       <span className="text-[10px] text-zinc-400 font-bold">
                         {novoAgendForm.data_agendamento
@@ -4337,7 +4421,7 @@ export default function AgendaView({
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
               transition={spring}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white dark:bg-[#111116] border border-zinc-200/90 dark:border-zinc-800 rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl space-y-5 text-left"
+              className="bg-white dark:bg-[#111116] border border-zinc-200/90 dark:border-zinc-800 rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl space-y-5 text-left max-h-[calc(100dvh-24px)] overflow-y-auto overscroll-contain"
             >
               <div className="flex items-center justify-between border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
                 <div className="flex items-center gap-3">
@@ -4438,7 +4522,7 @@ export default function AgendaView({
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white/95 dark:bg-[#121216]/95 backdrop-blur-3xl rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl border border-black/[0.06] dark:border-white/[0.08] space-y-5"
+              className="bg-white/95 dark:bg-[#121216]/95 backdrop-blur-3xl rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl border border-black/[0.06] dark:border-white/[0.08] space-y-5 max-h-[calc(100dvh-24px)] overflow-y-auto overscroll-contain"
             >
               <div className="flex justify-between items-start">
                 <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-600 flex items-center justify-center shadow-sm">
@@ -4562,7 +4646,7 @@ export default function AgendaView({
           >
             <div
               onClick={(e) => e.stopPropagation()}
-              className="bg-white dark:bg-[#111116] border border-zinc-200/90 dark:border-zinc-800 rounded-3xl p-6 sm:p-7 max-w-lg w-full shadow-2xl space-y-5 text-left animate-in fade-in zoom-in-95 duration-200"
+              className="bg-white dark:bg-[#111116] border border-zinc-200/90 dark:border-zinc-800 rounded-3xl p-6 sm:p-7 max-w-lg w-full shadow-2xl space-y-5 text-left animate-in fade-in zoom-in-95 duration-200 max-h-[calc(100dvh-24px)] overflow-y-auto overscroll-contain"
             >
               <div className="flex items-center justify-between border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
                 <div className="flex items-center gap-3">
@@ -4676,7 +4760,7 @@ export default function AgendaView({
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 10 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white/95 dark:bg-[#121216]/95 backdrop-blur-3xl rounded-3xl p-6 sm:p-7 max-w-lg w-full shadow-2xl border border-black/[0.06] dark:border-white/[0.08] space-y-5 text-left"
+              className="bg-white/95 dark:bg-[#121216]/95 backdrop-blur-3xl rounded-3xl p-6 sm:p-7 max-w-lg w-full shadow-2xl border border-black/[0.06] dark:border-white/[0.08] space-y-5 text-left max-h-[calc(100dvh-24px)] overflow-y-auto overscroll-contain"
             >
               {/* CABEÇALHO */}
               <div className="flex items-center justify-between border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
@@ -4863,7 +4947,7 @@ export default function AgendaView({
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.992 }}
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-            className="fixed inset-0 z-[99999] bg-[#F5F5F7] dark:bg-[#000000] text-zinc-900 dark:text-zinc-100 flex flex-col overflow-hidden font-sans antialiased selection:bg-zinc-900 selection:text-white dark:selection:bg-white dark:selection:text-black"
+            className="fixed inset-0 z-[99999] bg-background dark:bg-background text-zinc-900 dark:text-zinc-100 flex flex-col overflow-hidden font-sans antialiased selection:bg-zinc-900 selection:text-white dark:selection:bg-white dark:selection:text-black"
           >
             {/* 1. BARRA SUPERIOR TRANSLÚCIDA (macOS / iOS Navigation Bar) */}
             <header className="sticky top-0 z-30 bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl border-b border-black/[0.06] dark:border-white/[0.08] px-4 md:px-8 py-3 flex items-center justify-between transition-colors">
@@ -4887,9 +4971,9 @@ export default function AgendaView({
                   </div>
                   <div className="min-w-0 flex items-center gap-2">
                     <span className="text-xs text-zinc-400 hidden md:inline">Prontuário /</span>
-                    <h1 className="text-sm md:text-base font-bold text-zinc-950 dark:text-white tracking-tight truncate">
+                    <h2 className="text-sm md:text-base font-bold text-zinc-950 dark:text-white tracking-tight truncate">
                       {sensitiveModalItem.nomePaciente || "Ficha do Paciente"}
-                    </h1>
+                    </h2>
                     {sensitiveModalItem.tipo === "medicalsys" ? (
                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-800 dark:text-amber-300 border border-amber-500/20 flex-shrink-0">
                         <Tag size={10} /> ERP MedicalSYS
@@ -6194,7 +6278,7 @@ export default function AgendaView({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 15 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white dark:bg-[#111116] border border-red-500/30 rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl space-y-5 text-left"
+              className="bg-white dark:bg-[#111116] border border-red-500/30 rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl space-y-5 text-left max-h-[calc(100dvh-24px)] overflow-y-auto overscroll-contain"
             >
               <div className="flex items-center gap-3 border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
                 <div className="w-10 h-10 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0">

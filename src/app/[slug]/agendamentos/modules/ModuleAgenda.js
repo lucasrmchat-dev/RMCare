@@ -18,7 +18,7 @@ import { helpers, calcularDataLimite } from "../utils";
 import { playDopamineSound, triggerHaptic } from "@/lib/dopamine";
 import { SkeletonSlots } from "@/components/SkeletonLoaders";
 
-export default function ModuleAgenda({ titulo, subtitulo, selo } = {}) {
+export default function ModuleAgenda({ titulo, subtitulo, selo, compacto = false } = {}) {
   const {
     formData,
     setValue,
@@ -550,7 +550,7 @@ export default function ModuleAgenda({ titulo, subtitulo, selo } = {}) {
 
   return (
     <motion.div
-      initial="hidden"
+      initial={compacto ? false : "hidden"}
       animate="show"
       exit="exit"
       variants={{
@@ -562,19 +562,23 @@ export default function ModuleAgenda({ titulo, subtitulo, selo } = {}) {
     >
       <motion.div
         variants={{ hidden: { opacity: 0, y: 14 }, show: { opacity: 1, y: 0 } }}
-        className="mb-6 md:mb-8"
+        className={compacto ? "" : "mb-4 sm:mb-6 md:mb-8"}
       >
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 text-[11px] font-bold uppercase tracking-wider mb-2.5 shadow-sm">
-          <CalendarIcon size={13} strokeWidth={2} /> {selo || "Agenda em Tempo Real"}
+        {!compacto && (
+        <>
+        <div className="hidden sm:inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 text-[11px] font-bold uppercase tracking-wider mb-2.5 shadow-sm">
+          <CalendarIcon size={13} strokeWidth={2} /> {selo || "Horários disponíveis"}
         </div>
-        <h2 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-zinc-950 dark:text-white leading-tight">
+        <h1 className="text-xl sm:text-3xl md:text-4xl font-black tracking-tight text-zinc-950 dark:text-white leading-tight">
           {titulo || "Qual o melhor dia e horário para você?"}
-        </h2>
-        <p className="text-zinc-500 dark:text-zinc-400 text-xs sm:text-sm mt-1.5 leading-relaxed">
+        </h1>
+        <p className="hidden sm:block text-zinc-500 dark:text-zinc-400 text-sm mt-1.5 leading-relaxed">
           {subtitulo || "Selecione a data no calendário para carregar os horários disponíveis e confirmar sua vaga."}
         </p>
+        </>
+        )}
         {selectedSrv?.agendamento_bloqueado_ate && (
-          <p className="mt-3 text-xs font-bold text-amber-800 dark:text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-2xl px-4 py-3">
+          <p className="mt-3 mb-3 text-xs font-bold text-amber-800 dark:text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-2xl px-4 py-3">
             Agenda liberada a partir de{" "}
             {new Date(
               `${selectedSrv.agendamento_bloqueado_ate}T12:00:00`
@@ -588,11 +592,11 @@ export default function ModuleAgenda({ titulo, subtitulo, selo } = {}) {
 
       <motion.div
         variants={{ hidden: { opacity: 0, y: 18 }, show: { opacity: 1, y: 0 } }}
-        className="flex flex-col md:flex-row gap-5 md:gap-8"
+        className="flex flex-col md:flex-row gap-3 sm:gap-5 md:gap-8"
       >
         {/* CALENDÁRIO MENSAL */}
-        <div className="w-full md:w-1/2 rounded-3xl border border-black/[0.06] dark:border-white/[0.08] p-5 md:p-6 bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl shadow-sm">
-          <div className="flex justify-between items-center mb-6">
+        <div className="w-full md:w-1/2 rounded-2xl border border-black/[0.06] dark:border-white/[0.08] p-3 sm:p-5 md:p-6 bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl shadow-sm">
+          <div className="flex justify-between items-center mb-2 sm:mb-6">
             <button
               onClick={() => {
                 playDopamineSound("click");
@@ -601,13 +605,16 @@ export default function ModuleAgenda({ titulo, subtitulo, selo } = {}) {
                 );
               }}
               aria-label="Mês anterior"
-              className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center cursor-pointer"
+              className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center cursor-pointer"
             >
               <ChevronLeft size={18} strokeWidth={2.5} />
             </button>
-            <h3 className="font-extrabold text-sm sm:text-base capitalize text-zinc-900 dark:text-white">
-              {calendarMonth.toLocaleString("pt-BR", { month: "long", year: "numeric" })}
-            </h3>
+            <h2 className="font-extrabold text-sm sm:text-base text-zinc-900 dark:text-white" aria-live="polite">
+              {(() => {
+                const mes = calendarMonth.toLocaleString("pt-BR", { month: "long", year: "numeric" });
+                return mes.charAt(0).toUpperCase() + mes.slice(1);
+              })()}
+            </h2>
             <button
               onClick={() => {
                 playDopamineSound("click");
@@ -616,13 +623,13 @@ export default function ModuleAgenda({ titulo, subtitulo, selo } = {}) {
                 );
               }}
               aria-label="Próximo mês"
-              className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center cursor-pointer"
+              className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center cursor-pointer"
             >
               <ChevronRight size={18} strokeWidth={2.5} />
             </button>
           </div>
 
-          <div className="grid grid-cols-7 gap-1 text-center mb-2.5">
+          <div className="grid grid-cols-7 gap-1 text-center mb-1.5 sm:mb-2.5">
             {["D", "S", "T", "Q", "Q", "S", "S"].map((d, i) => (
               <div
                 key={i}
@@ -633,11 +640,11 @@ export default function ModuleAgenda({ titulo, subtitulo, selo } = {}) {
             ))}
           </div>
 
-          <div className="grid grid-cols-7 gap-1.5 md:gap-2">
+          <div className="grid grid-cols-7 gap-1 sm:gap-1.5 md:gap-2">
             {Array.from({
               length: new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1).getDay()
             }).map((_, i) => (
-              <div key={`e-${i}`} className="aspect-square" />
+              <div key={`e-${i}`} className="h-10 sm:h-auto sm:aspect-square" />
             ))}
             {Array.from({
               length: new Date(
@@ -687,11 +694,11 @@ export default function ModuleAgenda({ titulo, subtitulo, selo } = {}) {
                   key={d}
                   disabled={isPastOrBlocked}
                   onClick={() => handleDateClick(dateStr)}
-                  className={`relative aspect-square rounded-2xl text-xs sm:text-sm transition-all duration-200 min-h-[40px] flex items-center justify-center cursor-pointer ${
+                  className={`relative h-10 sm:h-auto sm:aspect-square rounded-xl text-sm transition-all duration-200 min-h-[40px] flex items-center justify-center cursor-pointer ${
                     isPastOrBlocked
                       ? "opacity-20 cursor-not-allowed text-zinc-400 dark:text-zinc-600"
                       : isSel
-                      ? "bg-zinc-950 text-white dark:bg-white dark:text-black font-black shadow-lg shadow-black/10 dark:shadow-white/10 ring-2 ring-[#9FC131] scale-105"
+                      ? "bg-zinc-950 text-white dark:bg-white dark:text-black font-black shadow-lg shadow-black/10 dark:shadow-white/10 ring-2 ring-[#9FC131]"
                       : "hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-semibold"
                   }`}
                 >
@@ -713,21 +720,22 @@ export default function ModuleAgenda({ titulo, subtitulo, selo } = {}) {
 
         {/* GRADE DE HORÁRIOS DISPONÍVEIS */}
         <div
-          className="w-full md:w-1/2 rounded-3xl border border-black/[0.06] dark:border-white/[0.08] p-5 md:p-6 bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl shadow-sm flex flex-col justify-between scroll-mt-24"
+          className={`w-full md:w-1/2 rounded-2xl border border-black/[0.06] dark:border-white/[0.08] p-3 sm:p-5 md:p-6 bg-white/80 dark:bg-[#161618]/80 backdrop-blur-2xl shadow-sm flex-col justify-between scroll-mt-4 sm:scroll-mt-24 ${
+            formData.data_agendamento ? "flex" : "hidden md:flex"
+          }`}
           ref={timeSlotsRef}
         >
           {formData.data_agendamento ? (
             <div>
-              <div className="flex justify-between items-center border-b border-black/[0.06] dark:border-white/[0.08] pb-4 mb-4">
+              <div className="flex justify-between items-center border-b border-black/[0.06] dark:border-white/[0.08] pb-2.5 mb-3 sm:pb-4 sm:mb-4">
                 <h4 className="font-extrabold text-sm flex items-center gap-2 text-zinc-900 dark:text-white">
-                  <Clock3 size={16} className="text-[#9FC131]" /> Horários Disponíveis
+                  <Clock3 size={16} className="text-brand-ink" /> Horários Disponíveis
                 </h4>
-                <span className="text-xs text-zinc-500 dark:text-zinc-400 font-bold capitalize bg-zinc-100 dark:bg-white/[0.06] px-2.5 py-1 rounded-full border border-zinc-200/60 dark:border-white/[0.06]">
-                  {new Date(formData.data_agendamento + "T12:00:00").toLocaleDateString("pt-BR", {
-                    weekday: "short",
-                    day: "numeric",
-                    month: "short"
-                  })}
+                <span className="text-xs text-zinc-500 dark:text-zinc-400 font-bold bg-zinc-100 dark:bg-white/[0.06] px-2.5 py-1 rounded-full border border-zinc-200/60 dark:border-white/[0.06]">
+                  {(() => {
+                    const d = new Date(formData.data_agendamento + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "short", day: "numeric", month: "short" });
+                    return d.charAt(0).toUpperCase() + d.slice(1);
+                  })()}
                 </span>
               </div>
 
@@ -737,10 +745,10 @@ export default function ModuleAgenda({ titulo, subtitulo, selo } = {}) {
                 </div>
               ) : slotsRender.length === 0 ? (
                 <div className="py-12 text-center text-zinc-400 text-xs font-medium border border-dashed rounded-2xl border-zinc-200 dark:border-zinc-800 p-6">
-                  Nenhum horário disponível para esta data. Selecione outro dia no calendário ao lado.
+                  Nenhum horário livre neste dia. Escolha outro dia no calendário.
                 </div>
               ) : (
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5 max-h-[340px] overflow-y-auto custom-scrollbar pr-1 py-1">
+                <div className="grid grid-cols-4 gap-2 sm:gap-2.5 md:max-h-[340px] md:overflow-y-auto custom-scrollbar md:pr-1 py-1">
                   {slotsRender.map(({ h, off }) => {
                     const isSel = formData.horario_agendamento === h;
                     return (
@@ -754,11 +762,11 @@ export default function ModuleAgenda({ titulo, subtitulo, selo } = {}) {
                           triggerHaptic("medium");
                           setValue("horario_agendamento", h);
                         }}
-                        className={`min-h-[48px] py-3 px-2 rounded-2xl text-xs font-bold transition-all flex items-center justify-center cursor-pointer ${
+                        className={`min-h-[44px] sm:min-h-[48px] py-2.5 sm:py-3 px-1 rounded-xl text-sm font-bold tabular-nums transition-all flex items-center justify-center cursor-pointer ${
                           off
                             ? "opacity-25 cursor-not-allowed bg-zinc-100 dark:bg-zinc-900 text-zinc-400 line-through"
                             : isSel
-                            ? "bg-[#9FC131] text-black shadow-lg shadow-[#9FC131]/25 font-black ring-2 ring-[#9FC131] scale-105"
+                            ? "bg-[#9FC131] text-black shadow-lg shadow-[#9FC131]/25 font-black ring-2 ring-[#9FC131]"
                             : "bg-[#F8F8FA] dark:bg-[#222225] border border-zinc-200/80 dark:border-zinc-800 hover:border-[#9FC131] text-zinc-800 dark:text-zinc-200"
                         }`}
                       >

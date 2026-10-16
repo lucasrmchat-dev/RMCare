@@ -78,9 +78,9 @@ export default function ModuleModalidade() {
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[11px] font-bold uppercase tracking-wider mb-2.5 shadow-sm">
           <ShieldCheck size={13} strokeWidth={2} /> Cobertura & Pagamento
         </div>
-        <h2 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-zinc-950 dark:text-white leading-tight">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-zinc-950 dark:text-white leading-tight">
           Como será o atendimento?
-        </h2>
+        </h1>
         <p className="text-zinc-500 dark:text-zinc-400 text-xs sm:text-sm mt-1.5 leading-relaxed">
           Escolha a modalidade de cobertura para verificarmos os requisitos e condições adequadas.
         </p>
@@ -182,7 +182,7 @@ export default function ModuleModalidade() {
                           </span>
                         </div>
                         {isSelected && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-[#86a621] dark:text-[#9FC131] uppercase tracking-wider">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-brand-ink uppercase tracking-wider">
                             <Check size={12} strokeWidth={3} /> Selecionado
                           </span>
                         )}
@@ -239,7 +239,7 @@ export default function ModuleModalidade() {
                         >
                           <div className="flex items-center justify-between w-full">
                             <span className="font-extrabold text-xs truncate">{conv.nome}</span>
-                            {isConvSelected && <Check size={14} strokeWidth={3} className="text-[#9FC131] flex-shrink-0" />}
+                            {isConvSelected && <Check size={14} strokeWidth={3} className="text-brand-ink flex-shrink-0" />}
                           </div>
                           {conv.codigo_medicalsys && (
                             <span className="text-[9px] opacity-60 font-mono mt-1">ID #{conv.codigo_medicalsys}</span>

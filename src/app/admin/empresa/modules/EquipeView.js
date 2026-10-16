@@ -1118,18 +1118,18 @@ export default function EquipeView({
       {/* CABEÇALHO UNIFICADO */}
       <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-black/[0.06] dark:border-white/[0.08] pb-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0 shadow-sm">
+          <div className="hidden sm:flex w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 items-center justify-center flex-shrink-0 shadow-sm">
             <Users size={20} strokeWidth={1.5} />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-zinc-950 dark:text-white tracking-tight">
+            <h2 className="text-lg sm:text-xl font-bold text-zinc-950 dark:text-white tracking-tight">
               {subTab === "corpo" && "Corpo Clínico & Especialistas"}
               {subTab === "especialidades" && "Especialidades Médicas & Exames"}
               {subTab === "modalidades" && "Modalidades & Convênios"}
               {subTab === "pausas" && "Especialistas com Agenda Pausada"}
               {subTab === "formulario" && "Cadastro de Especialista"}
             </h2>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">
+            <p className="hidden sm:block text-xs text-zinc-500 dark:text-zinc-400 font-medium">
               Gerencie colaboradores, categorias de atendimento, convênios, exames e pausas na agenda.
             </p>
           </div>
@@ -1589,7 +1589,7 @@ export default function EquipeView({
                       exit={{ opacity: 0 }}
                       className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
                     >
-                      <div className="bg-white dark:bg-[#161618] border border-zinc-200 dark:border-zinc-800 rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl">
+                      <div className="bg-white dark:bg-[#161618] border border-zinc-200 dark:border-zinc-800 rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl max-h-[calc(100dvh-24px)] overflow-y-auto overscroll-contain">
                         <div className="flex justify-between items-center border-b border-zinc-100 dark:border-zinc-800 pb-3">
                           <h4 className="font-bold text-sm text-zinc-950 dark:text-white flex items-center gap-2">
                             <Pencil size={15} className="text-blue-500" /> Editar Especialidade
@@ -2004,7 +2004,7 @@ export default function EquipeView({
                 <div className="mb-6 p-5 bg-zinc-50/80 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
                   <div className="space-y-1">
                     <h4 className="text-xs font-black uppercase tracking-wider text-zinc-900 dark:text-white flex items-center gap-2">
-                      <DollarSign size={15} className="text-[#9FC131]" /> Exibição de Valores na Última Etapa de Agendamento
+                      <DollarSign size={15} className="text-brand-ink" /> Exibição de Valores na Última Etapa de Agendamento
                     </h4>
                     <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed max-w-2xl">
                       Habilite ou desabilite a visualização do valor da consulta para o paciente no checkout / confirmação final. O valor é preservado internamente no banco de dados para cálculos de faturamento e métricas da clínica.

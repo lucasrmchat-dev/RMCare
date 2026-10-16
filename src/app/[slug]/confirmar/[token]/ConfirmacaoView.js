@@ -119,7 +119,7 @@ function Flutuante({ children }) {
 function FundoAmbiente() {
   return (
     <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-      <div className="absolute inset-0 bg-[#F6F6F3] dark:bg-[#050506]" />
+      <div className="absolute inset-0 bg-background dark:bg-background" />
       <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[900px] h-[900px] rounded-full bg-[radial-gradient(closest-side,rgba(159,193,49,0.18),transparent)] dark:bg-[radial-gradient(closest-side,rgba(159,193,49,0.12),transparent)]" />
       <div className="absolute bottom-[-30%] right-[-10%] w-[700px] h-[700px] rounded-full bg-[radial-gradient(closest-side,rgba(16,185,129,0.10),transparent)] dark:bg-[radial-gradient(closest-side,rgba(16,185,129,0.08),transparent)]" />
       <div className="absolute inset-0 opacity-[0.35] dark:opacity-[0.15] [background-image:radial-gradient(rgba(0,0,0,0.06)_1px,transparent_1px)] dark:[background-image:radial-gradient(rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:22px_22px] [mask-image:linear-gradient(to_bottom,black,transparent_70%)]" />
@@ -162,7 +162,7 @@ const STATUS_VISUAL = {
     dot: "bg-emerald-500"
   },
   agendado: {
-    rotulo: "Aguardando sua confirmação",
+    rotulo: "Aguardando confirmação",
     pill: "bg-amber-500/12 text-amber-800 dark:text-amber-300 border-amber-500/25",
     dot: "bg-amber-500 animate-pulse"
   },
@@ -195,27 +195,27 @@ function TicketAgendamento({ agendamento, destaque }) {
     <motion.article
       layout
       transition={spring}
-      className={`relative rounded-[28px] bg-white dark:bg-[#111113] border shadow-[0_1px_0_rgba(255,255,255,0.8)_inset,0_30px_60px_-25px_rgba(0,0,0,0.18)] dark:shadow-[0_30px_60px_-25px_rgba(0,0,0,0.8)] overflow-hidden ${
+      className={`relative rounded-2xl bg-white dark:bg-[#111113] border shadow-[0_1px_0_rgba(255,255,255,0.8)_inset,0_30px_60px_-25px_rgba(0,0,0,0.08)] dark:shadow-[0_30px_60px_-25px_rgba(0,0,0,0.8)] overflow-hidden ${
         destaque
           ? "border-emerald-500/40 ring-4 ring-emerald-500/10"
           : "border-black/[0.06] dark:border-white/[0.08]"
       }`}
     >
       {/* Faixa superior */}
-      <div className="flex items-center justify-between gap-2 px-5 sm:px-7 pt-5 sm:pt-6">
-        <span className={`inline-flex items-center gap-2 text-[11px] font-bold px-3 py-1.5 rounded-full border ${status.pill}`}>
+      <div className="flex items-center justify-between gap-2 px-4 sm:px-7 pt-4 sm:pt-6">
+        <span className={`inline-flex items-center gap-2 text-[11px] font-bold px-3 py-1.5 rounded-full border whitespace-nowrap ${status.pill}`}>
           <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
           {status.rotulo}
         </span>
         {contagem && (
-          <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-400">{contagem}</span>
+          <span className="text-[11px] font-bold uppercase tracking-[0.1em] text-zinc-400 whitespace-nowrap">{contagem}</span>
         )}
       </div>
 
       {/* Data e hora em destaque */}
-      <div className={`px-5 sm:px-7 pt-5 pb-6 sm:pb-7 grid grid-cols-[auto_1fr] items-end gap-4 sm:gap-6 ${cancelado ? "opacity-50" : ""}`}>
-        <div className="text-center rounded-2xl bg-[#F6F6F3] dark:bg-white/[0.04] border border-black/[0.05] dark:border-white/[0.06] px-4 sm:px-5 py-3 min-w-[84px]">
-          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#7c9a1e] dark:text-[#9FC131]">
+      <div className={`px-4 sm:px-7 pt-4 sm:pt-5 pb-4 sm:pb-7 grid grid-cols-[auto_1fr] items-end gap-4 sm:gap-6 ${cancelado ? "opacity-50" : ""}`}>
+        <div className="text-center rounded-2xl bg-background dark:bg-white/[0.04] border border-black/[0.05] dark:border-white/[0.06] px-4 sm:px-5 py-3 min-w-[84px]">
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-brand-ink">
             {fmt(agendamento.data, { month: "short" }).replace(".", "")}
           </p>
           <p className={`text-4xl sm:text-5xl font-black tracking-tighter text-zinc-950 dark:text-white leading-none mt-1 ${cancelado ? "line-through decoration-2" : ""}`}>
@@ -238,13 +238,13 @@ function TicketAgendamento({ agendamento, destaque }) {
 
       {/* Picote de ingresso */}
       <div aria-hidden className="relative h-6">
-        <div className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-[#F6F6F3] dark:bg-[#050506] border border-black/[0.06] dark:border-white/[0.08]" />
-        <div className="absolute right-0 top-1/2 translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-[#F6F6F3] dark:bg-[#050506] border border-black/[0.06] dark:border-white/[0.08]" />
+        <div className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-background dark:bg-background border border-black/[0.06] dark:border-white/[0.08]" />
+        <div className="absolute right-0 top-1/2 translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-background dark:bg-background border border-black/[0.06] dark:border-white/[0.08]" />
         <div className="absolute left-5 right-5 top-1/2 border-t-2 border-dashed border-black/[0.08] dark:border-white/[0.08]" />
       </div>
 
       {/* Detalhes do atendimento */}
-      <dl className="px-5 sm:px-7 pt-4 pb-6 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+      <dl className="px-4 sm:px-7 pt-3 sm:pt-4 pb-4 sm:pb-6 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 sm:gap-y-4">
         <div className="flex items-start gap-3 min-w-0">
           <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
             {isExame ? <HeartPulse size={17} /> : <Stethoscope size={17} />}
@@ -284,12 +284,12 @@ function TicketAgendamento({ agendamento, destaque }) {
 function Botao({ variante = "primario", carregando, children, className = "", ...props }) {
   const estilos = {
     primario:
-      "bg-zinc-950 text-white dark:bg-white dark:text-black shadow-[0_12px_30px_-10px_rgba(0,0,0,0.45)] hover:bg-zinc-800 dark:hover:bg-zinc-100",
+      "bg-zinc-950 text-white dark:bg-white dark:text-black shadow-[0_12px_30px_-10px_rgba(0,0,0,0.08)] hover:bg-zinc-800 dark:hover:bg-zinc-100",
     confirmar:
-      "bg-[#9FC131] text-zinc-950 shadow-[0_14px_34px_-12px_rgba(122,160,20,0.75)] hover:bg-[#a9cc3a]",
+      "bg-[#9FC131] text-zinc-950 shadow-[0_14px_34px_-12px_rgba(122,160,20,0.35)] hover:bg-[#a9cc3a]",
     secundario:
       "bg-white/80 dark:bg-white/[0.05] text-zinc-900 dark:text-white border border-black/[0.08] dark:border-white/[0.1] hover:bg-white dark:hover:bg-white/[0.08] backdrop-blur",
-    perigo: "bg-rose-600 text-white hover:bg-rose-700 shadow-[0_12px_30px_-12px_rgba(225,29,72,0.6)]",
+    perigo: "bg-rose-600 text-white hover:bg-rose-700 shadow-[0_12px_30px_-12px_rgba(225,29,72,0.35)]",
     fantasma: "text-zinc-500 hover:text-rose-600 dark:text-zinc-400 dark:hover:text-rose-400"
   };
   return (
@@ -308,13 +308,13 @@ function Botao({ variante = "primario", carregando, children, className = "", ..
 // ---------- Tela de erro (link inválido) ----------
 function TelaLinkInvalido({ mensagem }) {
   return (
-    <main className="min-h-[100dvh] flex items-center justify-center px-4 py-10">
+    <main id="conteudo" className="min-h-[100dvh] flex items-center justify-center px-4 py-10">
       <FundoAmbiente />
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={spring}
-        className="w-full max-w-md text-center rounded-[28px] bg-white/90 dark:bg-[#111113]/90 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-8 sm:p-10 shadow-[0_30px_60px_-25px_rgba(0,0,0,0.2)]"
+        className="w-full max-w-md text-center rounded-2xl bg-white/90 dark:bg-[#111113]/90 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-8 sm:p-10 shadow-[0_30px_60px_-25px_rgba(0,0,0,0.08)]"
       >
         <div className="mx-auto w-14 h-14 rounded-2xl bg-zinc-100 dark:bg-white/[0.06] text-zinc-500 flex items-center justify-center mb-5">
           <Link2Off size={24} />
@@ -429,62 +429,61 @@ function Remarcacao({ token, dados, onVoltar, onRemarcado, onErro }) {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
       transition={spring}
-      className="pb-40"
+      className="pb-28"
     >
-      <button
-        type="button"
-        onClick={onVoltar}
-        className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-500 hover:text-zinc-950 dark:hover:text-white min-h-[44px] -ml-1 px-1 cursor-pointer"
-      >
-        <ArrowLeft size={16} /> Voltar ao resumo
-      </button>
-
-      <div className="mt-3 mb-6 inline-flex flex-wrap items-center gap-2 text-xs font-semibold text-zinc-500 dark:text-zinc-400 bg-white/70 dark:bg-white/[0.04] border border-black/[0.05] dark:border-white/[0.08] rounded-2xl px-4 py-2.5 backdrop-blur">
-        <CalendarClock size={14} className="text-zinc-400" />
-        Horário atual:
-        <span className="font-bold text-zinc-800 dark:text-zinc-200">
-          {maiuscula(fmt(agendamento.data, { weekday: "short", day: "numeric", month: "short" }))} · {agendamento.horario}
-        </span>
-        <span className="text-zinc-400">— mantemos as mesmas informações, só muda a data e o horário.</span>
+      {/* Barra superior compacta: voltar + o que está sendo trocado, numa linha só */}
+      <div className="flex items-center gap-2 mb-3 sm:mb-5">
+        <button
+          type="button"
+          onClick={onVoltar}
+          aria-label="Voltar ao resumo"
+          className="w-11 h-11 -ml-2 shrink-0 grid place-items-center rounded-xl text-zinc-600 dark:text-zinc-300 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] cursor-pointer"
+        >
+          <ArrowLeft size={20} />
+        </button>
+        <div className="min-w-0">
+          <h1 className="text-base sm:text-xl font-bold tracking-tight text-zinc-950 dark:text-white leading-tight">Escolha o novo horário</h1>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate">
+            Atual: {maiuscula(fmt(agendamento.data, { weekday: "short", day: "numeric", month: "short" }))} · {agendamento.horario}
+          </p>
+        </div>
       </div>
 
       {carregando ? (
-        <div className="grid md:grid-cols-2 gap-5">
+        <div className="grid md:grid-cols-2 gap-3 sm:gap-5">
           {[0, 1].map((i) => (
-            <div key={i} className="h-[380px] rounded-3xl bg-white/70 dark:bg-white/[0.04] border border-black/[0.05] dark:border-white/[0.06] animate-pulse" />
+            <div key={i} className="h-[340px] last:hidden md:last:block rounded-2xl bg-white/70 dark:bg-white/[0.04] border border-black/[0.05] dark:border-white/[0.06] animate-pulse" />
           ))}
         </div>
       ) : (
         <AgendamentoContext.Provider value={contexto}>
-          <ModuleAgenda
-            selo="Remarcação"
-            titulo="Escolha o novo dia e horário"
-            subtitulo="Mostramos apenas os horários realmente livres na agenda da clínica, atualizados em tempo real."
-          />
+          <ModuleAgenda compacto />
         </AgendamentoContext.Provider>
       )}
 
       {/* Barra fixa de confirmação da remarcação */}
       <Flutuante>
-      <div className="fixed inset-x-0 bottom-0 z-40 px-4 pb-[max(16px,env(safe-area-inset-bottom))] pt-3 bg-gradient-to-t from-[#F6F6F3] via-[#F6F6F3]/95 to-transparent dark:from-[#050506] dark:via-[#050506]/95">
-        <div className="mx-auto max-w-3xl rounded-3xl bg-white/90 dark:bg-[#111113]/90 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.1] shadow-[0_20px_50px_-20px_rgba(0,0,0,0.35)] p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center gap-3">
-          <div className="flex-1 min-w-0 flex items-center gap-3 px-1">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${pronto ? "bg-[#9FC131]/20 text-[#5f7a12] dark:text-[#9FC131]" : "bg-zinc-100 dark:bg-white/[0.06] text-zinc-400"}`}>
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-black/[0.06] dark:border-white/[0.08] bg-surface/95 backdrop-blur-xl px-4 pt-2.5 pb-[max(10px,env(safe-area-inset-bottom))]">
+        <div className="mx-auto max-w-5xl flex items-center gap-3">
+          <div className="flex-1 min-w-0 flex items-center gap-3">
+            <div className={`hidden sm:flex w-10 h-10 rounded-xl items-center justify-center shrink-0 ${pronto ? "bg-[#9FC131]/20 text-brand-ink" : "bg-zinc-100 dark:bg-white/[0.06] text-zinc-400"}`}>
               <CalendarCheck2 size={18} />
             </div>
             <div className="min-w-0">
               <p className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-zinc-400">Novo horário</p>
               <p className="text-sm font-bold text-zinc-900 dark:text-white truncate">
                 {pronto
-                  ? `${maiuscula(fmt(formData.data_agendamento, { weekday: "long", day: "numeric", month: "long" }))} · ${formData.horario_agendamento}`
+                  ? `${maiuscula(fmt(formData.data_agendamento, { weekday: "short", day: "numeric", month: "short" }))} · ${formData.horario_agendamento}`
                   : formData.data_agendamento
                   ? "Agora escolha um horário"
                   : "Escolha um dia no calendário"}
               </p>
             </div>
           </div>
-          <Botao variante="confirmar" onClick={salvar} disabled={!pronto} carregando={salvando} className="w-full sm:w-auto sm:px-7">
-            Confirmar novo horário <ArrowRight size={17} />
+          <Botao variante="confirmar" onClick={salvar} disabled={!pronto} carregando={salvando} className="shrink-0 min-h-[48px] px-4 sm:px-7">
+            <span className="sm:hidden">Confirmar</span>
+            <span className="hidden sm:inline">Confirmar novo horário</span>
+            <ArrowRight size={17} />
           </Botao>
         </div>
       </div>
@@ -524,7 +523,7 @@ function ModalCancelamento({ aberto, onFechar, onRemarcar, onConfirmar, processa
             exit={{ y: 40, opacity: 0 }}
             transition={spring}
             onClick={(e) => e.stopPropagation()}
-            className="w-full sm:max-w-md bg-white dark:bg-[#111113] rounded-t-[28px] sm:rounded-[28px] border border-black/[0.06] dark:border-white/[0.1] p-6 sm:p-7 pb-[max(24px,env(safe-area-inset-bottom))] shadow-2xl max-h-[92dvh] overflow-y-auto"
+            className="w-full sm:max-w-md bg-white dark:bg-[#111113] rounded-t-2xl sm:rounded-2xl border border-black/[0.06] dark:border-white/[0.1] p-6 sm:p-7 pb-[max(24px,env(safe-area-inset-bottom))] shadow-2xl max-h-[92dvh] overflow-y-auto"
           >
             <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-zinc-200 dark:bg-zinc-700 sm:hidden" />
             <div className="flex items-start justify-between gap-4">
@@ -547,7 +546,7 @@ function ModalCancelamento({ aberto, onFechar, onRemarcar, onConfirmar, processa
               onClick={onRemarcar}
               className="mt-5 w-full flex items-center gap-3 text-left rounded-2xl border border-[#9FC131]/40 bg-[#9FC131]/10 hover:bg-[#9FC131]/15 px-4 py-3.5 transition-colors cursor-pointer"
             >
-              <RotateCcw size={18} className="text-[#5f7a12] dark:text-[#9FC131] shrink-0" />
+              <RotateCcw size={18} className="text-brand-ink shrink-0" />
               <span className="flex-1">
                 <span className="block text-sm font-bold text-zinc-900 dark:text-white">Prefiro remarcar</span>
                 <span className="block text-xs text-zinc-500 dark:text-zinc-400">Escolher outro dia e horário disponível</span>
@@ -579,7 +578,7 @@ function ModalCancelamento({ aberto, onFechar, onRemarcar, onConfirmar, processa
               maxLength={400}
               rows={2}
               placeholder="Quer deixar algum recado para a clínica?"
-              className="mt-3 w-full rounded-2xl border border-black/[0.08] dark:border-white/[0.1] bg-[#F6F6F3] dark:bg-white/[0.04] p-3.5 text-sm outline-none focus:border-zinc-400 dark:focus:border-zinc-500 resize-none"
+              className="mt-3 w-full rounded-2xl border border-black/[0.08] dark:border-white/[0.1] bg-background dark:bg-white/[0.04] p-3.5 text-sm outline-none focus:border-zinc-400 dark:focus:border-zinc-500 resize-none"
             />
 
             <div className="mt-5 grid grid-cols-2 gap-3">
@@ -830,22 +829,26 @@ export default function ConfirmacaoView({ token, inicial, erro }) {
         </AnimatePresence>
       </div>
 
-      <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-10 pt-[max(20px,env(safe-area-inset-top))] sm:pt-8 lg:pt-12">
-        <CabecalhoClinica empresa={empresa} />
+      <div className={`mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-10 sm:pt-8 lg:pt-12 ${modo === "remarcar" ? "pt-[max(8px,env(safe-area-inset-top))]" : "pt-[max(16px,env(safe-area-inset-top))]"}`}>
+        {/* No celular, ao remarcar, o cabeçalho da clínica sai para o calendário aparecer inteiro */}
+        <div className={modo === "remarcar" ? "hidden sm:block" : ""}>
+          <CabecalhoClinica empresa={empresa} />
+        </div>
 
         <AnimatePresence mode="wait" initial={false}>
           {modo === "remarcar" ? (
-            <div key="remarcar" className="mt-8 lg:mt-12 max-w-5xl mx-auto">
+            <div key="remarcar" id="conteudo" className="sm:mt-8 lg:mt-12 max-w-5xl mx-auto">
               <Remarcacao token={token} dados={dados} onVoltar={voltarResumo} onRemarcado={aoRemarcar} onErro={mostrarErro} />
             </div>
           ) : (
             <motion.main
+              id="conteudo"
               key="resumo"
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={spring}
-              className="mt-8 sm:mt-10 lg:mt-14 grid lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] gap-6 lg:gap-12 items-start pb-56 sm:pb-16"
+              className="mt-5 sm:mt-10 lg:mt-14 grid lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] gap-6 lg:gap-12 items-start pb-48 sm:pb-16"
             >
               {/* Coluna principal */}
               <div className="max-w-xl mx-auto w-full lg:max-w-none">
@@ -855,17 +858,18 @@ export default function ConfirmacaoView({ token, inicial, erro }) {
                       initial={{ scale: 0.6, opacity: 0 }}
                       animate={{ scale: 1, opacity: 1 }}
                       transition={{ type: "spring", stiffness: 260, damping: 16 }}
-                      className="mb-5 w-14 h-14 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-[0_14px_34px_-10px_rgba(16,185,129,0.7)]"
+                      className="mb-5 w-14 h-14 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-[0_14px_34px_-10px_rgba(16,185,129,0.35)]"
                     >
                       <Check size={28} strokeWidth={3} />
                     </motion.div>
                   )}
                 </AnimatePresence>
 
-                <h1 className="text-[28px] leading-[1.1] sm:text-4xl lg:text-5xl font-black tracking-tight text-balance">{titulo}</h1>
-                <p className="mt-3 text-[15px] sm:text-base text-zinc-500 dark:text-zinc-400 leading-relaxed max-w-lg text-pretty">{subtitulo}</p>
+                <h1 className="text-2xl sm:text-4xl lg:text-5xl font-black tracking-tight text-balance">{titulo}</h1>
+                {/* No celular o subtítulo sai: os botões já dizem o que fazer */}
+                <p className="hidden sm:block mt-3 text-base text-zinc-500 dark:text-zinc-400 leading-relaxed max-w-lg text-pretty">{subtitulo}</p>
 
-                <div className="mt-7 sm:mt-8">
+                <div className="mt-4 sm:mt-8">
                   <TicketAgendamento agendamento={agendamento} destaque={chave === "confirmado"} />
                 </div>
 
@@ -887,7 +891,7 @@ export default function ConfirmacaoView({ token, inicial, erro }) {
 
               {/* Painel lateral (desktop) */}
               <aside className="hidden lg:block sticky top-10">
-                <div className="rounded-[28px] bg-white/80 dark:bg-[#111113]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-7 shadow-[0_30px_60px_-30px_rgba(0,0,0,0.25)]">
+                <div className="rounded-2xl bg-white/80 dark:bg-[#111113]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] p-7 shadow-[0_30px_60px_-30px_rgba(0,0,0,0.08)]">
                   <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-400">
                     {chave === "agendado" ? "Sua resposta" : chave === "confirmado" ? "Não esqueça" : "Próximo passo"}
                   </p>
@@ -925,7 +929,7 @@ export default function ConfirmacaoView({ token, inicial, erro }) {
 
               {/* Barra de ações fixa (celular) */}
               <Flutuante>
-              <div className="sm:hidden fixed inset-x-0 bottom-0 z-40 px-4 pt-6 pb-[max(16px,env(safe-area-inset-bottom))] bg-gradient-to-t from-[#F6F6F3] via-[#F6F6F3]/95 to-transparent dark:from-[#050506] dark:via-[#050506]/95">
+              <div className="sm:hidden fixed inset-x-0 bottom-0 z-40 px-4 pt-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-surface/95 backdrop-blur-xl border-t border-black/[0.06] dark:border-white/[0.08]">
                 <PainelAcoes
                   compacto
                   dados={dados}

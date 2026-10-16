@@ -307,7 +307,7 @@ export default function SuperAdminSistemaPage() {
         )}
       </AnimatePresence>
 
-      <main className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-6 lg:p-8 space-y-6">
+      <main id="conteudo" className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-6 lg:p-8 space-y-6">
         {/* CABEÇALHO DO PAINEL MASTER */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/[0.08] pb-6">
           <div className="flex items-center gap-3.5">
@@ -746,7 +746,7 @@ export default function SuperAdminSistemaPage() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-[#0e1118]/95 backdrop-blur-3xl rounded-[2.5rem] p-6 md:p-8 max-w-2xl w-full shadow-2xl border border-white/15 space-y-5 max-h-[90vh] overflow-y-auto custom-scrollbar"
+              className="bg-[#0e1118]/95 backdrop-blur-3xl rounded-2xl p-6 md:p-8 max-w-2xl w-full shadow-2xl border border-white/15 space-y-5 max-h-[90vh] overflow-y-auto custom-scrollbar"
             >
               <div className="flex justify-between items-start border-b border-white/10 pb-4">
                 <div className="flex items-center gap-3">

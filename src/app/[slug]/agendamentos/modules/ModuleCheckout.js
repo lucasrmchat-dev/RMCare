@@ -132,9 +132,9 @@ export default function ModuleCheckout() {
         <div className="w-11 h-11 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/50 dark:border-emerald-800/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-4 shadow-sm">
           <CreditCard size={21} strokeWidth={2} />
         </div>
-        <h2 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-zinc-950 dark:text-white leading-tight">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-zinc-950 dark:text-white leading-tight">
           Garantia da Vaga
-        </h2>
+        </h1>
         <p className="text-zinc-500 dark:text-zinc-400 text-xs sm:text-sm mt-1.5 leading-relaxed">
           {tipoCheckout === "whatsapp" || selectedMethod === "whatsapp"
             ? "Finalize sua reserva falando diretamente com nossa atendente no WhatsApp para emissão do pagamento."
@@ -211,7 +211,7 @@ export default function ModuleCheckout() {
               </span>
               <span className="text-[11px] text-zinc-400">(Garantia do horário)</span>
             </div>
-            <div className="text-3xl font-black text-[#86a621] dark:text-[#9FC131] tracking-tight">
+            <div className="text-3xl font-black text-brand-ink tracking-tight">
               R$ {Number(valorEntrada).toFixed(2).replace(".", ",")}
             </div>
           </div>

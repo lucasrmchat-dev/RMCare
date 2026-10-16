@@ -176,7 +176,7 @@ export const CustomSelect = ({ value, onChange, options, label, icon: Icon, comp
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 4, scale: 0.98 }}
             transition={{ duration: 0.15, ease: "easeOut" }}
-            className="absolute z-50 top-full left-0 right-0 mt-1.5 bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-2xl border border-black/[0.08] dark:border-white/[0.1] rounded-2xl shadow-[0_20px_40px_rgba(0,0,0,0.15)] dark:shadow-[0_20px_40px_rgba(0,0,0,0.6)] overflow-hidden flex flex-col max-h-60 overflow-y-auto custom-scrollbar p-1"
+            className="absolute z-50 top-full left-0 right-0 mt-1.5 bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-2xl border border-black/[0.08] dark:border-white/[0.1] rounded-2xl shadow-[0_20px_40px_rgba(0,0,0,0.08)] dark:shadow-[0_20px_40px_rgba(0,0,0,0.6)] overflow-hidden flex flex-col max-h-60 overflow-y-auto custom-scrollbar p-1"
           >
             {options.map((opt) => (
               <button
@@ -264,10 +264,10 @@ export const CustomDatePicker = ({ value, onChange, label }) => {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 4, scale: 0.98 }}
             transition={{ duration: 0.15, ease: "easeOut" }}
-            className="absolute z-50 top-full left-0 mt-2 w-72 bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-2xl border border-black/[0.08] dark:border-white/[0.1] rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.18)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.6)] p-4"
+            className="absolute z-50 top-full left-0 mt-2 w-72 bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-2xl border border-black/[0.08] dark:border-white/[0.1] rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.08)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.6)] p-4"
           >
             <div className="flex justify-between items-center mb-3">
-              <span className="font-bold text-xs capitalize text-zinc-900 dark:text-white">
+              <span className="inline-block first-letter:uppercase font-bold text-xs text-zinc-900 dark:text-white">
                 {calDate.toLocaleString("pt-BR", { month: "long", year: "numeric" })}
               </span>
               <div className="flex gap-1">

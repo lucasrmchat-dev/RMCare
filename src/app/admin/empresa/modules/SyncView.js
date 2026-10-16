@@ -429,14 +429,14 @@ export default function SyncView({ bloqueios = [], servicos = [], fetchBloqueios
       {/* CABEÇALHO UNIFICADO DA EMPRESA */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-black/[0.06] dark:border-white/[0.08] pb-6">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 flex items-center justify-center flex-shrink-0 shadow-sm">
+          <div className="hidden sm:flex w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 items-center justify-center flex-shrink-0 shadow-sm">
             <Server size={24} />
           </div>
           <div>
-            <h2 className="text-2xl md:text-3xl font-black text-zinc-900 dark:text-white tracking-tight">
+            <h2 className="text-xl md:text-3xl font-black text-zinc-900 dark:text-white tracking-tight">
               Integrações & Sincronização ERP
             </h2>
-            <p className="text-xs md:text-sm text-zinc-500 dark:text-zinc-400 font-medium mt-0.5">
+            <p className="hidden sm:block text-xs md:text-sm text-zinc-500 dark:text-zinc-400 font-medium mt-0.5">
               Sincronize a agenda do Medicalsys, gerencie profissionais bloqueados e audite todas as colunas importadas.
             </p>
           </div>
@@ -466,7 +466,7 @@ export default function SyncView({ bloqueios = [], servicos = [], fetchBloqueios
                 <span className="w-2 h-2 rounded-full bg-[#9FC131] animate-ping" />
                 <span>{syncStepText || "Sincronizando agenda..."}</span>
               </div>
-              <span className="font-mono font-black text-sm text-[#86a621] dark:text-[#9FC131]">
+              <span className="font-mono font-black text-sm text-brand-ink">
                 {syncProgress}%
               </span>
             </div>

@@ -475,7 +475,7 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
         {currentView === "credenciais" && (
           <div className="max-w-xl bg-white/80 dark:bg-[#0f0f13]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
             <div className="flex items-center gap-3 pb-4 border-b border-black/[0.04] dark:border-white/[0.06]">
-              <div className="w-12 h-12 rounded-2xl bg-[#9FC131]/15 text-[#86a621] dark:text-[#9FC131] flex items-center justify-center">
+              <div className="w-12 h-12 rounded-2xl bg-[#9FC131]/15 text-brand-ink flex items-center justify-center">
                 <KeyRound size={24} strokeWidth={2.2} />
               </div>
               <div>
@@ -1198,7 +1198,7 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 15 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white dark:bg-[#111116] border border-zinc-200/90 dark:border-zinc-800 rounded-3xl p-6 sm:p-7 max-w-lg w-full shadow-2xl space-y-5 text-left"
+              className="bg-white dark:bg-[#111116] border border-zinc-200/90 dark:border-zinc-800 rounded-3xl p-6 sm:p-7 max-w-lg w-full shadow-2xl space-y-5 text-left max-h-[calc(100dvh-24px)] overflow-y-auto overscroll-contain"
             >
               <div className="flex items-center justify-between border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
                 <div className="flex items-center gap-3">
@@ -1260,7 +1260,7 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
                         const isAll = formUser.permissoes.length === all.length;
                         setFormUser({ ...formUser, permissoes: isAll ? [] : all });
                       }}
-                      className="text-[10px] font-bold text-[#86a621] dark:text-[#9FC131] hover:underline cursor-pointer"
+                      className="text-[10px] font-bold text-brand-ink hover:underline cursor-pointer"
                     >
                       {formUser.permissoes.length === PERMISSOES_DISPONIVEIS.length ? "Desmarcar Todas" : "Marcar Todas"}
                     </button>
@@ -1332,7 +1332,7 @@ export default function AccountView({ subTab = "usuarios", setSubTab, showToast,
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 15 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white dark:bg-[#111116] border border-amber-500/30 rounded-3xl p-6 sm:p-7 max-w-lg w-full shadow-2xl space-y-5 text-left"
+              className="bg-white dark:bg-[#111116] border border-amber-500/30 rounded-3xl p-6 sm:p-7 max-w-lg w-full shadow-2xl space-y-5 text-left max-h-[calc(100dvh-24px)] overflow-y-auto overscroll-contain"
             >
               <div className="flex items-center justify-between border-b border-black/[0.04] dark:border-white/[0.06] pb-4">
                 <div className="flex items-center gap-3">

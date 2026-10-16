@@ -21,6 +21,7 @@ import {
   Lock
 } from "lucide-react";
 import AdminSessionBar from "@/components/AdminSessionBar";
+import NovidadesPainel from "@/components/NovidadesPainel";
 import { spring, CapsuleSpinner } from "./components/SharedUI";
 import {
   fetchAdminBloqueios,
@@ -383,7 +384,7 @@ export default function EmpresaAdmin() {
   // Enquanto valida autenticação, exibe tela de carregamento protegida sem flash
   if (isLoadingAuth) {
     return (
-      <div className="h-screen w-screen bg-[#F5F5F7] dark:bg-[#000000] flex flex-col items-center justify-center font-sans space-y-3">
+      <div className="h-screen w-screen bg-background dark:bg-background flex flex-col items-center justify-center font-sans space-y-3">
         <CapsuleSpinner size="xl" />
         <p className="text-xs font-bold text-zinc-500 dark:text-zinc-400">
           Autenticando sessão e permissões...
@@ -393,17 +394,9 @@ export default function EmpresaAdmin() {
   }
 
   return (
-    <div className="h-screen w-screen bg-[#F5F5F7] dark:bg-[#000000] flex flex-col font-sans overflow-hidden text-zinc-900 dark:text-white">
+    <div className="h-screen w-screen bg-background dark:bg-background flex flex-col font-sans overflow-hidden text-zinc-900 dark:text-white">
       <AdminSessionBar />
 
-      <motion.button
-        whileTap={{ scale: 0.9 }}
-        aria-label="Abrir menu de navegação"
-        className="md:hidden fixed bottom-5 right-5 z-50 p-3.5 bg-zinc-950 dark:bg-white text-white dark:text-black rounded-full shadow-2xl min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer"
-        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-      >
-        {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
-      </motion.button>
 
       <AnimatePresence>
         {toast && (
@@ -415,7 +408,7 @@ export default function EmpresaAdmin() {
             className="fixed top-16 left-1/2 -translate-x-1/2 z-[999] flex items-center gap-2.5 px-5 py-2.5 rounded-full bg-zinc-950/90 dark:bg-white/95 backdrop-blur-2xl text-white dark:text-black shadow-xl border border-white/10 dark:border-black/10"
           >
             {toast.type === "success" ? (
-              <CheckCircle2 size={15} className="text-[#9FC131] dark:text-[#86a621]" />
+              <CheckCircle2 size={15} className="text-brand-ink" />
             ) : (
               <AlertCircle size={15} className="text-red-400" />
             )}
@@ -424,7 +417,7 @@ export default function EmpresaAdmin() {
         )}
       </AnimatePresence>
 
-      <div className="flex flex-1 overflow-hidden relative p-3 sm:p-4 pt-2.5 sm:pt-3 gap-3 sm:gap-4 max-w-[1760px] w-full mx-auto">
+      <div className="flex flex-1 overflow-hidden relative p-0 md:p-4 md:pt-3 gap-0 md:gap-4 max-w-[1760px] w-full mx-auto">
         {/* SIDEBAR FLUTUANTE ESTILO APPLE LIQUID GLASS (MACOS SONOMA PALETTE) */}
         <aside
           className={`absolute md:relative z-40 h-[calc(100%-4px)] my-auto bg-white/85 dark:bg-[#161618]/85 backdrop-blur-3xl border border-black/[0.06] dark:border-white/[0.08] rounded-3xl shadow-[0_10px_35px_rgba(0,0,0,0.04)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.65)] flex flex-col py-4 px-2.5 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
@@ -573,7 +566,44 @@ export default function EmpresaAdmin() {
         )}
 
         {/* CANVAS PRINCIPAL FLUTUANTE COM VIDRO LIQUIDO APPLE */}
-        <main className="flex-1 flex flex-col relative overflow-hidden rounded-3xl bg-white/80 dark:bg-[#121214]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-[0_10px_35px_rgba(0,0,0,0.03)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.5)]">
+        <main id="conteudo" className="flex-1 flex flex-col relative overflow-hidden rounded-none md:rounded-3xl border-x-0 md:border-x bg-white/80 dark:bg-[#121214]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-[0_10px_35px_rgba(0,0,0,0.03)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.5)]">
+          {/* Trilha de navegação: mostra onde o gestor está (Painel › Seção › Subseção) */}
+          {(() => {
+            const secao = baseMenuStructure.find((m) => m.id === activeView);
+            const sub = secao?.subItems?.find((x) => x.id === activeSubView);
+            return (
+              <nav aria-label="Você está em" className="shrink-0 flex items-center gap-1.5 px-2 md:px-5 lg:px-7 pt-1.5 md:pt-3 pb-1.5 md:pb-2 text-xs text-zinc-500 dark:text-zinc-400 border-b border-black/[0.04] dark:border-white/[0.06] min-w-0">
+                {/* Menu no celular fica no topo (antes era um botão flutuante que cobria os botões dos cartões) */}
+                <button
+                  type="button"
+                  aria-label={isMobileMenuOpen ? "Fechar menu de navegação" : "Abrir menu de navegação"}
+                  aria-expanded={isMobileMenuOpen}
+                  onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                  className="md:hidden w-11 h-11 shrink-0 grid place-items-center rounded-xl text-zinc-800 dark:text-zinc-100 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] cursor-pointer"
+                >
+                  {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+                </button>
+                <span className="shrink-0 hidden sm:inline">Painel</span>
+                <ChevronRight size={12} aria-hidden className="shrink-0 text-zinc-300 dark:text-zinc-600 hidden sm:block" />
+                {sub ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => secao && handleMainMenuClick(secao)}
+                      className="shrink-0 hidden sm:inline hover:text-zinc-900 dark:hover:text-white underline-offset-2 hover:underline cursor-pointer"
+                    >
+                      {secao.label}
+                    </button>
+                    <ChevronRight size={12} aria-hidden className="shrink-0 text-zinc-300 dark:text-zinc-600 hidden sm:block" />
+                    <h1 aria-current="page" className="font-semibold text-sm md:text-xs text-zinc-900 dark:text-white truncate">{sub.label}</h1>
+                  </>
+                ) : (
+                  <h1 aria-current="page" className="font-semibold text-sm md:text-xs text-zinc-900 dark:text-white truncate">{secao?.label || "Painel"}</h1>
+                )}
+                <NovidadesPainel />
+              </nav>
+            );
+          })()}
           <AnimatePresence mode="wait">
             {activeView === "agenda" && (
               <AgendaView

@@ -42,9 +42,9 @@ export default function ModuleTriagem() {
           </span>
         </div>
 
-        <h2 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-zinc-950 dark:text-white leading-tight">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-zinc-950 dark:text-white leading-tight">
           Cuidados e Orientações
-        </h2>
+        </h1>
         <p className="text-zinc-500 dark:text-zinc-400 text-xs sm:text-sm mt-1.5 leading-relaxed">
           Responda a estas breves perguntas para personalizarmos os cuidados antes do seu atendimento.
         </p>

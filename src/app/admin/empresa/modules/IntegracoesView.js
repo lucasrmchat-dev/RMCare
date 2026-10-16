@@ -902,14 +902,14 @@ export default function IntegracoesView({ bloqueios = [], servicos = [], fetchBl
       {/* CABEÇALHO UNIFICADO */}
       <div className="mb-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-black/[0.06] dark:border-white/[0.08] pb-4">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center flex-shrink-0 shadow-sm border border-indigo-200/40">
+          <div className="hidden sm:flex w-11 h-11 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 items-center justify-center flex-shrink-0 shadow-sm border border-indigo-200/40">
             <Webhook size={22} />
           </div>
           <div>
-            <h2 className="text-xl md:text-2xl font-black text-zinc-950 dark:text-white tracking-tight">
+            <h2 className="text-lg md:text-2xl font-black text-zinc-950 dark:text-white tracking-tight">
               Central de Integrações & Webhooks
             </h2>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 font-medium mt-0.5">
+            <p className="hidden sm:block text-xs text-zinc-500 dark:text-zinc-400 font-medium mt-0.5">
               Conecte Webhooks Inteligentes (n8n/Typebot/IA), Medicalsys ERP, Mercado Pago e exporte seus dados.
             </p>
           </div>

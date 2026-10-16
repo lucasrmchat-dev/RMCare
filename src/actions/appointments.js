@@ -1,5 +1,7 @@
 "use server";
 
+import { cancelarNoMedicalsys, remarcarNoMedicalsys } from "@/lib/medicalsysSync";
+import { bloqueioOcupaHorario } from "@/lib/medicalsysSituacao";
 import { createClient } from "@supabase/supabase-js";
 import { createAppointmentAccess, verifyAppointmentAccess } from "@/lib/appointmentAccess";
 import { dispararGatilhoServidor } from "@/lib/serverDisparo";
@@ -34,6 +36,9 @@ export async function cancelarAgendamentoPaciente({ id, token, motivo }) {
     const { appointment, patientId } = await authorizeAppointment(id, token);
     const { data, error } = await db.rpc("cancelar_agendamento", { p_agendamento_id: id, p_empresa_id: appointment.empresa_id, p_paciente_id: patientId, p_cancelado_por: "paciente", p_motivo: motivo || null });
     if (error) throw error;
+
+    // Reflete o cancelamento no MedicalSYS (DELETE /agenda/{id}/) quando o agendamento foi enviado ao ERP
+    await cancelarNoMedicalsys({ agendamentoId: id });
 
     try {
       await dispararGatilhoServidor({
@@ -86,12 +91,12 @@ export async function remarcarAgendamentoPaciente({ id, token, data, horario }) 
 
     const { data: bloqueios } = await db
       .from("bloqueios_horarios")
-      .select("id, medico_profissional")
+      .select("id, medico_profissional, situacao")
       .eq("empresa_id", appointment.empresa_id)
       .eq("data", data)
       .eq("horario", horario);
 
-    const temBloqueio = (bloqueios || []).some((b) => {
+    const temBloqueio = (bloqueios || []).filter(bloqueioOcupaHorario).some((b) => {
       if (!b.medico_profissional || b.medico_profissional === "Todos") return true;
       const bProf = b.medico_profissional.trim().toLowerCase();
       return bProf === profAlvo || bProf.includes(profAlvo) || profAlvo.includes(bProf);
@@ -103,6 +108,9 @@ export async function remarcarAgendamentoPaciente({ id, token, data, horario }) 
 
     const { data: updated, error } = await db.rpc("remarcar_agendamento", { p_agendamento_id: id, p_empresa_id: appointment.empresa_id, p_paciente_id: patientId, p_nova_data: data, p_novo_horario: horario });
     if (error) throw error;
+
+    // Reflete a nova data/horário no MedicalSYS (PUT /agenda/{id}/) quando o agendamento foi enviado ao ERP
+    await remarcarNoMedicalsys({ agendamentoId: id, data: data, horario: horario });
 
     try {
       await dispararGatilhoServidor({

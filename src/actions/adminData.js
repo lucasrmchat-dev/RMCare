@@ -1,5 +1,8 @@
 "use server";
 
+import { bloqueioOcupaHorario } from "@/lib/medicalsysSituacao";
+import { MEDICALSYS_PROXY_URL } from "@/lib/medicalsysProxy";
+import { cancelarNoMedicalsys, remarcarNoMedicalsys } from "@/lib/medicalsysSync";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { montarLinkConfirmacao, injetarLinkConfirmacaoSeguro, resolverBaseUrl, resolverLinkConfirmacaoSeguro } from "@/lib/confirmationLink";
@@ -240,6 +243,9 @@ export async function actionCancelarAgendamentoAdmin(id, motivo = null, mensagem
     p_motivo: motivoEfetivo
   });
   if (error) throw error;
+
+  // Reflete o cancelamento no MedicalSYS quando o agendamento foi enviado ao ERP
+  await cancelarNoMedicalsys({ agendamentoId: id });
 
   // Dispara mensagem WhatsApp de Cancelamento
   try {
@@ -545,12 +551,12 @@ export async function actionRemarcarAgendamentoAdmin(id, data, horario) {
 
   const { data: bloqueios } = await supabaseAdmin
     .from("bloqueios_horarios")
-    .select("id, medico_profissional")
+    .select("id, medico_profissional, situacao")
     .eq("empresa_id", admin.empresa_id)
     .eq("data", data)
     .eq("horario", horario);
 
-  const temBloqueio = (bloqueios || []).some((b) => {
+  const temBloqueio = (bloqueios || []).filter(bloqueioOcupaHorario).some((b) => {
     if (!b.medico_profissional || b.medico_profissional === "Todos") return true;
     const bProf = b.medico_profissional.trim().toLowerCase();
     return bProf === profAlvo || bProf.includes(profAlvo) || profAlvo.includes(bProf);
@@ -568,6 +574,9 @@ export async function actionRemarcarAgendamentoAdmin(id, data, horario) {
     p_novo_horario: horario
   });
   if (error) throw error;
+
+  // Reflete a nova data/horário no MedicalSYS quando o agendamento foi enviado ao ERP
+  await remarcarNoMedicalsys({ agendamentoId: id, data, horario });
 
   // Dispara mensagem WhatsApp de Remarcação
   try {
@@ -1941,7 +1950,7 @@ export async function actionSincronizarConveniosMedicalsys() {
 
   const { HttpsProxyAgent } = await import("https-proxy-agent");
   const axios = (await import("axios")).default;
-  const proxyUrl = process.env.FIXIE_URL || "http://fixie:1c54Fc5I1jgmHG2@criterium.usefixie.com:80";
+  const proxyUrl = MEDICALSYS_PROXY_URL;
   const proxyAgent = new HttpsProxyAgent(proxyUrl);
 
   const res = await axios.get("https://gateway.medicalsys.com.br:9000/integracoes/convenio/", {

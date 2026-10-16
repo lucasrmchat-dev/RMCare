@@ -44,14 +44,14 @@ export default function PoliciesView({ showToast }) {
       {/* CABEÇALHO COM BOTÃO SALVAR */}
       <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-black/[0.06] dark:border-white/[0.08] pb-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0 shadow-sm">
+          <div className="hidden sm:flex w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 items-center justify-center flex-shrink-0 shadow-sm">
             <FileQuestion size={20} strokeWidth={1.5} />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-zinc-950 dark:text-white tracking-tight">
+            <h2 className="text-lg sm:text-xl font-bold text-zinc-950 dark:text-white tracking-tight">
               Políticas de Atendimento
             </h2>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">
+            <p className="hidden sm:block text-xs text-zinc-500 dark:text-zinc-400 font-medium">
               Defina as regras de elegibilidade para consultas de retorno e tempo de confirmação.
             </p>
           </div>

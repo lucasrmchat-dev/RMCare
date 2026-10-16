@@ -1,5 +1,6 @@
 "use server";
 
+import { cancelarNoMedicalsys, remarcarNoMedicalsys } from "@/lib/medicalsysSync";
 import { createClient } from "@supabase/supabase-js";
 import { verificarTokenConfirmacao } from "@/lib/confirmationLink";
 import { calcularOcupacaoAgenda, resolverServicoSelecionado } from "@/lib/agendaOcupacao";
@@ -138,7 +139,7 @@ async function calcularOcupacaoDoDia({ ag, empresa, data }) {
       .eq("data_agendamento", data)
       .neq("status_atendimento", "cancelado")
       .neq("id", ag.id),
-    db.from("bloqueios_horarios").select("horario, horario_fim, medico_profissional, especialidade").eq("empresa_id", empresa.id).eq("data", data),
+    db.from("bloqueios_horarios").select("horario, horario_fim, medico_profissional, especialidade, situacao").eq("empresa_id", empresa.id).eq("data", data),
     db.from("servicos").select("*").eq("empresa_id", empresa.id).eq("ativo", true),
     db.from("regras_agenda").select("*").eq("empresa_id", empresa.id).eq("ativo", true)
   ]);
@@ -240,6 +241,9 @@ export async function cancelarPorLink({ token, motivo }) {
     if (error) throw error;
     if (!data) return { success: false, error: "O agendamento já havia sido cancelado." };
 
+    // Reflete o cancelamento no MedicalSYS (DELETE /agenda/{id}/) quando o agendamento foi enviado ao ERP
+    await cancelarNoMedicalsys({ agendamentoId: ag.id });
+
     try {
       await dispararGatilhoServidor({
         agendamentoId: ag.id,
@@ -304,6 +308,9 @@ export async function remarcarPorLink({ token, data, horario }) {
     if (errConf) {
       await db.from("agendamentos").update({ status_atendimento: "confirmado" }).eq("id", ag.id).eq("empresa_id", empresa.id);
     }
+
+    // Reflete a nova data/horário no MedicalSYS (PUT /agenda/{id}/) quando o agendamento foi enviado ao ERP
+    await remarcarNoMedicalsys({ agendamentoId: ag.id, data: data, horario: horario });
 
     try {
       await dispararGatilhoServidor({

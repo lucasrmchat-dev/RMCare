@@ -161,30 +161,30 @@ export default function ConsultarAgendamentosPage() {
     : [];
 
   return (
-    <div className="flex min-h-[100dvh] bg-[#F5F5F7] dark:bg-[#000000] text-zinc-950 dark:text-white transition-colors duration-400 font-sans antialiased">
+    <div className="flex min-h-[100dvh] bg-background dark:bg-background text-zinc-950 dark:text-white transition-colors duration-400 font-sans antialiased">
       <SidebarPremium isExpanded={sidebar} setIsExpanded={setSidebar} />
       <Navbar />
 
-      <main
+      <main id="conteudo"
         className={`flex-1 min-h-[100dvh] transition-[margin] duration-500 ease-out ${
           sidebar ? "md:ml-[280px]" : "md:ml-[88px]"
         }`}
       >
-        <div className="max-w-4xl mx-auto px-4 py-8 md:px-10 md:py-14 pb-28">
+        <div className="max-w-4xl mx-auto px-4 py-5 md:px-10 md:py-14 pb-28">
           <motion.header
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={spring}
-            className="mb-8"
+            className="mb-5 sm:mb-8"
           >
-            <div className="w-12 h-12 rounded-2xl bg-zinc-950 dark:bg-white text-white dark:text-black flex items-center justify-center mb-5 shadow-lg shadow-black/5 dark:shadow-white/10">
+            <div className="hidden sm:flex w-12 h-12 rounded-2xl bg-zinc-950 dark:bg-white text-white dark:text-black items-center justify-center mb-5 shadow-lg shadow-black/5 dark:shadow-white/10">
               <CalendarCheck size={22} strokeWidth={2} />
             </div>
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight leading-tight">
+            <h1 className="text-2xl sm:text-4xl md:text-5xl font-black tracking-tight leading-tight">
               Seus agendamentos
             </h1>
             <p className="mt-3 text-zinc-500 dark:text-zinc-400 text-sm md:text-base max-w-2xl leading-relaxed">
-              Consulte seu histórico, remarque datas ou cancele com total flexibilidade.
+              Informe seu CPF e data de nascimento para ver seus horários, remarcar ou cancelar.
             </p>
           </motion.header>
 
@@ -401,7 +401,7 @@ export default function ConsultarAgendamentosPage() {
 
                               <div className="flex flex-wrap gap-4 mt-3 text-xs md:text-sm font-semibold">
                                 <span className="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300">
-                                  <CalendarClock size={15} className="text-[#9FC131]" />
+                                  <CalendarClock size={15} className="text-brand-ink" />
                                   {formatDate(item.data_agendamento)}
                                 </span>
                                 <span className="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300">
@@ -430,7 +430,7 @@ export default function ConsultarAgendamentosPage() {
                                   className="min-h-[48px] px-5 rounded-2xl border border-zinc-200 dark:border-zinc-800 flex items-center justify-center gap-2 text-xs font-bold hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors text-zinc-900 dark:text-white"
                                   title="Mudar data e horário"
                                 >
-                                  <RotateCcw size={15} className="text-[#9FC131]" />
+                                  <RotateCcw size={15} className="text-brand-ink" />
                                   Remarcar
                                 </a>
 
@@ -493,7 +493,7 @@ export default function ConsultarAgendamentosPage() {
               exit={{ y: 30, opacity: 0 }}
               transition={spring}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-md bg-white/95 dark:bg-[#0f0f12]/95 backdrop-blur-3xl rounded-[2.5rem] p-6 md:p-8 shadow-2xl border border-zinc-200/80 dark:border-white/10 space-y-6"
+              className="w-full max-w-md bg-white/95 dark:bg-[#0f0f12]/95 backdrop-blur-3xl rounded-2xl p-6 md:p-8 shadow-2xl border border-zinc-200/80 dark:border-white/10 space-y-6 max-h-[calc(100dvh-24px)] overflow-y-auto overscroll-contain"
             >
               <div className="flex justify-between items-start">
                 <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-600 flex items-center justify-center shadow-sm">

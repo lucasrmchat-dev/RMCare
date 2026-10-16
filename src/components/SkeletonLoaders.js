@@ -16,7 +16,7 @@ export function SkeletonCard({ count = 1 }) {
       {Array.from({ length: count }).map((_, i) => (
         <div
           key={i}
-          className="p-6 rounded-3xl bg-white/60 dark:bg-[#0d0d0d]/60 backdrop-blur-xl border border-zinc-200/70 dark:border-white/5 shadow-sm space-y-4"
+          className="p-6 rounded-3xl bg-white/60 dark:bg-background/60 backdrop-blur-xl border border-zinc-200/70 dark:border-white/5 shadow-sm space-y-4"
         >
           <div className="flex items-center gap-4">
             <SkeletonItem className="w-12 h-12 rounded-2xl shrink-0" />
@@ -34,7 +34,7 @@ export function SkeletonCard({ count = 1 }) {
 
 export function SkeletonCalendar() {
   return (
-    <div className="p-6 rounded-[2rem] bg-white/60 dark:bg-[#0d0d0d]/60 backdrop-blur-xl border border-zinc-200/70 dark:border-white/5 space-y-5 w-full">
+    <div className="p-6 rounded-2xl bg-white/60 dark:bg-background/60 backdrop-blur-xl border border-zinc-200/70 dark:border-white/5 space-y-5 w-full">
       <div className="flex justify-between items-center">
         <SkeletonItem className="h-5 w-32" />
         <div className="flex gap-2">
@@ -67,7 +67,7 @@ export function SkeletonStats() {
       {Array.from({ length: 3 }).map((_, i) => (
         <div
           key={i}
-          className="p-5 rounded-2xl bg-white/60 dark:bg-[#0d0d0d]/60 backdrop-blur-xl border border-zinc-200/70 dark:border-white/5 space-y-3"
+          className="p-5 rounded-2xl bg-white/60 dark:bg-background/60 backdrop-blur-xl border border-zinc-200/70 dark:border-white/5 space-y-3"
         >
           <SkeletonItem className="w-8 h-8 rounded-xl" />
           <SkeletonItem className="h-4 w-1/2" />

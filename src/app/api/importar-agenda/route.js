@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import axios from "axios";
+import { MEDICALSYS_PROXY_URL } from "@/lib/medicalsysProxy";
 import { cookies } from "next/headers";
 import { verifyAdminSession } from "@/lib/session";
+import { statusDaSituacaoMedicalsys } from "@/lib/medicalsysSituacao";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -273,7 +275,7 @@ function extrairDataEHoraMedicalsys(item, offsetHoras = 0) {
 
   return {
     data: dataFormatada,
-    horarioInicio: horaEncontrada || "08:00",
+    horarioInicio: horaEncontrada || null,
     horarioFim: horaFimFormatada
   };
 }
@@ -379,7 +381,7 @@ export async function POST(request) {
     };
 
     // 3. PROXY FIXIE MEDICALSYS
-    const proxyUrl = process.env.FIXIE_URL || "http://fixie:1c54Fc5I1jgmHG2@criterium.usefixie.com:80";
+    const proxyUrl = MEDICALSYS_PROXY_URL;
     const proxyAgent = new HttpsProxyAgent(proxyUrl);
 
     // Pré-carregar catálogo de procedimentos do MedicalSys para resolução de IDs
@@ -407,6 +409,33 @@ export async function POST(request) {
     } catch (eProc) {
       console.warn("[Importação Medicalsys] Catálogo de procedimentos não pôde ser pré-carregado:", eProc.message);
     }
+
+    const headersMedicalsys = {
+      "Content-Type": "application/json",
+      "apikey": apiKey,
+      "msys-costumer-apikey": customerApiKey
+    };
+    const especialidadePorMedico = new Map();
+    const carregarEspecialidadesDosMedicos = async (agendamentos) => {
+      const ids = [...new Set(agendamentos.flatMap((a) => (Array.isArray(a.medico) ? a.medico : [a.medico])).map((m) => m?.id).filter(Boolean))].slice(0, 60);
+      await Promise.all(
+        ids.map(async (id) => {
+          try {
+            const r = await axios.get(`https://gateway.medicalsys.com.br:9000/integracoes/medico/${id}/`, {
+              httpsAgent: proxyAgent,
+              proxy: false,
+              headers: headersMedicalsys,
+              timeout: 8000
+            });
+            const esp = r.data?.especialidade;
+            const nome = Array.isArray(esp) ? esp[0]?.nome : esp?.nome;
+            if (nome) especialidadePorMedico.set(String(id), String(nome).trim());
+          } catch (eMed) {
+            console.warn(`[Importação Medicalsys] Especialidade do médico ${id} indisponível:`, eMed.message);
+          }
+        })
+      );
+    };
 
     // MODO DE RE-PROCESSAMENTO / CORREÇÃO RETROATIVA DE BANCO DE DADOS
     if (mode === "reprocess_mapping" || reprocessar_existentes) {
@@ -558,27 +587,33 @@ export async function POST(request) {
     };
 
     // Prioriza busca direta da clínica configurada para evitar estouro de paginação
+    // A busca é SEMPRE filtrada pela clínica configurada. Antes, quando a clínica não tinha
+    // agendamentos no período, o sistema buscava sem filtro e importava a agenda de outras
+    // clínicas da mesma chave. Se a busca falhar (inclusive no meio da paginação), nada é
+    // apagado: a grade atual é mantida até a próxima sincronização bem-sucedida.
+    const idClinicaBusca = clinicaRealId && String(clinicaRealId) !== "null" ? clinicaRealId : clinicaId;
     let agsClinica = [];
-    if (clinicaRealId && String(clinicaRealId) !== "null") {
-      try {
-        agsClinica = await tentarBuscaAgenda(clinicaRealId);
-        console.log(`[Importação Medicalsys] ${agsClinica.length} agendamentos retornados para clinica ${clinicaRealId}.`);
-      } catch (eClinId) {
-        console.warn("[Importação Medicalsys] Busca por clinicaId falhou:", eClinId.message);
-      }
+    try {
+      agsClinica = await tentarBuscaAgenda(idClinicaBusca);
+      console.log(`[Importação Medicalsys] ${agsClinica.length} agendamentos retornados para clinica ${idClinicaBusca}.`);
+    } catch (eClinId) {
+      console.error("[Importação Medicalsys] Busca da agenda falhou:", eClinId.message);
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Não foi possível ler a agenda do MedicalSYS agora (${eClinId.message}). Nenhum horário foi alterado; tente novamente em instantes.`
+        },
+        { status: 502 }
+      );
     }
 
-    let agsGlobais = [];
-    if (agsClinica.length === 0) {
-      try {
-        agsGlobais = await tentarBuscaAgenda(null);
-      } catch (eGlob) {
-        console.warn("[Importação Medicalsys] Busca global falhou:", eGlob.message);
-      }
-    }
+    // Segurança extra: descarta qualquer item de outra clínica (campo id_clinica do payload)
+    agsClinica = agsClinica.filter((ag) => !ag.id_clinica || String(ag.id_clinica) === String(idClinicaBusca));
+
+    await carregarEspecialidadesDosMedicos(agsClinica);
 
     const mapaTodosAgs = new Map();
-    [...agsGlobais, ...agsClinica].forEach((ag) => {
+    agsClinica.forEach((ag) => {
       const k = ag.id ? String(ag.id) : `${ag.momento || ag.data}_${ag.horario_inicio || ag.horario}_${ag.paciente?.nome || ag.nome_paciente || Math.random()}`;
       mapaTodosAgs.set(k, ag);
     });
@@ -598,10 +633,15 @@ export async function POST(request) {
     const mapaPorMedicalsysId = new Map();
     const mapaSlotsMedicalsys = new Map(); // data|horario|medico -> payloadDado
     const rascunhosMensagensFila = [];
+    let ignoradosSemHorario = 0;
 
     for (const item of todosAgendamentos) {
       const { data: dataLimpa, horarioInicio: horaInicioFormatada, horarioFim: horaFimFormatada } = extrairDataEHoraMedicalsys(item, offsetHoras);
-      if (!dataLimpa) continue;
+      // Sem data ou sem horário não há como posicionar na agenda: ignora em vez de inventar 08:00
+      if (!dataLimpa || !horaInicioFormatada) {
+        ignoradosSemHorario++;
+        continue;
+      }
 
       // Nome do Paciente - Extração profunda e prioritária do cadastro real
       let nomePaciente = null;
@@ -665,6 +705,11 @@ export async function POST(request) {
       // Extração precisa do procedimento/especialidade mapeando 1 para 1
       const dadosProc = extrairProcedimentoEEspecialidade(item, mapaProcedimentosPorId);
       let rawEspecialidade = dadosProc.especialidade;
+      if (!rawEspecialidade || rawEspecialidade === "Geral") {
+        const medObj = Array.isArray(item.medico) ? item.medico[0] : item.medico;
+        const espMedico = medObj?.id ? especialidadePorMedico.get(String(medObj.id)) : null;
+        if (espMedico) rawEspecialidade = espMedico;
+      }
 
       let finalConvenio = rawConvenio;
       let finalEspecialidade = rawEspecialidade || "Geral";
@@ -796,7 +841,7 @@ export async function POST(request) {
     try {
       const { data: agsLocais } = await supabase
         .from("agendamentos")
-        .select("id, medicalsys_id, data_agendamento, horario_agendamento, status_atendimento")
+        .select("id, medicalsys_id, data_agendamento, horario_agendamento, status_atendimento, remarcado_em")
         .eq("empresa_id", empresaId)
         .not("medicalsys_id", "is", null);
 
@@ -805,15 +850,26 @@ export async function POST(request) {
           const medItem = mapaPorMedicalsysId.get(String(ag.medicalsys_id));
           if (medItem) {
             const { data: medData, horarioInicio: medHora } = extrairDataEHoraMedicalsys(medItem, offsetHoras);
-            const isCanc = medItem.situacao === "canc" || medItem.cancelado === true;
-            const newStatus = isCanc ? "cancelado" : ag.status_atendimento;
+            // Status vem da situação do MedicalSYS (agen/conf/agua/aten/fina/canc), sem rebaixar
+            // uma confirmação feita pelo paciente no RMCare para "agendado"
+            const statusErp = medItem.cancelado === true ? "cancelado" : statusDaSituacaoMedicalsys(medItem.situacao);
+            const newStatus = statusErp === "agendado" ? ag.status_atendimento : statusErp;
+            const horaLocal = String(ag.horario_agendamento || "").slice(0, 5);
 
-            if (medData !== ag.data_agendamento || medHora !== ag.horario_agendamento || (isCanc && ag.status_atendimento !== "cancelado")) {
+            // Remarcação feita no RMCare depois da última alteração no ERP prevalece
+            // (evita que a sincronização volte o paciente para a data antiga)
+            const alteradoNoErpEm = Date.parse(medItem.situacaodata || medItem.momento_agendamento || "") || 0;
+            const remarcadoLocalEm = Date.parse(ag.remarcado_em || "") || 0;
+            const manterDataLocal = remarcadoLocalEm > alteradoNoErpEm;
+            const novaData = manterDataLocal ? ag.data_agendamento : medData || ag.data_agendamento;
+            const novaHora = manterDataLocal ? ag.horario_agendamento : medHora || ag.horario_agendamento;
+
+            if (novaData !== ag.data_agendamento || String(novaHora).slice(0, 5) !== horaLocal || newStatus !== ag.status_atendimento) {
               await supabase
                 .from("agendamentos")
                 .update({
-                  data_agendamento: medData || ag.data_agendamento,
-                  horario_agendamento: medHora || ag.horario_agendamento,
+                  data_agendamento: novaData,
+                  horario_agendamento: novaHora,
                   status_atendimento: newStatus
                 })
                 .eq("id", ag.id)
@@ -835,7 +891,8 @@ export async function POST(request) {
       novos: registrosParaInserir.length,
       atualizados: inseridosComSucesso,
       mensagensRascunhoGeradas: rascunhosMensagensFila.length,
-      message: `Sincronização concluída com sucesso: ${registrosParaInserir.length} horários atualizados e sincronizados com fidelidade total ao Medicalsys.`
+      ignoradosSemHorario,
+      message: `Sincronização concluída: ${registrosParaInserir.length} horários atualizados a partir do MedicalSYS${ignoradosSemHorario ? ` (${ignoradosSemHorario} sem data/horário no ERP foram ignorados)` : ""}.`
     });
   } catch (error) {
     console.error("[Importação Medicalsys Error]:", error);

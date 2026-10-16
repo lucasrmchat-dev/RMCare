@@ -1207,17 +1207,17 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
       {/* CABEÇALHO COM TÍTULO E BOTÃO SALVAR */}
       <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-black/[0.06] dark:border-white/[0.08] pb-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-zinc-950 dark:bg-white text-white dark:text-black flex items-center justify-center shrink-0 shadow-sm">
+          <div className="hidden sm:flex w-10 h-10 rounded-xl bg-zinc-950 dark:bg-white text-white dark:text-black items-center justify-center shrink-0 shadow-sm">
             <Palette size={18} strokeWidth={1.75} />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-zinc-950 dark:text-white tracking-tight">
+            <h2 className="text-lg sm:text-xl font-bold text-zinc-950 dark:text-white tracking-tight">
               {subTab === "jornada" && "Jornada do Paciente, Etapas & Logotipo"}
               {subTab === "aparencia" && "Design, Cores & Escopo de Personalização"}
               {subTab === "mensagens" && "Automações de Mensagens WhatsApp"}
               {subTab === "historico_mensagens" && "Histórico & Auditoria de Mensagens WhatsApp"}
             </h2>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">
+            <p className="hidden sm:block text-xs text-zinc-500 dark:text-zinc-400 font-medium">
               Configure o fluxo do paciente, a identidade visual e as automações desta clínica.
             </p>
           </div>
@@ -1613,7 +1613,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                             ? "w-24 h-24 rounded-lg"
                             : campos.formato_logo === "original"
                             ? "w-36 h-24 rounded-2xl"
-                            : "w-24 h-24 rounded-[1.75rem]"
+                            : "w-24 h-24 rounded-2xl"
                         }`}
                       >
                         <img
@@ -1755,7 +1755,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                         >
                           <div className="flex items-center justify-between">
                             <span className="text-xs font-black">{opt.label}</span>
-                            {isSel && <Check size={14} className="text-[#9FC131]" />}
+                            {isSel && <Check size={14} className="text-brand-ink" />}
                           </div>
                           <p className="text-[11px] opacity-75 leading-relaxed">{opt.desc}</p>
                         </button>
@@ -1821,7 +1821,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-zinc-50/80 dark:bg-zinc-900/60 border border-zinc-200/80 dark:border-zinc-800 shadow-sm">
                     <div className="space-y-0.5">
                       <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-900 dark:text-white flex items-center gap-2">
-                        <CreditCard size={15} className="text-[#9FC131]" />
+                        <CreditCard size={15} className="text-brand-ink" />
                         Ocultar Valor da Consulta no Agendamento
                       </h4>
                       <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed max-w-xl">
@@ -1998,7 +1998,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                         <div className="flex-1 min-w-0">
                           <div className="text-xs font-bold flex items-center justify-between">
                             <span>{m.label}</span>
-                            {isSel && <Check size={14} className="text-[#9FC131]" />}
+                            {isSel && <Check size={14} className="text-brand-ink" />}
                           </div>
                           <p className="text-[10.5px] opacity-75 mt-0.5 leading-tight">{m.desc}</p>
                         </div>
@@ -3479,7 +3479,7 @@ export default function PersonalizacaoView({ subTab = "jornada", showToast, serv
                     exit={{ opacity: 0 }}
                     className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
                   >
-                    <div className="bg-white dark:bg-[#161618] border border-zinc-200 dark:border-zinc-800 rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
+                    <div className="bg-white dark:bg-[#161618] border border-zinc-200 dark:border-zinc-800 rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl max-h-[calc(100dvh-24px)] overflow-y-auto overscroll-contain">
                       <div className="flex justify-between items-center border-b border-zinc-100 dark:border-zinc-800 pb-3">
                         <h4 className="font-bold text-sm text-zinc-950 dark:text-white">
                           Mensagem para {mensagemVisualizar.nome_paciente}
